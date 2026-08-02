@@ -33,6 +33,9 @@ const MAX_SERVER_GENERATIONS = parseMaxConcurrentGenerations(
 const SERVER_CONNECTION_TEST_TIMEOUT_MS = parseConnectionTestTimeoutMs(
   process.env.OLLAMA_CONNECTION_TEST_TIMEOUT_MS,
 );
+const SERVER_GENERATION_TIMEOUT_MS = parseGenerationTimeoutMs(
+  process.env.OLLAMA_GENERATION_TIMEOUT_MS,
+);
 let activeServerGenerations = 0;
 
 const REPLY_LENGTHS = {
@@ -259,9 +262,13 @@ Local output contract: Return a JSON object with a segments array containing at 
     });
   }
   const controller = new AbortController();
+  if (request.signal.aborted) controller.abort();
+  request.signal.addEventListener("abort", () => controller.abort(), { once: true });
   const timeout = setTimeout(
     () => controller.abort(),
-    provider === "local" ? isConnectionTest ? SERVER_CONNECTION_TEST_TIMEOUT_MS : 600_000 : 45_000,
+    provider === "local"
+      ? isConnectionTest ? SERVER_CONNECTION_TEST_TIMEOUT_MS : SERVER_GENERATION_TIMEOUT_MS
+      : 45_000,
   );
 
   try {
@@ -722,6 +729,10 @@ export function parseMaxConcurrentGenerations(value: string | undefined): number
 
 export function parseConnectionTestTimeoutMs(value: string | undefined): number {
   return boundedPositiveInteger(value, 5_000, 900_000, 60_000);
+}
+
+export function parseGenerationTimeoutMs(value: string | undefined): number {
+  return boundedPositiveInteger(value, 60_000, 3_600_000, 1_800_000);
 }
 
 function parseReplyLength(v: unknown): ReplyLength {

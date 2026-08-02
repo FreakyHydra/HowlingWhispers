@@ -1843,6 +1843,16 @@ a:focus-visible {
   grid-template-columns: 1fr 1fr;
 }
 
+.connection-target-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.connection-target-setting .primary-button {
+  align-self: flex-start;
+}
+
 .token-input {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -1983,6 +1993,14 @@ a:focus-visible {
   flex-wrap: wrap;
   gap: 11px;
   padding-top: 20px;
+}
+
+.settings-actions:empty {
+  display: none;
+}
+
+.stop-button {
+  color: #e38a79;
 }
 
 .update-settings .version-row {

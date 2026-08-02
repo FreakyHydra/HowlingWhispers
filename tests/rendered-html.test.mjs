@@ -120,6 +120,7 @@ test("renders development preview metadata", async () => {
   assert.match(workerSource, /Continuation task/);
   assert.match(workerSource, /OLLAMA_MAX_CONCURRENT_GENERATIONS/);
   assert.match(workerSource, /OLLAMA_CONNECTION_TEST_TIMEOUT_MS/);
+  assert.match(workerSource, /OLLAMA_GENERATION_TIMEOUT_MS/);
   assert.match(workerSource, /relevant-world-lore/);
 
   const comparisonResponse = await worker.fetch(

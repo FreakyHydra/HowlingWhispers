@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { FormEvent, useMemo, useState, useEffect, useSyncExternalStore } from "react";
+import { FormEvent, useMemo, useRef, useState, useEffect, useSyncExternalStore } from "react";
 import packageInfo from "../package.json";
 import { legacyCharacterToCanon, type AgeCategory } from "../lib/characters/canonical";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
@@ -126,6 +126,8 @@ const novelAiModels: { value: ModelId; label: string; description: string; adult
     adult: false,
   },
 ];
+
+const isDevelopmentDeployment = import.meta.env.VITE_DEPLOYMENT_ENV === "development";
 
 const entranceFeatures = [
   {
@@ -961,6 +963,7 @@ export default function DreamboundApp() {
     useState<ProviderState>(() => readSession<ProviderState>("provider", "disconnected"));
   const [isReplying, setIsReplying] = useState(false);
   const [isImpersonating, setIsImpersonating] = useState(false);
+  const generationAbortRef = useRef<AbortController | null>(null);
   const [showImpersonate, setShowImpersonate] = useState(false);
   const [impersonationPrompt, setImpersonationPrompt] = useState("");
   const [showToken, setShowToken] = useState(false);
@@ -1472,8 +1475,8 @@ export default function DreamboundApp() {
           throw new Error(`Ollama could not find ${deviceModel.trim()} on this computer.`);
         }
         const result = await response.json() as { response?: string };
-        if (!result.response?.toLowerCase().includes("the howling whispers connected")) {
-          throw new Error(`${deviceModel.trim()} returned an unexpected test response.`);
+        if (!result.response?.trim()) {
+          throw new Error(`${deviceModel.trim()} returned an empty test response.`);
         }
         const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
         setProviderState("connected");
@@ -1608,6 +1611,10 @@ export default function DreamboundApp() {
     action?: "impersonate",
     playerDirection?: string,
   ): Promise<string> {
+    const controller = new AbortController();
+    generationAbortRef.current?.abort();
+    generationAbortRef.current = controller;
+    const requestSignal = controller.signal;
     const requestBody = {
         action,
         playerName: currentUser?.displayName || "Player",
@@ -1665,6 +1672,7 @@ export default function DreamboundApp() {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(requestBody),
+        signal: requestSignal,
       });
       const prepared = await preparedResponse.json() as {
         ollamaRequest?: Record<string, unknown>;
@@ -1681,6 +1689,7 @@ export default function DreamboundApp() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(prepared.ollamaRequest),
+          signal: requestSignal,
         });
       } catch {
         throw new Error(`This browser could not reach Ollama. Start Ollama and allow this site with ${ollamaOriginSetting}.`);
@@ -1697,6 +1706,7 @@ export default function DreamboundApp() {
           rawReply: generated.response,
           ...prepared.finalization,
         }),
+        signal: requestSignal,
       });
       const finalized = await finalizedResponse.json() as { reply?: string; error?: string };
       if (!finalizedResponse.ok || !finalized.reply) {
@@ -1711,6 +1721,7 @@ export default function DreamboundApp() {
       method: "POST",
       headers: authHeaders,
       body: JSON.stringify(requestBody),
+      signal: requestSignal,
     });
     const payload = (await response.json()) as { reply?: string; error?: string; context?: ContextManifest };
     if (!response.ok || !payload.reply) {
@@ -1720,6 +1731,14 @@ export default function DreamboundApp() {
       setContextManifests((current) => ({ ...current, [activeMessageKey]: payload.context! }));
     }
     return payload.reply;
+  }
+
+  function isAbortError(error: unknown): boolean {
+    return error instanceof DOMException && error.name === "AbortError";
+  }
+
+  function stopGeneration() {
+    generationAbortRef.current?.abort();
   }
 
   async function sendMessage() {
@@ -1785,6 +1804,7 @@ export default function DreamboundApp() {
         `Verified at ${time}. ${activeModel.label} generated a reply successfully.`,
       );
     } catch (error) {
+      if (isAbortError(error)) return;
       setProviderState("error");
       setChatError(
         error instanceof Error
@@ -1847,6 +1867,7 @@ export default function DreamboundApp() {
       ));
       setProviderState("connected");
     } catch (error) {
+      if (isAbortError(error)) return;
       setProviderState("error");
       setChatError(
         error instanceof Error ? error.message : "The player draft could not be generated.",
@@ -1883,6 +1904,7 @@ export default function DreamboundApp() {
       }
       setProviderState("connected");
     } catch (error) {
+      if (isAbortError(error)) return;
       setProviderState("error");
       setChatError(
         error instanceof Error ? error.message : "The character could not continue the scene.",
@@ -1963,6 +1985,7 @@ export default function DreamboundApp() {
       }));
       setProviderState("connected");
     } catch (error) {
+      if (isAbortError(error)) return;
       setProviderState("error");
       setChatError(
         error instanceof Error
@@ -3024,23 +3047,35 @@ export default function DreamboundApp() {
                 </fieldset>
 
                 <div className="settings-field-grid">
-                  <label>
-                    Connection target
-                    <input
-                      value={storyProvider === "local"
-                        ? "Ollama on this website server"
+                  <div className="connection-target-setting">
+                    <label>
+                      Connection target
+                      <input
+                        value={storyProvider === "local"
+                          ? "Ollama on this website server"
+                          : storyProvider === "device"
+                            ? "Ollama on this computer (127.0.0.1:11434)"
+                            : "https://text.novelai.net/oa/v1"}
+                        readOnly
+                        aria-readonly="true"
+                      />
+                      <small>{storyProvider === "local"
+                        ? "The app server contacts its own localhost; your browser does not connect to your computer."
                         : storyProvider === "device"
-                          ? "Ollama on this computer (127.0.0.1:11434)"
-                          : "https://text.novelai.net/oa/v1"}
-                      readOnly
-                      aria-readonly="true"
-                    />
-                    <small>{storyProvider === "local"
-                      ? "The app server contacts its own localhost; your browser does not connect to your computer."
-                      : storyProvider === "device"
-                        ? `Your browser contacts Ollama directly. Ollama must allow ${ollamaOriginSetting}.`
-                        : "Fixed to NovelAI’s OpenAI-compatible text endpoint."}</small>
-                  </label>
+                          ? `Your browser contacts Ollama directly. Ollama must allow ${ollamaOriginSetting}.`
+                          : "Fixed to NovelAI’s OpenAI-compatible text endpoint."}</small>
+                    </label>
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={testConnection}
+                      disabled={providerState === "testing"}
+                    >
+                      {providerState === "testing"
+                        ? storyProvider === "novelai" ? "Testing NovelAI…" : "Checking Ollama…"
+                        : "Test connection"}
+                    </button>
+                  </div>
                   <label>
                     Model
                     {storyProvider === "local" ? (
@@ -3282,16 +3317,6 @@ export default function DreamboundApp() {
                 </fieldset>
 
                 <div className="settings-actions">
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={testConnection}
-                    disabled={providerState === "testing"}
-                  >
-                    {providerState === "testing"
-                      ? storyProvider === "novelai" ? "Testing NovelAI…" : "Checking Ollama…"
-                      : "Test connection"}
-                  </button>
                   {storyProvider === "novelai" && <button
                     className="outline-button"
                     type="button"
@@ -3439,6 +3464,28 @@ export default function DreamboundApp() {
                 in this browser profile.
               </small>
             </section>
+
+            {isDevelopmentDeployment && (
+              <section className="settings-panel update-settings">
+                <p className="eyebrow">Development environment</p>
+                <h2>Promote a verified release</h2>
+                <p>
+                  Production deploys only the latest commit already merged into the central
+                  <code> main </code>branch. Development files are never copied directly.
+                </p>
+                <div className="update-actions">
+                  <a className="primary-button" href="/__deploy/">Open deployment panel</a>
+                  <a
+                    className="outline-button"
+                    href="https://github.com/FreakyHydra/HowlingWhispers/compare/main...dev?expand=1"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Review dev → main
+                  </a>
+                </div>
+              </section>
+            )}
           </div>
         </section>
       )}
@@ -3667,6 +3714,16 @@ export default function DreamboundApp() {
                   >
                     »
                   </button>
+                  {(isReplying || isImpersonating) && (
+                    <button
+                      className="icon-button stop-button"
+                      onClick={stopGeneration}
+                      aria-label="Stop generating"
+                      title="Stop generating"
+                    >
+                      ■
+                    </button>
+                  )}
                   <button
                     className="send-button"
                     onClick={sendMessage}

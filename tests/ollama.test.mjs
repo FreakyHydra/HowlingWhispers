@@ -9,6 +9,7 @@ import {
 import { GET as listServerModels } from "../app/api/ollama/models/route.ts";
 import {
   parseConnectionTestTimeoutMs,
+  parseGenerationTimeoutMs,
   parseMaxConcurrentGenerations,
   POST as generateStory,
 } from "../app/api/novelai/route.ts";
@@ -51,11 +52,15 @@ test("bounds server concurrency and connection-test timeout independently", () =
   assert.equal(parseMaxConcurrentGenerations("100"), 16);
   assert.equal(parseConnectionTestTimeoutMs("60000"), 60_000);
   assert.equal(parseConnectionTestTimeoutMs("300000"), 300_000);
+  assert.equal(parseGenerationTimeoutMs("1800000"), 1_800_000);
+  assert.equal(parseGenerationTimeoutMs("3600000"), 3_600_000);
 
   assert.equal(parseMaxConcurrentGenerations("invalid"), 1);
   assert.equal(parseMaxConcurrentGenerations("-4"), 1);
   assert.equal(parseConnectionTestTimeoutMs("invalid"), 60_000);
   assert.equal(parseConnectionTestTimeoutMs("-5000"), 60_000);
+  assert.equal(parseGenerationTimeoutMs("invalid"), 1_800_000);
+  assert.equal(parseGenerationTimeoutMs("-5000"), 1_800_000);
 });
 
 test("server discovery reports installed models and adult classification", async (context) => {
