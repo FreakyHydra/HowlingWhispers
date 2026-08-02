@@ -31,6 +31,10 @@ const MAX_SERVER_GENERATIONS = positiveInteger(
   process.env.OLLAMA_MAX_CONCURRENT_GENERATIONS,
   1,
 );
+const SERVER_CONNECTION_TEST_TIMEOUT_MS = positiveInteger(
+  process.env.OLLAMA_CONNECTION_TEST_TIMEOUT_MS,
+  60_000,
+);
 let activeServerGenerations = 0;
 
 const REPLY_LENGTHS = {
@@ -259,7 +263,7 @@ Local output contract: Return a JSON object with a segments array containing at 
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
-    provider === "local" ? isConnectionTest ? 60_000 : 600_000 : 45_000,
+    provider === "local" ? isConnectionTest ? SERVER_CONNECTION_TEST_TIMEOUT_MS : 600_000 : 45_000,
   );
 
   try {
