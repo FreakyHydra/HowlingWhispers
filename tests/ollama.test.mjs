@@ -7,7 +7,11 @@ import {
   parseOllamaModels,
 } from "../lib/ollama.ts";
 import { GET as listServerModels } from "../app/api/ollama/models/route.ts";
-import { POST as generateStory } from "../app/api/novelai/route.ts";
+import {
+  parseConnectionTestTimeoutMs,
+  parseMaxConcurrentGenerations,
+  POST as generateStory,
+} from "../app/api/novelai/route.ts";
 import { legacyCharacterToCanon } from "../lib/characters/canonical.ts";
 
 test("normalizes, deduplicates, and sorts Ollama model tags", () => {
@@ -41,6 +45,17 @@ test("validates model names accepted by Ollama requests", () => {
   assert.equal(isValidOllamaModelName("model with spaces"), false);
   assert.equal(isValidOllamaModelName("../model"), false);
   assert.equal(isValidOllamaModelName(""), false);
+});
+
+test("bounds server concurrency and connection-test timeout independently", () => {
+  assert.equal(parseMaxConcurrentGenerations("100"), 16);
+  assert.equal(parseConnectionTestTimeoutMs("60000"), 60_000);
+  assert.equal(parseConnectionTestTimeoutMs("300000"), 300_000);
+
+  assert.equal(parseMaxConcurrentGenerations("invalid"), 1);
+  assert.equal(parseMaxConcurrentGenerations("-4"), 1);
+  assert.equal(parseConnectionTestTimeoutMs("invalid"), 60_000);
+  assert.equal(parseConnectionTestTimeoutMs("-5000"), 60_000);
 });
 
 test("server discovery reports installed models and adult classification", async (context) => {
@@ -91,6 +106,26 @@ test("server generation rejects models that are not installed", async (context) 
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), {
     error: "Choose a model currently installed on the app server.",
+  });
+});
+
+test("server connection test accepts a non-empty model response", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const model = "mistral-nemo:12b";
+  globalThis.fetch = async (url) => String(url).endsWith("/api/tags")
+    ? Response.json({ models: [{ name: model }] })
+    : Response.json({ response: "Connection confirmed in different words." });
+
+  const response = await generateStory(new Request("http://localhost/api/novelai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "test", provider: "local", model }),
+  }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    message: "The Howling Whispers connected",
   });
 });
 

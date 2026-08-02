@@ -27,13 +27,11 @@ const NOVELAI_BASE = "https://text.novelai.net/oa/v1";
 const CONNECTION_TEST_RESPONSE = "The Howling Whispers connected";
 const ALLOWED_MODELS = new Set(["xialong-v1", "glm-4-6"]);
 const ALLOWED_SENDERS = new Set(["character", "player", "narrator"]);
-const MAX_SERVER_GENERATIONS = positiveInteger(
+const MAX_SERVER_GENERATIONS = parseMaxConcurrentGenerations(
   process.env.OLLAMA_MAX_CONCURRENT_GENERATIONS,
-  1,
 );
-const SERVER_CONNECTION_TEST_TIMEOUT_MS = positiveInteger(
+const SERVER_CONNECTION_TEST_TIMEOUT_MS = parseConnectionTestTimeoutMs(
   process.env.OLLAMA_CONNECTION_TEST_TIMEOUT_MS,
-  60_000,
 );
 let activeServerGenerations = 0;
 
@@ -339,8 +337,8 @@ async function localReply(
     }
     const result: unknown = await upstream.json();
     const reply = isRecord(result) && typeof result.response === "string" ? result.response : "";
-    if (!isSuccessfulConnectionReply(reply)) {
-      return Response.json({ error: "The local model returned an unexpected test response." }, { status: 502 });
+    if (!reply.trim()) {
+      return Response.json({ error: "The local model returned no test response." }, { status: 502 });
     }
     return Response.json({ ok: true, message: CONNECTION_TEST_RESPONSE });
   }
@@ -709,9 +707,21 @@ function boundedNumber(v: unknown, min: number, max: number, fallback: number) {
   return typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
 }
 
-function positiveInteger(value: string | undefined, fallback: number): number {
+function boundedPositiveInteger(
+  value: string | undefined, minimum: number, maximum: number, fallback: number,
+): number {
   const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, 16) : fallback;
+  return Number.isInteger(parsed) && parsed > 0
+    ? Math.min(maximum, Math.max(minimum, parsed))
+    : fallback;
+}
+
+export function parseMaxConcurrentGenerations(value: string | undefined): number {
+  return boundedPositiveInteger(value, 1, 16, 1);
+}
+
+export function parseConnectionTestTimeoutMs(value: string | undefined): number {
+  return boundedPositiveInteger(value, 5_000, 900_000, 60_000);
 }
 
 function parseReplyLength(v: unknown): ReplyLength {
