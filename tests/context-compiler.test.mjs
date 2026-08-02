@@ -152,6 +152,28 @@ test("player-role presets establish external context without taking player agenc
   assert.match(result.prompt, /Never infer the player's personality, thoughts, feelings, attraction, consent, dialogue, or decisions/);
 });
 
+test("player turns use the configured name or a neutral You label", () => {
+  const named = compile(adultCharacter(), { playerName: "Kael" });
+  assert.match(named.prompt, /Kael: How are you feeling today\?/);
+
+  const anonymous = compile(adultCharacter(), { playerName: "" });
+  assert.match(anonymous.prompt, /You: How are you feeling today\?/);
+  assert.doesNotMatch(anonymous.prompt, /Dreamer/);
+  assert.match(anonymous.prompt, /Never assign or assume the player a name/);
+});
+
+test("a configured player persona is rendered as authoritative player context", () => {
+  const result = compile(adultCharacter(), {
+    playerName: "Kael",
+    playerPersona: "Kael is a quiet wanderer with a silver pendant.",
+  });
+  assert.match(result.prompt, /<player-persona>/);
+  assert.match(result.prompt, /Kael is a quiet wanderer with a silver pendant/);
+
+  const empty = compile(adultCharacter(), { playerPersona: "" });
+  assert.doesNotMatch(empty.prompt, /<player-persona>/);
+});
+
 test("impersonation receives authoritative character safety", () => {
   const minor = legacyCharacterToCanon({
     id: "senako-steel",

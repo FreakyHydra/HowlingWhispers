@@ -128,10 +128,85 @@ test("server connection test accepts a non-empty model response", async (context
     body: JSON.stringify({ action: "test", provider: "local", model }),
   }));
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
-    ok: true,
-    message: "The Howling Whispers connected",
-  });
+  assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/);
+  const events = await readTestStream(response);
+  assert.ok(events.some((event) =>
+    event.type === "done" && event.ok === true && event.message === "The Howling Whispers connected"
+  ));
+});
+
+async function readTestStream(response) {
+  if (!response.body) throw new Error("No response body");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const events = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      const raw = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      boundary = buffer.indexOf("\n\n");
+      if (!raw.startsWith("data:")) continue;
+      try {
+        events.push(JSON.parse(raw.slice(5).trim()));
+      } catch {
+        // Ignore malformed events.
+      }
+    }
+  }
+  return events;
+}
+
+test("NovelAI replies drop the leaked player turn", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("text.novelai.net")) {
+      return Response.json({
+        choices: [{ text: "*Coda's tail sweeps the hearth.* \"I kept your place warm.\"\n\nYou: *I step closer.* \"Thank you.\"" }],
+      });
+    }
+    return Response.json({});
+  };
+
+  const response = await generateStory(new Request("http://localhost/api/novelai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider: "novelai",
+      apiToken: "test-token",
+      model: "xialong-v1",
+      playerName: "",
+      temperature: 0.8,
+      replyLength: "quick",
+      proseFormat: "roleplay",
+      character: {
+        id: "coda",
+        name: "Coda",
+        role: "Wolf guardian",
+        profile: "A test wolf guardian.",
+        canonical: legacyCharacterToCanon({
+          id: "coda",
+          name: "Coda",
+          role: "Wolf guardian",
+          profile: "A test wolf guardian.",
+        }),
+      },
+      messages: [
+        { sender: "player", text: "Hello." },
+        { sender: "character", text: "*Coda looks up.* \"You're back.\"" },
+      ],
+    }),
+  }));
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.ok(payload.reply && payload.reply.includes("I kept your place warm"));
+  assert.ok(!/You\s*:/i.test(payload.reply));
+  assert.ok(!/\*I step closer\*/i.test(payload.reply));
 });
 
 test("adult server models reject characters that are not confirmed adults", async (context) => {

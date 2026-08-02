@@ -874,8 +874,9 @@ export default function DreamboundApp() {
     () => true,
     () => false,
   );
-  const [currentUser, setCurrentUser] = useState<{ displayName: string } | null>(() =>
-    readSession<{ displayName: string } | null>("user", null),
+  const [currentUser, setCurrentUser] = useState<{ displayName: string } | null>(null);
+  const [playerProfile, setPlayerProfile] = useState(() =>
+    readSession<{ name: string; persona: string }>("player", { name: "", persona: "" }),
   );
   const [view, setView] = useState<AppView>(() => readSession<AppView>("view", "home"));
   const [characters, setCharacters] = useState<Character[]>(() => {
@@ -971,6 +972,12 @@ export default function DreamboundApp() {
   const [connectionError, setConnectionError] = useState("");
   const [chatError, setChatError] = useState("");
   const [connectionFeedback, setConnectionFeedback] = useState("");
+  const [testProgress, setTestProgress] = useState<{
+    phase: "connecting" | "loading" | "generating";
+    elapsedSec: number;
+    tokens: number;
+    maxTokens: number;
+  } | null>(null);
   const [savedAt, setSavedAt] = useState("");
   const [verifiedAt, setVerifiedAt] = useState("");
   const [seenMessageIds, setSeenMessageIds] = useState<Set<string>>(
@@ -1194,16 +1201,20 @@ export default function DreamboundApp() {
   const authHeaders: Record<string, string> = { "Content-Type": "application/json" };
 
   function handleEnter() {
-    const user = { displayName: "Dreamer" };
-    setCurrentUser(user);
-    writeSession("user", user);
+    setCurrentUser({ displayName: playerProfile.name.trim() });
     setView("home");
   }
 
   function handleSignOut() {
     setCurrentUser(null);
-    localStorage.removeItem("dreambound_user");
     setView("home");
+  }
+
+  function updatePlayerProfile(patch: Partial<{ name: string; persona: string }>) {
+    const next = { ...playerProfile, ...patch };
+    setPlayerProfile(next);
+    writeSession("player", next);
+    setCurrentUser((current) => (current ? { ...current, displayName: next.name.trim() } : current));
   }
 
   const selected = useMemo(
@@ -1494,17 +1505,25 @@ export default function DreamboundApp() {
           model: activeModel.value,
         }),
       });
-      const payload = (await response.json()) as {
-        ok?: boolean;
-        message?: string;
-        error?: string;
-      };
       if (
-        !response.ok ||
-        !payload.ok ||
-        payload.message !== "The Howling Whispers connected"
+        storyProvider === "local" &&
+        response.ok &&
+        (response.headers.get("content-type") ?? "").includes("text/event-stream")
       ) {
-        throw new Error(payload.error || `${providerLabel} did not accept the connection.`);
+        await readLocalTestStream(response);
+      } else {
+        const payload = (await response.json()) as {
+          ok?: boolean;
+          message?: string;
+          error?: string;
+        };
+        if (
+          !response.ok ||
+          !payload.ok ||
+          payload.message !== "The Howling Whispers connected"
+        ) {
+          throw new Error(payload.error || `${providerLabel} did not accept the connection.`);
+        }
       }
 
       const time = new Date().toLocaleTimeString([], {
@@ -1514,12 +1533,13 @@ export default function DreamboundApp() {
       setProviderState("connected");
       setVerifiedAt(time);
       setConnectionFeedback(
-        `${payload.message}. Verified at ${time} with ${activeModel.label}.`,
+        `The Howling Whispers connected. Verified at ${time} with ${activeModel.label}.`,
       );
     } catch (error) {
       setProviderState("error");
       setVerifiedAt("");
       setConnectionFeedback("");
+      setTestProgress(null);
       setConnectionError(
         storyProvider === "device" && error instanceof TypeError
           ? `This browser could not reach Ollama. Start Ollama and allow this site with ${ollamaOriginSetting}.`
@@ -1528,6 +1548,67 @@ export default function DreamboundApp() {
           : `The Howling Whispers could not verify the ${providerLabel.toLowerCase()} connection.`,
       );
     }
+  }
+
+  async function readLocalTestStream(response: Response): Promise<void> {
+    if (!response.body) throw new Error("The server did not stream a test response.");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    const startedAt = Date.now();
+    setTestProgress({ phase: "connecting", elapsedSec: 0, tokens: 0, maxTokens: 24 });
+    const elapsedTimer = window.setInterval(() => {
+      setTestProgress((current) => current && {
+        ...current,
+        elapsedSec: Math.floor((Date.now() - startedAt) / 1000),
+      });
+    }, 1_000);
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let boundary = buffer.indexOf("\n\n");
+        while (boundary >= 0) {
+          const raw = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          boundary = buffer.indexOf("\n\n");
+          if (!raw.startsWith("data:")) continue;
+          let event: { type?: string; ok?: boolean; message?: string; text?: string };
+          try {
+            event = JSON.parse(raw.slice(5).trim()) as typeof event;
+          } catch {
+            continue;
+          }
+          if (event.type === "token") {
+            setTestProgress((current) => current && {
+              ...current,
+              phase: "generating",
+              tokens: current.tokens + 1,
+            });
+          } else if (event.type === "heartbeat") {
+            setTestProgress((current) => current && { ...current, phase: "loading" });
+          } else if (event.type === "done") {
+            if (!event.ok) {
+              throw new Error(event.message || "The connection could not be verified.");
+            }
+            return;
+          } else if (event.type === "error") {
+            throw new Error(event.message || "The connection could not be verified.");
+          }
+        }
+      }
+      throw new Error("The server closed the connection before the test finished.");
+    } finally {
+      window.clearInterval(elapsedTimer);
+      setTestProgress(null);
+    }
+  }
+
+  function formatTestElapsed(totalSeconds: number): string {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
   }
 
   function saveSettings(storageMode: TokenStorageMode = tokenStorageMode) {
@@ -1617,7 +1698,8 @@ export default function DreamboundApp() {
     const requestSignal = controller.signal;
     const requestBody = {
         action,
-        playerName: currentUser?.displayName || "Player",
+        playerName: playerProfile.name.trim(),
+        playerPersona: playerProfile.persona.trim(),
         impersonationPrompt: playerDirection,
         provider: storyProvider,
         apiToken,
@@ -2356,7 +2438,7 @@ export default function DreamboundApp() {
               {currentUser?.displayName.trim().charAt(0).toUpperCase() || "U"}
             </span>
             <div>
-              <strong>{currentUser?.displayName}</strong>
+              <strong>{currentUser?.displayName.trim() || "Local player"}</strong>
               <button className="link-button" onClick={handleSignOut}>Return to entrance</button>
             </div>
           </div>
@@ -2371,7 +2453,9 @@ export default function DreamboundApp() {
         <section className="character-home">
           <div className="home-hero">
             <div>
-              <p className="eyebrow">Welcome back, {currentUser?.displayName || "dreamer"}</p>
+              <p className="eyebrow">
+                Welcome back{currentUser?.displayName.trim() ? `, ${currentUser.displayName}` : ""}
+              </p>
               <h1>Who will answer tonight?</h1>
               <p>
                 Every whisper becomes a world. Choose a soul, then enter a new
@@ -3075,6 +3159,47 @@ export default function DreamboundApp() {
                         ? storyProvider === "novelai" ? "Testing NovelAI…" : "Checking Ollama…"
                         : "Test connection"}
                     </button>
+                    {storyProvider === "local" && testProgress && (
+                      <div
+                        className="test-progress"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={testProgress.maxTokens}
+                        aria-valuenow={testProgress.phase === "generating"
+                          ? testProgress.tokens
+                          : undefined}
+                        aria-label="Connection test progress"
+                      >
+                        <div className="test-progress-label">
+                          <span>
+                            {testProgress.phase === "connecting"
+                              ? "Contacting the server…"
+                              : testProgress.phase === "loading"
+                                ? "Loading the model on the server…"
+                                : `Generating ${testProgress.tokens}/${testProgress.maxTokens} tokens…`}
+                          </span>
+                          <span className="test-progress-elapsed">
+                            {formatTestElapsed(testProgress.elapsedSec)}
+                          </span>
+                        </div>
+                        <div className="test-progress-track">
+                          <div
+                            className={testProgress.phase === "generating"
+                              ? "test-progress-fill"
+                              : "test-progress-fill indeterminate"}
+                            style={testProgress.phase === "generating"
+                              ? { width: `${Math.min(100, (testProgress.tokens / testProgress.maxTokens) * 100)}%` }
+                              : undefined}
+                          />
+                        </div>
+                        {testProgress.phase === "loading" && (
+                          <small>
+                            The first test loads the model and can take a few minutes; the model
+                            stays loaded afterward, so later tests are fast.
+                          </small>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <label>
                     Model
@@ -3356,13 +3481,32 @@ export default function DreamboundApp() {
             </section>
 
             <section className="settings-panel account-settings">
-              <p className="eyebrow">Local profile</p>
+              <p className="eyebrow">Your player</p>
               <div className="settings-avatar" aria-hidden="true">
-                {currentUser?.displayName.trim().charAt(0).toUpperCase() || "U"}
+                {playerProfile.name.trim().charAt(0).toUpperCase() || "U"}
               </div>
-              <h2>{currentUser?.displayName || "Dreamer"}</h2>
-              <p>Characters and stories are saved in this browser.</p>
-              <span className="chatgpt-badge">✓ Local story space</span>
+              <h2>{playerProfile.name.trim() || "Local player"}</h2>
+              <label>
+                Player name
+                <input
+                  value={playerProfile.name}
+                  onChange={(event) => updatePlayerProfile({ name: event.target.value })}
+                  placeholder="Leave blank to stay unnamed in the story"
+                  maxLength={100}
+                />
+              </label>
+              <label>
+                Persona
+                <textarea
+                  value={playerProfile.persona}
+                  onChange={(event) => updatePlayerProfile({ persona: event.target.value })}
+                  placeholder="Describe how you want to be seen in the story—appearance, nature, history. Leave blank if you prefer to improvise."
+                  rows={4}
+                  maxLength={2000}
+                />
+              </label>
+              <p>Everything is saved in this browser. Nothing is uploaded.</p>
+              <span className="chatgpt-badge">✓ Private local story space</span>
               <button className="outline-button settings-signout" onClick={handleSignOut}>
                 Return to entrance
               </button>

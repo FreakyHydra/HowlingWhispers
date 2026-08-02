@@ -36,7 +36,30 @@ const SERVER_CONNECTION_TEST_TIMEOUT_MS = parseConnectionTestTimeoutMs(
 const SERVER_GENERATION_TIMEOUT_MS = parseGenerationTimeoutMs(
   process.env.OLLAMA_GENERATION_TIMEOUT_MS,
 );
-let activeServerGenerations = 0;
+const generationSlots: { id: number; deadline: number }[] = [];
+let nextGenerationId = 1;
+
+function pruneStaleGenerationSlots(): void {
+  const now = Date.now();
+  for (let index = generationSlots.length - 1; index >= 0; index -= 1) {
+    if (now >= generationSlots[index].deadline) generationSlots.splice(index, 1);
+  }
+}
+
+function releaseGenerationSlot(id: number): void {
+  const index = generationSlots.findIndex((slot) => slot.id === id);
+  if (index >= 0) generationSlots.splice(index, 1);
+}
+
+async function waitForGenerationSlot(waitMs = 15_000): Promise<boolean> {
+  const deadline = Date.now() + waitMs;
+  while (Date.now() < deadline) {
+    pruneStaleGenerationSlots();
+    if (generationSlots.length < MAX_SERVER_GENERATIONS) return true;
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  return false;
+}
 
 const REPLY_LENGTHS = {
   quick: {
@@ -116,13 +139,8 @@ function localRoleplayFormat(minSegments: number) {
   };
 }
 
-async function getDisplayName(requestedName: string): Promise<string> {
-  try {
-    const { getChatGPTUser } = await import("../../chatgpt-auth");
-    const user = await getChatGPTUser();
-    if (user) return user.displayName;
-  } catch { /* ignore */ }
-  return requestedName || "Player";
+function getDisplayName(requestedName: string): string {
+  return requestedName.trim();
 }
 
 export async function POST(request: Request) {
@@ -141,12 +159,15 @@ export async function POST(request: Request) {
     const preparedReply = proseFormat === "roleplay"
       ? formatLocalRoleplayReply(rawReply, outputKind, outputName)
       : rawReply;
-    const reply = cleanReply(preparedReply, outputName, proseFormat, outputKind);
+    const reply = cleanReply(
+      preparedReply, outputName, limitedString(body.playerName, 100), proseFormat, outputKind,
+    );
     return reply
       ? Response.json({ reply })
       : Response.json({ error: "The local model returned an empty reply." }, { status: 502 });
   }
-  const playerName = await getDisplayName(limitedString(body.playerName, 100));
+  const playerName = getDisplayName(limitedString(body.playerName, 100));
+  const playerPersona = limitedString(body.playerPersona, 2000);
 
   const apiToken = limitedString(body.apiToken, 4096);
   const provider: StoryProvider = body.provider === "local" || body.provider === "device"
@@ -217,6 +238,7 @@ export async function POST(request: Request) {
       sandbox: character!.sandbox,
       messages,
       playerName,
+      playerPersona,
       preferences,
       lengthInstruction: isImpersonation
         ? IMPERSONATION_LENGTHS[replyLength]
@@ -229,7 +251,7 @@ export async function POST(request: Request) {
   const generationLength = replyLength;
   const stopSequences = isImpersonation
     ? impersonationStops(character?.name ?? "")
-    : roleplayStops();
+    : roleplayStops(playerName);
   const outputName = isImpersonation ? playerName : character?.name ?? "";
   const outputKind = isImpersonation ? "player" : "character";
   if (provider === "device") {
@@ -257,7 +279,7 @@ Local output contract: Return a JSON object with a segments array containing at 
           stop: stopSequences,
         },
       },
-      finalization: { outputName, outputKind, proseFormat: preferences.proseFormat },
+      finalization: { outputName, outputKind, playerName, proseFormat: preferences.proseFormat },
       context: compiled?.manifest,
     });
   }
@@ -273,21 +295,31 @@ Local output contract: Return a JSON object with a segments array containing at 
 
   try {
     if (provider === "local") {
-      if (activeServerGenerations >= MAX_SERVER_GENERATIONS) {
-        clearTimeout(timeout);
-        return Response.json({
-          error: "The server model is busy with another generation. Try again shortly.",
-        }, { status: 429 });
+      pruneStaleGenerationSlots();
+      if (generationSlots.length >= MAX_SERVER_GENERATIONS) {
+        const slotFreed = await waitForGenerationSlot();
+        pruneStaleGenerationSlots();
+        if (!slotFreed && generationSlots.length >= MAX_SERVER_GENERATIONS) {
+          clearTimeout(timeout);
+          return Response.json({
+            error: "The server model is busy with another generation. Try again shortly.",
+          }, { status: 429 });
+        }
       }
-      activeServerGenerations += 1;
+      const slotId = nextGenerationId;
+      nextGenerationId += 1;
+      generationSlots.push({
+        id: slotId,
+        deadline: Date.now() + (isConnectionTest ? SERVER_CONNECTION_TEST_TIMEOUT_MS : SERVER_GENERATION_TIMEOUT_MS),
+      });
       try {
         return await localReply(
           model, prompt, isConnectionTest, temperature, generationLength,
-          outputName, preferences.proseFormat,
+          outputName, playerName, preferences.proseFormat,
           outputKind, stopSequences, compiled?.manifest, controller, timeout,
         );
       } finally {
-        activeServerGenerations -= 1;
+        releaseGenerationSlot(slotId);
       }
     }
 
@@ -300,7 +332,7 @@ Local output contract: Return a JSON object with a segments array containing at 
 
     return await nonStreamReply(
       apiToken, model, prompt, isConnectionTest, temperature, generationLength,
-      isImpersonation ? playerName : character?.name ?? "", preferences.proseFormat,
+      isImpersonation ? playerName : character?.name ?? "", playerName, preferences.proseFormat,
       isImpersonation ? "player" : "character", stopSequences, compiled?.manifest, controller, timeout,
     );
   } catch (error) {
@@ -318,7 +350,7 @@ Local output contract: Return a JSON object with a segments array containing at 
 
 async function localReply(
   model: string, prompt: string, isTest: boolean,
-  temperature: number, replyLength: ReplyLength, outputName: string,
+  temperature: number, replyLength: ReplyLength, outputName: string, playerName: string,
   proseFormat: ProseFormat, outputKind: "player" | "character", stopSequences: string[],
   contextManifest: ContextManifest | undefined, controller: AbortController, timeout: NodeJS.Timeout,
 ) {
@@ -329,25 +361,94 @@ async function localReply(
       body: JSON.stringify({
         model,
         prompt: `Reply with exactly this text and nothing else: ${CONNECTION_TEST_RESPONSE}`,
-        stream: false,
-        keep_alive: "5m",
+        stream: true,
         options: { num_ctx: 2_048, num_predict: 24, temperature: 0.1 },
       }),
       signal: controller.signal,
     });
-    clearTimeout(timeout);
-    if (!upstream.ok) {
+    if (!upstream.ok || !upstream.body) {
+      clearTimeout(timeout);
       const details = await upstream.text().catch(() => "");
       return Response.json({
         error: `Ollama could not find ${model}. ${details}`.trim(),
       }, { status: 502 });
     }
-    const result: unknown = await upstream.json();
-    const reply = isRecord(result) && typeof result.response === "string" ? result.response : "";
-    if (!reply.trim()) {
-      return Response.json({ error: "The local model returned no test response." }, { status: 502 });
-    }
-    return Response.json({ ok: true, message: CONNECTION_TEST_RESPONSE });
+    const reader = upstream.body.getReader();
+    const decoder = new TextDecoder();
+    const encoder = new TextEncoder();
+    const startedAt = Date.now();
+    let responseText = "";
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        const enqueue = (payload: unknown): boolean => {
+          try {
+            c.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+            return true;
+          } catch {
+            return false;
+          }
+        };
+        heartbeat = setInterval(() => {
+          if (!enqueue({ type: "heartbeat", elapsed: Math.round((Date.now() - startedAt) / 1000) })) {
+            if (heartbeat) clearInterval(heartbeat);
+            controller.abort();
+            reader.cancel().catch(() => {});
+          }
+        }, 5_000);
+        (async () => {
+          try {
+            for (;;) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              const chunk = decoder.decode(value, { stream: true });
+              for (const line of chunk.split("\n")) {
+                const trimmed = line.trim();
+                if (!trimmed.startsWith("{")) continue;
+                try {
+                  const event = JSON.parse(trimmed) as { response?: string; done?: boolean };
+                  if (typeof event.response === "string" && event.response) {
+                    responseText += event.response;
+                    enqueue({ type: "token", text: event.response });
+                  }
+                  if (event.done) break;
+                } catch {
+                  // Ignore malformed lines.
+                }
+              }
+            }
+            if (!responseText.trim()) {
+              enqueue({ type: "error", message: "The local model returned no test response." });
+            } else {
+              enqueue({ type: "done", ok: true, message: CONNECTION_TEST_RESPONSE });
+            }
+          } catch (error) {
+            const timedOut = error instanceof Error && error.name === "AbortError";
+            enqueue({ type: "error", message: timedOut
+              ? "The local model took too long. Try again."
+              : "Could not reach Ollama. Make sure it is running, then try again." });
+          } finally {
+            clearTimeout(timeout);
+            if (heartbeat) clearInterval(heartbeat);
+            try { c.close(); } catch { /* Already closed. */ }
+          }
+        })();
+      },
+      cancel() {
+        clearTimeout(timeout);
+        if (heartbeat) clearInterval(heartbeat);
+        controller.abort();
+        reader.cancel().catch(() => {});
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      },
+    });
   }
 
   const structuredRoleplay = !isTest && proseFormat === "roleplay";
@@ -365,7 +466,6 @@ Local output contract: Return a JSON object with a segments array containing at 
         model,
         prompt: generationPrompt,
         stream: false,
-        keep_alive: "10m",
         format: structuredRoleplay ? localRoleplayFormat(minimumSegments) : undefined,
         options: {
           num_ctx: 16_384,
@@ -423,7 +523,7 @@ ${preparedReply}`);
     ? rawReply.trim().slice(0, 200)
     : cleanReply(
       preparedReply,
-      outputName, proseFormat, outputKind,
+      outputName, playerName, proseFormat, outputKind,
     );
 
   if (!reply) {
@@ -531,7 +631,7 @@ async function streamReply(
 
 async function nonStreamReply(
   apiToken: string, model: string, prompt: string, isTest: boolean,
-  temperature: number, replyLength: ReplyLength, outputName: string,
+  temperature: number, replyLength: ReplyLength, outputName: string, playerName: string,
   proseFormat: ProseFormat, outputKind: "player" | "character", stopSequences: string[],
   contextManifest: ContextManifest | undefined, controller: AbortController, timeout: NodeJS.Timeout,
 ) {
@@ -562,7 +662,7 @@ async function nonStreamReply(
   const rawReply = extractReply(result);
   const reply = isTest
     ? rawReply.trim().slice(0, 200)
-    : cleanReply(rawReply, outputName, proseFormat, outputKind);
+    : cleanReply(rawReply, outputName, playerName, proseFormat, outputKind);
 
   if (!reply) {
     return Response.json({
@@ -649,13 +749,22 @@ function extractReply(v: unknown): string {
 }
 
 function cleanReply(
-  v: string, name: string, proseFormat: ProseFormat, outputKind: "player" | "character",
+  v: string, name: string, playerName: string, proseFormat: ProseFormat, outputKind: "player" | "character",
 ): string {
   const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const wrappedReply = outputKind === "player"
     ? v.match(/<(?:player|user)[^>]*>([\s\S]*?)<\/(?:player|user)>/i)
     : v.match(/<character_reply[^>]*>([\s\S]*?)<\/character_reply>/i);
-  const withoutLeakTail = (wrappedReply?.[1] ?? v)
+  let candidate = wrappedReply?.[1] ?? v;
+  if (outputKind === "character") {
+    const labels = [playerName.trim() || "You", "Player", "User", "You"]
+      .filter((label) => label && label.trim())
+      .map((label) => label.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|");
+    const leakedTurn = candidate.search(new RegExp(`\\n\\s*(?:${labels})\\s*:\\s*`, "i"));
+    if (leakedTurn >= 0) candidate = candidate.slice(0, leakedTurn).trim();
+  }
+  const withoutLeakTail = candidate
     .split(/\n\s*(?:<\/?(?:player|user|system|scene|character_reply)\b|(?:Player|User|System|Emotion|Mood|Analysis|Thinking|Write only the next roleplay passage)(?:\s*:|\s*$))/i)[0];
   let reply = withoutLeakTail
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
@@ -681,8 +790,10 @@ function cleanReply(
   return reply.slice(0, 12_000);
 }
 
-function roleplayStops(): string[] {
+function roleplayStops(playerName: string): string[] {
+  const label = playerName.trim() || "You";
   return [
+    `\n${label}:`,
     "\nPlayer:", "\nUser:", "\nSystem:", "\nEmotion:", "\nMood:",
     "\nAnalysis:", "\nThinking:", "\nWrite only the next roleplay passage",
     "\n<player>", "\n<user>", "\n<system>",
