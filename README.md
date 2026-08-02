@@ -50,9 +50,10 @@ Select **Settings → Generation provider → This computer**, then run **Test
 connection**. Ollama remains on localhost and the browser contacts it directly.
 For a deployed host, **Local server** keeps the browser isolated from Ollama.
 
-Server deployments can set `OLLAMA_BASE_URL`, `OLLAMA_ADULT_MODELS`, and
-`OLLAMA_MAX_CONCURRENT_GENERATIONS` as documented in `.env.example`. Keep
-Ollama private; do not expose port `11434` to the internet.
+Server deployments can set `OLLAMA_BASE_URL`, `OLLAMA_ADULT_MODELS`,
+`OLLAMA_MAX_CONCURRENT_GENERATIONS`, and `OLLAMA_CONNECTION_TEST_TIMEOUT_MS`
+as documented in `.env.example`. Keep Ollama private; do not expose port
+`11434` to the internet.
 
 ## Quick Start on Windows
 

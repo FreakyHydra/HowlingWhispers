@@ -119,6 +119,7 @@ test("renders development preview metadata", async () => {
   const workerSource = await readFile(workerUrl, "utf8");
   assert.match(workerSource, /Continuation task/);
   assert.match(workerSource, /OLLAMA_MAX_CONCURRENT_GENERATIONS/);
+  assert.match(workerSource, /OLLAMA_CONNECTION_TEST_TIMEOUT_MS/);
   assert.match(workerSource, /relevant-world-lore/);
 
   const comparisonResponse = await worker.fetch(
