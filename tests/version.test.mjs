@@ -33,9 +33,15 @@ test("release metadata uses one version across package and launcher sources", as
   const packageInfo = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const packageLock = JSON.parse(await readFile(new URL("../package-lock.json", import.meta.url), "utf8"));
   const launcher = await readFile(new URL("../launcher/HowlingWhispersLauncher.cs", import.meta.url), "utf8");
+  const updateConfig = JSON.parse(
+    await readFile(new URL("../public/update-config.json", import.meta.url), "utf8"),
+  );
   assert.equal(packageInfo.version, "0.2.0");
   assert.equal(packageLock.version, packageInfo.version);
   assert.equal(packageLock.packages[""].version, packageInfo.version);
   assert.match(launcher, new RegExp(`AssemblyVersion\\("${packageInfo.version}\\.0"\\)`));
   assert.match(launcher, new RegExp(`AssemblyFileVersion\\("${packageInfo.version}\\.0"\\)`));
+  assert.equal(updateConfig.repository, "FreakyHydra/HowlingWhispers");
+  assert.equal(updateConfig.assetName, "the-howling-whispers-windows.zip");
+  assert.equal(updateConfig.checksumAssetName, "the-howling-whispers-windows.zip.sha256");
 });
