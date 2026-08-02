@@ -1,0 +1,36 @@
+REMOTE TEST ACCESS
+==================
+
+Start
+-----
+1. Double-click "START REMOTE ACCESS.bat" and approve the Windows Firewall UAC
+   prompt.
+2. Keep its terminal window open.
+3. In the router, forward external TCP port 5173 to this PC:
+   - Use the local network address shown in the startup terminal.
+   - Internal port: 5173
+4. Friends can open the public address shown in the startup terminal, using
+   port 5173 and the /?preview=app path.
+
+DNS
+---
+Point an A record at the public IP, then friends can use:
+http://your-domain.example:5173/?preview=app
+
+DNS does not remove the port and does not provide encryption. A reverse proxy
+on ports 80/443 would be needed for a URL without :5173. HTTPS would be needed
+to protect NovelAI tokens in transit.
+
+Stop
+----
+1. Close the remote server terminal or press Ctrl+C in it.
+2. Double-click "DISABLE REMOTE ACCESS.bat" to remove the firewall rule.
+
+Privacy warning
+---------------
+- This is a temporary test-bench mode, not hardened public hosting.
+- Remote NovelAI tokens pass through this PC over unencrypted HTTP.
+- Each browser profile has separate local chats and characters.
+- Do not expose this mode longer than necessary.
+- Public IP and LAN addresses can change; update router and DNS records when
+  that happens.

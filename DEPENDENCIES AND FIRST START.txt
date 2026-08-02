@@ -1,0 +1,54 @@
+THE HOWLING WHISPERS - FIRST START
+==================================
+
+Windows requirements
+--------------------
+- Windows 10 or Windows 11
+- Node.js 22.13 or newer
+- Internet access during the first launch
+- A NovelAI access token for generating replies
+
+Install Node.js
+---------------
+1. Open https://nodejs.org/en/download
+2. Install the current Node.js LTS release with the default options.
+3. Restart Windows if the installer asks you to.
+
+Start the application
+---------------------
+1. Extract the complete ZIP. Do not run the EXE from inside the ZIP preview.
+2. Open the extracted "The Howling Whispers" folder.
+3. Double-click "The Howling Whispers.exe".
+4. Keep the terminal window open while using the application.
+
+The first launch installs the locked application packages into the System
+folder, starts the private local server, and opens the application in your
+default browser. Later launches reuse the installed packages.
+
+NovelAI token choices
+---------------------
+- Save for this tab: clears when the browser tab closes.
+- Save for this computer: remains in that browser profile until removed.
+
+Optional local AI
+-----------------
+Install Ollama, then run this command once before selecting Local GPU:
+
+    ollama pull mistral-nemo:12b
+
+Ollama stays on this computer and does not require a NovelAI access token.
+
+Your stories
+------------
+Stories, custom characters, sessions, scenarios, and preferences are stored in
+your browser profile on this Windows account. Application updates do not replace
+that browser data.
+
+Troubleshooting
+---------------
+- If the EXE cannot start, open the System folder and double-click
+  "START THE HOWLING WHISPERS.bat".
+- If port 5173 is already in use, close any older Howling Whispers terminal and
+  try again.
+- The terminal window displays dependency or connection errors. Keep it open
+  when asking for help.
