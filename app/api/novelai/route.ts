@@ -19,7 +19,12 @@ export const runtime = "edge";
 
 const NOVELAI_BASE = "https://text.novelai.net/oa/v1";
 const OLLAMA_BASE = "http://127.0.0.1:11434";
-const LOCAL_MODEL = "mistral-nemo:12b";
+const DEFAULT_LOCAL_MODEL = "mistral-nemo:12b";
+const ADULT_LOCAL_MODEL = "R4C3R/gemma-3-12b-it-heretic:q4_k_m";
+const LOCAL_MODELS = new Set([
+  DEFAULT_LOCAL_MODEL,
+  ADULT_LOCAL_MODEL,
+]);
 const CONNECTION_TEST_RESPONSE = "The Howling Whispers connected";
 const ALLOWED_MODELS = new Set(["xialong-v1", "glm-4-6"]);
 const ALLOWED_SENDERS = new Set(["character", "player", "narrator"]);
@@ -62,7 +67,7 @@ type CharacterPrompt = {
   sceneId: string;
 };
 type ProseFormat = "roleplay" | "novel";
-type StoryProvider = "novelai" | "local";
+type StoryProvider = "novelai" | "local" | "device";
 
 const LOCAL_MINIMUM_WORDS: Record<ReplyLength, { character: number; player: number }> = {
   quick: { character: 90, player: 60 },
@@ -119,11 +124,27 @@ export async function POST(request: Request) {
   if (!isRecord(body)) {
     return Response.json({ error: "The story request was malformed." }, { status: 400 });
   }
+  if (body.action === "finalize-device") {
+    const rawReply = limitedString(body.rawReply, 50_000);
+    const outputName = limitedString(body.outputName, 120);
+    const outputKind = body.outputKind === "player" ? "player" : "character";
+    const proseFormat: ProseFormat = body.proseFormat === "novel" ? "novel" : "roleplay";
+    const preparedReply = proseFormat === "roleplay"
+      ? formatLocalRoleplayReply(rawReply, outputKind, outputName)
+      : rawReply;
+    const reply = cleanReply(preparedReply, outputName, proseFormat, outputKind);
+    return reply
+      ? Response.json({ reply })
+      : Response.json({ error: "The local model returned an empty reply." }, { status: 502 });
+  }
   const playerName = await getDisplayName(limitedString(body.playerName, 100));
 
   const apiToken = limitedString(body.apiToken, 4096);
-  const provider: StoryProvider = body.provider === "local" ? "local" : "novelai";
-  const model = provider === "local" ? LOCAL_MODEL : limitedString(body.model, 64);
+  const provider: StoryProvider = body.provider === "local" || body.provider === "device"
+    ? body.provider
+    : "novelai";
+  const requestedModel = limitedString(body.model, 120);
+  const model = provider === "local" ? requestedModel || DEFAULT_LOCAL_MODEL : requestedModel;
   const temperature = boundedNumber(body.temperature, 0.1, 1, 0.8);
   const replyLength = parseReplyLength(body.replyLength);
   const preferences = parseStoryPreferences(body);
@@ -140,13 +161,28 @@ export async function POST(request: Request) {
   if (provider === "novelai" && !ALLOWED_MODELS.has(model)) {
     return Response.json({ error: "Choose Xialong or GLM 4.6." }, { status: 400 });
   }
+  if (provider === "local" && !LOCAL_MODELS.has(model)) {
+    return Response.json({ error: "Choose one of the installed local models." }, { status: 400 });
+  }
+  if (provider === "device" && !model) {
+    return Response.json({ error: "Enter the Ollama model installed on this computer." }, { status: 400 });
+  }
   if (!isConnectionTest && (!character || messages.length === 0)) {
     return Response.json({ error: "The character or conversation is incomplete." }, { status: 400 });
+  }
+  if (
+    model === ADULT_LOCAL_MODEL
+    && !isConnectionTest
+    && (character?.canonical.safety.ageCategory !== "adult" || character.canonical.safety.isMinor !== false)
+  ) {
+    return Response.json({
+      error: "The adult roleplay model requires a character explicitly confirmed as an adult.",
+    }, { status: 400 });
   }
 
   const compiled = isConnectionTest ? null : compileContext({
       kind: isImpersonation ? "impersonation" : "roleplay",
-      provider,
+      provider: provider === "novelai" ? "novelai" : "local",
       model,
       outputTokens: REPLY_LENGTHS[replyLength].maxTokens,
       contextMode: character!.contextMode,
@@ -175,15 +211,46 @@ export async function POST(request: Request) {
   const stopSequences = isImpersonation
     ? impersonationStops(character?.name ?? "")
     : roleplayStops();
+  const outputName = isImpersonation ? playerName : character?.name ?? "";
+  const outputKind = isImpersonation ? "player" : "character";
+  if (provider === "device") {
+    const structuredRoleplay = preferences.proseFormat === "roleplay";
+    const minimumWords = LOCAL_MINIMUM_WORDS[replyLength][outputKind];
+    const minimumSegments = LOCAL_MINIMUM_SEGMENTS[replyLength][outputKind];
+    const localPrompt = structuredRoleplay
+      ? `${prompt}
+
+Local output contract: Return a JSON object with a segments array containing at least ${minimumSegments} substantial segments and at least ${minimumWords} words total. The selected ${replyLength} length is mandatory. Each segment has kind dialogue, action, or narration and plain text without asterisks, brackets, quotation marks, or speaker labels. A dialogue segment contains only words spoken aloud. Put gestures, dialogue tags, sensory description, and narration in separate action or narration segments. Preserve reading order and never assign the player an action, feeling, perception, or decision.`
+      : prompt;
+    return Response.json({
+      ollamaRequest: {
+        model,
+        prompt: localPrompt,
+        stream: false,
+        keep_alive: "10m",
+        format: structuredRoleplay ? localRoleplayFormat(minimumSegments) : undefined,
+        options: {
+          num_ctx: 8_192,
+          num_predict: REPLY_LENGTHS[replyLength].maxTokens,
+          temperature,
+          top_p: 0.95,
+          repeat_penalty: 1.08,
+          stop: stopSequences,
+        },
+      },
+      finalization: { outputName, outputKind, proseFormat: preferences.proseFormat },
+      context: compiled?.manifest,
+    });
+  }
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), provider === "local" ? 180_000 : 45_000);
+  const timeout = setTimeout(() => controller.abort(), provider === "local" ? 600_000 : 45_000);
 
   try {
     if (provider === "local") {
       return await localReply(
         model, prompt, isConnectionTest, temperature, generationLength,
-        isImpersonation ? playerName : character?.name ?? "", preferences.proseFormat,
-        isImpersonation ? "player" : "character", stopSequences, compiled?.manifest, controller, timeout,
+        outputName, preferences.proseFormat,
+        outputKind, stopSequences, compiled?.manifest, controller, timeout,
       );
     }
 
@@ -218,6 +285,23 @@ async function localReply(
   proseFormat: ProseFormat, outputKind: "player" | "character", stopSequences: string[],
   contextManifest: ContextManifest | undefined, controller: AbortController, timeout: NodeJS.Timeout,
 ) {
+  if (isTest) {
+    const upstream = await fetch(`${OLLAMA_BASE}/api/show`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!upstream.ok) {
+      const details = await upstream.text().catch(() => "");
+      return Response.json({
+        error: `Ollama could not find ${model}. ${details}`.trim(),
+      }, { status: 502 });
+    }
+    return Response.json({ ok: true, message: CONNECTION_TEST_RESPONSE });
+  }
+
   const structuredRoleplay = !isTest && proseFormat === "roleplay";
   const minimumWords = LOCAL_MINIMUM_WORDS[replyLength][outputKind];
   const minimumSegments = LOCAL_MINIMUM_SEGMENTS[replyLength][outputKind];
@@ -236,9 +320,9 @@ Local output contract: Return a JSON object with a segments array containing at 
         keep_alive: "10m",
         format: structuredRoleplay ? localRoleplayFormat(minimumSegments) : undefined,
         options: {
-          num_ctx: 16_384,
-          num_predict: isTest ? 32 : REPLY_LENGTHS[replyLength].maxTokens,
-          temperature: isTest ? 0.1 : temperature,
+          num_ctx: 8_192,
+          num_predict: REPLY_LENGTHS[replyLength].maxTokens,
+          temperature,
           top_p: 0.95,
           repeat_penalty: 1.08,
           stop: stopSequences,
@@ -252,7 +336,7 @@ Local output contract: Return a JSON object with a segments array containing at 
     clearTimeout(timeout);
     const details = await upstream.text().catch(() => "");
     const missingModel = upstream.status === 404
-      ? ` Install it with: ollama pull ${LOCAL_MODEL}`
+      ? ` Install it with: ollama pull ${model}`
       : "";
     return Response.json({
       error: `Ollama returned HTTP ${upstream.status}.${missingModel} ${details}`.trim(),

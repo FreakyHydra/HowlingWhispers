@@ -84,7 +84,10 @@ type TextStyle = {
 };
 
 type ModelId = "xialong-v1" | "glm-4-6";
-type StoryProvider = "novelai" | "local";
+type LocalModelId =
+  | "mistral-nemo:12b"
+  | "R4C3R/gemma-3-12b-it-heretic:q4_k_m";
+type StoryProvider = "novelai" | "local" | "device";
 type ReplyLength = "quick" | "immersive" | "novel";
 type Initiative = "reactive" | "balanced" | "proactive";
 type Viewpoint = "user" | "character" | "roving";
@@ -100,24 +103,40 @@ type ProviderState =
   | "connected"
   | "error";
 
-const novelAiModels: { value: ModelId; label: string; description: string }[] = [
+const novelAiModels: { value: ModelId; label: string; description: string; adult: boolean }[] = [
   {
     value: "xialong-v1",
     label: "Xialong",
     description: "NovelAI’s current roleplay-focused GLM finetune",
+    adult: false,
   },
   {
     value: "glm-4-6",
     label: "GLM 4.6",
     description: "The versatile 355B mixture-of-experts model",
+    adult: false,
   },
 ];
 
-const localModel = {
-  value: "mistral-nemo:12b",
-  label: "Mistral Nemo 12B",
-  description: "Local Q4 model running through Ollama on this computer",
-};
+const localModels: {
+  value: LocalModelId;
+  label: string;
+  description: string;
+  adult: boolean;
+}[] = [
+  {
+    value: "mistral-nemo:12b",
+    label: "Mistral Nemo 12B · SFW",
+    description: "Aligned storytelling on the server CPU; replies may take several minutes",
+    adult: false,
+  },
+  {
+    value: "R4C3R/gemma-3-12b-it-heretic:q4_k_m",
+    label: "Gemma 3 Heretic 12B · Adult",
+    description: "Adult server-side roleplay for confirmed adult characters; CPU generation is slow",
+    adult: true,
+  },
+];
 
 const entranceFeatures = [
   {
@@ -917,6 +936,12 @@ export default function DreamboundApp() {
   const [tokenStorageMode, setTokenStorageMode] =
     useState<TokenStorageMode>(readTokenStorageMode);
   const [selectedModel, setSelectedModel] = useState<ModelId>(() => readSession<ModelId>("model", "xialong-v1"));
+  const [selectedLocalModel, setSelectedLocalModel] = useState<LocalModelId>(
+    () => readSession<LocalModelId>("localModel", "mistral-nemo:12b"),
+  );
+  const [deviceModel, setDeviceModel] = useState(
+    () => readSession<string>("deviceModel", "mistral-nemo:12b"),
+  );
   const [storyProvider, setStoryProvider] = useState<StoryProvider>(
     () => readSession<StoryProvider>("storyProvider", "novelai"),
   );
@@ -1060,6 +1085,8 @@ export default function DreamboundApp() {
     writeSession("view", view);
     writeSession("selectedId", selectedId);
     writeSession("model", selectedModel);
+    writeSession("localModel", selectedLocalModel);
+    writeSession("deviceModel", deviceModel);
     writeSession("storyProvider", storyProvider);
     writeSession("creativity", creativity);
     writeSession("replyLength", replyLength);
@@ -1068,7 +1095,7 @@ export default function DreamboundApp() {
     writeSession("storyTense", storyTense);
     writeSession("proseFormat", proseFormat);
   }, [
-    view, selectedId, apiToken, selectedModel, storyProvider, creativity, replyLength,
+    view, selectedId, apiToken, selectedModel, selectedLocalModel, deviceModel, storyProvider, creativity, replyLength,
     initiative, viewpoint, storyTense, proseFormat,
   ]);
 
@@ -1142,12 +1169,23 @@ export default function DreamboundApp() {
     "--chat-font-size": `${textStyle.fontSize}px`,
   } as React.CSSProperties;
   const hasNovelAiToken = Boolean(apiToken.trim());
-  const configured = storyProvider === "local" || hasNovelAiToken;
+  const configured = storyProvider === "local"
+    ? true
+    : storyProvider === "device" ? Boolean(deviceModel.trim()) : hasNovelAiToken;
   const connected = providerState === "connected";
   const activeModel = storyProvider === "local"
-    ? localModel
-    : novelAiModels.find((model) => model.value === selectedModel) ?? novelAiModels[0];
-  const providerLabel = storyProvider === "local" ? "Local model" : "NovelAI";
+    ? localModels.find((model) => model.value === selectedLocalModel) ?? localModels[0]
+    : storyProvider === "device"
+      ? {
+          value: deviceModel.trim(),
+          label: deviceModel.trim() || "This computer's Ollama model",
+          description: "Runs directly in Ollama on this browser's computer",
+          adult: false,
+        }
+      : novelAiModels.find((model) => model.value === selectedModel) ?? novelAiModels[0];
+  const providerLabel = storyProvider === "novelai"
+    ? "NovelAI"
+    : storyProvider === "local" ? "Server model" : "This computer";
   const activeReplyLength =
     replyLengths.find((length) => length.value === replyLength) ?? replyLengths[1];
   const entranceFeature = entranceFeatures[entranceFeatureIndex] ?? entranceFeatures[0];
@@ -1317,16 +1355,39 @@ export default function DreamboundApp() {
       setConnectionFeedback("");
       return;
     }
+    if (storyProvider === "device" && !deviceModel.trim()) {
+      setProviderState("disconnected");
+      setConnectionError("Enter the Ollama model installed on this computer.");
+      setConnectionFeedback("");
+      return;
+    }
 
     setProviderState("testing");
     setConnectionError("");
     setConnectionFeedback(
       storyProvider === "local"
-        ? `Starting ${activeModel.label} through Ollama. The first response may take a moment…`
-        : `Asking ${activeModel.label} for a tiny test response…`,
+        ? `Checking Ollama and ${activeModel.label} on the website server…`
+        : storyProvider === "device"
+          ? `Checking ${activeModel.label} in Ollama on this computer…`
+          : `Asking ${activeModel.label} for a tiny test response…`,
     );
 
     try {
+      if (storyProvider === "device") {
+        const response = await fetch("http://127.0.0.1:11434/api/show", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: deviceModel.trim() }),
+        });
+        if (!response.ok) {
+          throw new Error(`Ollama could not find ${deviceModel.trim()} on this computer.`);
+        }
+        const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        setProviderState("connected");
+        setVerifiedAt(time);
+        setConnectionFeedback(`Ollama found ${deviceModel.trim()} on this computer at ${time}.`);
+        return;
+      }
       const response = await fetch("/api/novelai", {
         method: "POST",
         headers: authHeaders,
@@ -1364,7 +1425,9 @@ export default function DreamboundApp() {
       setVerifiedAt("");
       setConnectionFeedback("");
       setConnectionError(
-        error instanceof Error
+        storyProvider === "device" && error instanceof TypeError
+          ? "This browser could not reach Ollama. Start Ollama and allow this site with OLLAMA_ORIGINS=https://rp.thehowlingwhispers.com."
+          : error instanceof Error
           ? error.message
           : `The Howling Whispers could not verify the ${providerLabel.toLowerCase()} connection.`,
       );
@@ -1372,7 +1435,7 @@ export default function DreamboundApp() {
   }
 
   function saveSettings(storageMode: TokenStorageMode = tokenStorageMode) {
-    if (storyProvider === "local") return;
+    if (storyProvider !== "novelai") return;
     if (!apiToken.trim()) {
       setConnectionError("Paste a NovelAI access token before saving.");
       return;
@@ -1447,10 +1510,7 @@ export default function DreamboundApp() {
     action?: "impersonate",
     playerDirection?: string,
   ): Promise<string> {
-    const response = await fetch("/api/novelai", {
-      method: "POST",
-      headers: authHeaders,
-      body: JSON.stringify({
+    const requestBody = {
         action,
         playerName: currentUser?.displayName || "Player",
         impersonationPrompt: playerDirection,
@@ -1498,10 +1558,61 @@ export default function DreamboundApp() {
             ? ""
             : activeSession?.playerRoleContext || activeSession?.playerRole || "",
           contextMode: "balanced",
-          matureContentRequested: false,
+          matureContentRequested: storyProvider === "local" && activeModel.adult === true,
         },
         messages: conversation.slice(-30).map(({ sender, text }) => ({ sender, text })),
-      }),
+    };
+    if (storyProvider === "device") {
+      const preparedResponse = await fetch("/api/novelai", {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify(requestBody),
+      });
+      const prepared = await preparedResponse.json() as {
+        ollamaRequest?: Record<string, unknown>;
+        finalization?: Record<string, unknown>;
+        context?: ContextManifest;
+        error?: string;
+      };
+      if (!preparedResponse.ok || !prepared.ollamaRequest || !prepared.finalization) {
+        throw new Error(prepared.error || "The story prompt could not be prepared.");
+      }
+      let ollamaResponse: Response;
+      try {
+        ollamaResponse = await fetch("http://127.0.0.1:11434/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(prepared.ollamaRequest),
+        });
+      } catch {
+        throw new Error("This browser could not reach Ollama. Start Ollama and allow this site with OLLAMA_ORIGINS=https://rp.thehowlingwhispers.com.");
+      }
+      const generated = await ollamaResponse.json() as { response?: string; error?: string };
+      if (!ollamaResponse.ok || !generated.response) {
+        throw new Error(generated.error || "Ollama did not return a reply.");
+      }
+      const finalizedResponse = await fetch("/api/novelai", {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          action: "finalize-device",
+          rawReply: generated.response,
+          ...prepared.finalization,
+        }),
+      });
+      const finalized = await finalizedResponse.json() as { reply?: string; error?: string };
+      if (!finalizedResponse.ok || !finalized.reply) {
+        throw new Error(finalized.error || "The local reply could not be formatted.");
+      }
+      if (prepared.context) {
+        setContextManifests((current) => ({ ...current, [activeMessageKey]: prepared.context! }));
+      }
+      return finalized.reply;
+    }
+    const response = await fetch("/api/novelai", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify(requestBody),
     });
     const payload = (await response.json()) as { reply?: string; error?: string; context?: ContextManifest };
     if (!response.ok || !payload.reply) {
@@ -1518,7 +1629,7 @@ export default function DreamboundApp() {
     if (!text || isReplying || isImpersonating) return;
 
     if (!configured) {
-      setChatError("Connect your NovelAI account before sending a message.");
+      setChatError("Set up and test a story engine before sending a message.");
       setView("settings");
       return;
     }
@@ -1590,7 +1701,7 @@ export default function DreamboundApp() {
   async function impersonatePlayer() {
     if (isReplying || isImpersonating || activeMessages.length === 0) return;
     if (!configured) {
-      setChatError("Connect your NovelAI account before generating a player draft.");
+      setChatError("Set up and test a story engine before generating a player draft.");
       setShowImpersonate(false);
       setView("settings");
       return;
@@ -1651,7 +1762,7 @@ export default function DreamboundApp() {
   async function skipTurn() {
     if (isReplying || isImpersonating || activeMessages.length === 0) return;
     if (!configured) {
-      setChatError("Connect your NovelAI account before continuing the scene.");
+      setChatError("Set up and test a story engine before continuing the scene.");
       setView("settings");
       return;
     }
@@ -2110,13 +2221,13 @@ export default function DreamboundApp() {
           >
             <span aria-hidden="true" />
             {providerState === "connected"
-              ? storyProvider === "local" ? "Local model ready" : "NovelAI verified"
+              ? storyProvider === "novelai" ? "NovelAI verified" : "Ollama model ready"
               : providerState === "testing"
                 ? `Testing ${providerLabel}`
                 : providerState === "error"
                   ? "Connection failed"
                 : configured
-                  ? storyProvider === "local" ? "Local model selected" : "Token entered"
+                  ? storyProvider === "novelai" ? "Token entered" : "Ollama model selected"
                   : "Set up story engine"}
           </button>
           <div className="account-chip" title="Local story space">
@@ -2164,9 +2275,9 @@ export default function DreamboundApp() {
                     : providerState === "error"
                       ? "Connection failed · check settings"
                     : configured
-                      ? storyProvider === "local"
-                        ? `${activeModel.label} · test required`
-                        : "Token entered · test required"
+                      ? storyProvider === "novelai"
+                        ? "Token entered · test required"
+                        : `${activeModel.label} · test required`
                       : "Choose an engine to begin"}
                 </strong>
               </span>
@@ -2709,7 +2820,7 @@ export default function DreamboundApp() {
                       : providerState === "error"
                         ? "Test failed"
                         : configured
-                          ? storyProvider === "local" ? "Ready to test" : "Token entered"
+                          ? storyProvider === "novelai" ? "Token entered" : "Ready to test"
                           : "Not configured"}
                 </span>
               </div>
@@ -2729,21 +2840,23 @@ export default function DreamboundApp() {
                 <div>
                   <strong>
                     {providerState === "connected"
-                      ? storyProvider === "local" ? "Your local model works" : "Your NovelAI token works"
+                      ? storyProvider === "novelai" ? "Your NovelAI token works" : "Your Ollama model is available"
                       : providerState === "testing"
-                        ? storyProvider === "local" ? "Starting the local model" : "Contacting NovelAI"
+                        ? storyProvider === "novelai" ? "Contacting NovelAI" : "Checking Ollama"
                         : providerState === "error"
                           ? "Connection could not be verified"
                           : configured
-                            ? storyProvider === "local" ? "Local model selected, not tested" : "Token entered, not tested"
-                            : "No NovelAI token entered"}
+                            ? storyProvider === "novelai" ? "Token entered, not tested" : "Ollama model selected, not tested"
+                            : storyProvider === "novelai" ? "No NovelAI token entered" : "No Ollama model entered"}
                   </strong>
                   <p>
                     {connectionError ||
                       connectionFeedback ||
                       (storyProvider === "local"
-                        ? "Run the test to confirm Ollama and Mistral Nemo are available on this computer."
-                        : "Enter a token below, then run the test. A successful test means the selected model returned a real response.")}
+                        ? `Run the test to confirm Ollama and ${activeModel.label} are available on this server.`
+                        : storyProvider === "device"
+                          ? "Run Ollama on this computer, allow this website origin, then test the selected model."
+                          : "Enter a token below, then run the test. A successful test means the selected model returned a real response.")}
                   </p>
                 </div>
               </div>
@@ -2781,34 +2894,81 @@ export default function DreamboundApp() {
                         setProviderState("ready");
                         setVerifiedAt("");
                         setConnectionError("");
-                        setConnectionFeedback("Local generation stays on this computer. Run the test before chatting.");
+                        setConnectionFeedback("Local generation stays on the website server. Run the test before chatting.");
                       }}
                       aria-pressed={storyProvider === "local"}
                     >
-                      <strong>Local GPU</strong>
-                      <small>Private generation through Ollama</small>
+                      <strong>Local server</strong>
+                      <small>Private CPU generation through server-local Ollama</small>
+                    </button>
+                    <button
+                      className={storyProvider === "device" ? "active" : ""}
+                      type="button"
+                      onClick={() => {
+                        setStoryProvider("device");
+                        setProviderState(deviceModel.trim() ? "ready" : "disconnected");
+                        setVerifiedAt("");
+                        setConnectionError("");
+                        setConnectionFeedback("Generation runs in Ollama on this computer, not on the website server.");
+                      }}
+                      aria-pressed={storyProvider === "device"}
+                    >
+                      <strong>This computer</strong>
+                      <small>Use Ollama installed on the browser’s computer</small>
                     </button>
                   </div>
                 </fieldset>
 
                 <div className="settings-field-grid">
                   <label>
-                    API base URL
+                    Connection target
                     <input
                       value={storyProvider === "local"
-                        ? "http://127.0.0.1:11434"
-                        : "https://text.novelai.net/oa/v1"}
+                        ? "Ollama on this website server"
+                        : storyProvider === "device"
+                          ? "Ollama on this computer (127.0.0.1:11434)"
+                          : "https://text.novelai.net/oa/v1"}
                       readOnly
                       aria-readonly="true"
                     />
                     <small>{storyProvider === "local"
-                      ? "Ollama is contacted by the app server, never directly by the browser."
-                      : "Fixed to NovelAI’s OpenAI-compatible text endpoint."}</small>
+                      ? "The app server contacts its own localhost; your browser does not connect to your computer."
+                      : storyProvider === "device"
+                        ? "Your browser contacts Ollama directly. Ollama must allow OLLAMA_ORIGINS=https://rp.thehowlingwhispers.com."
+                        : "Fixed to NovelAI’s OpenAI-compatible text endpoint."}</small>
                   </label>
                   <label>
                     Model
                     {storyProvider === "local" ? (
-                      <input value={localModel.label} readOnly aria-readonly="true" />
+                      <select
+                        value={selectedLocalModel}
+                        onChange={(event) => {
+                          setSelectedLocalModel(event.target.value as LocalModelId);
+                          setProviderState("ready");
+                          setVerifiedAt("");
+                          setConnectionError("");
+                          setConnectionFeedback("Local model changed. Test the connection again.");
+                        }}
+                      >
+                        {localModels.map((model) => (
+                          <option value={model.value} key={model.value}>
+                            {model.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : storyProvider === "device" ? (
+                      <input
+                        value={deviceModel}
+                        onChange={(event) => {
+                          setDeviceModel(event.target.value);
+                          setProviderState(event.target.value.trim() ? "ready" : "disconnected");
+                          setVerifiedAt("");
+                          setConnectionError("");
+                          setConnectionFeedback("Model changed. Test this computer's Ollama connection again.");
+                        }}
+                        placeholder="mistral-nemo:12b"
+                        spellCheck={false}
+                      />
                     ) : (
                       <select
                         value={selectedModel}
@@ -2971,7 +3131,7 @@ export default function DreamboundApp() {
                     disabled={providerState === "testing"}
                   >
                     {providerState === "testing"
-                      ? storyProvider === "local" ? "Starting local model…" : "Testing NovelAI…"
+                      ? storyProvider === "novelai" ? "Testing NovelAI…" : "Checking Ollama…"
                       : "Test connection"}
                   </button>
                   {storyProvider === "novelai" && <button
@@ -3069,7 +3229,9 @@ export default function DreamboundApp() {
               <ul>
                 <li>
                   <span>Story engine</span>
-                  <strong>{storyProvider === "local" ? "Local GPU" : "NovelAI"}</strong>
+                  <strong>{storyProvider === "novelai"
+                    ? "NovelAI"
+                    : storyProvider === "local" ? "Local server" : "This computer"}</strong>
                 </li>
                 <li>
                   <span>NovelAI token</span>
@@ -3478,7 +3640,7 @@ export default function DreamboundApp() {
                     : providerState === "testing"
                       ? "testing"
                     : providerState === "ready"
-                      ? storyProvider === "local" ? "ready to test" : "token entered"
+                      ? storyProvider === "novelai" ? "token entered" : "ready to test"
                       : providerState === "error"
                         ? "needs attention"
                         : "not connected"}

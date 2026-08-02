@@ -45,9 +45,12 @@ test("renders development preview metadata", async () => {
   assert.match(clientBundle, /peony-void-garden\.png/);
   assert.match(clientBundle, /peony-bookcraft-workshop\.png/);
   assert.match(clientBundle, /Save for this computer/);
-  assert.match(clientBundle, /Local GPU/);
+  assert.match(clientBundle, /Local server/);
+  assert.match(clientBundle, /This computer/);
+  assert.match(clientBundle, /OLLAMA_ORIGINS=https:\/\/rp\.thehowlingwhispers\.com/);
   assert.match(clientBundle, /Mistral Nemo 12B/);
-  assert.match(clientBundle, /Private generation through Ollama/);
+  assert.match(clientBundle, /Gemma 3 Heretic 12B/);
+  assert.match(clientBundle, /Private CPU generation through server-local Ollama/);
   assert.match(clientBundle, /fully canine anatomy/);
   assert.match(clientBundle, /never wears glasses/);
   assert.match(clientBundle, /assets\/Coda\/coda-moonlit-study\.png/);
