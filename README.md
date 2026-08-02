@@ -195,12 +195,12 @@ Whispers` folder. Application source and runtime files are contained in its
 ## Updates
 
 The Windows launcher checks for a newer public GitHub Release before checking
-dependencies or starting the server. Updates remain disabled until the first
-complete release exists and its repository is configured here:
+dependencies or starting the server. Before the first release is published it
+continues normally with the installed version. The configured repository is:
 
 ```json
 {
-  "repository": "owner/repository",
+  "repository": "FreakyHydra/HowlingWhispers",
   "assetName": "the-howling-whispers-windows.zip",
   "checksumAssetName": "the-howling-whispers-windows.zip.sha256"
 }

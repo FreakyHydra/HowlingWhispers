@@ -9,7 +9,7 @@ const root = resolve(import.meta.dirname, "..");
 const configPath = join(root, "public", "update-config.json");
 const packagePath = join(root, "package.json");
 
-async function fetchResponse(url) {
+async function fetchResponse(url, { allowNotFound = false } = {}) {
   const response = await fetch(url, {
     headers: {
       Accept: "application/vnd.github+json",
@@ -18,7 +18,9 @@ async function fetchResponse(url) {
     },
     signal: AbortSignal.timeout(30_000),
   });
-  if (!response.ok) throw new Error(`GitHub returned HTTP ${response.status}`);
+  if (!response.ok && !(allowNotFound && response.status === 404)) {
+    throw new Error(`GitHub returned HTTP ${response.status}`);
+  }
   return response;
 }
 
@@ -34,20 +36,27 @@ function powerShellLiteral(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
+update: {
 const config = JSON.parse(await readFile(configPath, "utf8"));
 const packageInfo = JSON.parse(await readFile(packagePath, "utf8"));
 if (!config.repository) {
   console.log("Automatic updates are not configured yet; continuing with the installed version.");
-  process.exit(0);
+  break update;
 }
 
 console.log(`Checking GitHub for updates to ${packageInfo.displayName}...`);
-const release = await (await fetchResponse(
+const releaseResponse = await fetchResponse(
   `https://api.github.com/repos/${config.repository}/releases/latest`,
-)).json();
+  { allowNotFound: true },
+);
+if (releaseResponse.status === 404) {
+  console.log(`No public releases are published yet. Continuing with version ${packageInfo.version}.`);
+  break update;
+}
+const release = await releaseResponse.json();
 if (!isNewerVersion(release.tag_name, packageInfo.version)) {
   console.log(`Version ${packageInfo.version} is current.`);
-  process.exit(0);
+  break update;
 }
 
 const archiveAsset = release.assets?.find((asset) => asset.name === config.assetName);
@@ -107,3 +116,4 @@ await cp(applicationPayload, root, {
 });
 await rm(updateDirectory, { recursive: true, force: true });
 console.log(`Updated application files to ${release.tag_name}. User stories were not touched.`);
+}

@@ -83,6 +83,9 @@ test("renders development preview metadata", async () => {
   assert.match(clientBundle, /Peek Context/);
   assert.match(clientBundle, /estimated context/);
   assert.match(clientBundle, /Remote test mode is not encrypted/);
+  assert.match(clientBundle, /Release channel/);
+  assert.match(clientBundle, /Hosted installations are updated by their server administrator/);
+  assert.match(clientBundle, /No public releases are published yet/);
   assert.match(clientBundle, /Chat font size/);
   assert.match(clientBundle, /character panel/);
   assert.match(clientBundle, /context panel/);

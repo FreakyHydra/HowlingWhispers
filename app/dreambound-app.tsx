@@ -981,7 +981,7 @@ export default function DreamboundApp() {
   const [editDraft, setEditDraft] = useState("");
   const [pendingDeleteMessage, setPendingDeleteMessage] = useState<Message | null>(null);
   const [updateState, setUpdateState] = useState<UpdateState>("idle");
-  const [updateMessage, setUpdateMessage] = useState("Updates are checked automatically by the Windows launcher.");
+  const [updateMessage, setUpdateMessage] = useState("Check GitHub for a published application release.");
   const [releaseUrl, setReleaseUrl] = useState("");
   const [entranceCodaLocked, setEntranceCodaLocked] = useState(
     () => readSession<boolean>("entranceCodaLocked", false),
@@ -1577,6 +1577,11 @@ export default function DreamboundApp() {
         `https://api.github.com/repos/${config.repository}/releases/latest`,
         { headers: { Accept: "application/vnd.github+json" }, cache: "no-store" },
       );
+      if (releaseResponse.status === 404) {
+        setUpdateState("current");
+        setUpdateMessage(`No public releases are published yet. Version ${packageInfo.version} is the current build.`);
+        return;
+      }
       if (!releaseResponse.ok) throw new Error(`GitHub returned HTTP ${releaseResponse.status}.`);
       const release = await releaseResponse.json() as {
         tag_name?: string;
@@ -1586,7 +1591,7 @@ export default function DreamboundApp() {
 
       if (isNewerVersion(release.tag_name, packageInfo.version)) {
         setUpdateState("available");
-        setUpdateMessage(`${release.tag_name} is available and will install at the next launch.`);
+        setUpdateMessage(`${release.tag_name} is available. Windows installations update at the next launch.`);
         setReleaseUrl(release.html_url ?? "");
       } else {
         setUpdateState("current");
@@ -3409,10 +3414,10 @@ export default function DreamboundApp() {
             </section>
 
             <section className="settings-panel update-settings">
-              <p className="eyebrow">Windows distribution</p>
+              <p className="eyebrow">Release channel</p>
               <h2>Application updates</h2>
               <div className="version-row">
-                <span>Installed version</span>
+                <span>Application version</span>
                 <strong>v{packageInfo.version}</strong>
               </div>
               <p className={`update-message ${updateState}`}>{updateMessage}</p>
@@ -3429,8 +3434,9 @@ export default function DreamboundApp() {
                 )}
               </div>
               <small>
-                Updates replace application files only. Stories, custom characters,
-                scenarios, and preferences remain in this browser&apos;s Windows profile.
+                GitHub Releases provide Windows packages. Hosted installations are
+                updated by their server administrator. Stories and preferences remain
+                in this browser profile.
               </small>
             </section>
           </div>
