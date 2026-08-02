@@ -259,7 +259,7 @@ Local output contract: Return a JSON object with a segments array containing at 
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
-    provider === "local" ? isConnectionTest ? 60_000 : 600_000 : 45_000,
+    provider === "local" ? isConnectionTest ? 300_000 : 600_000 : 45_000,
   );
 
   try {
