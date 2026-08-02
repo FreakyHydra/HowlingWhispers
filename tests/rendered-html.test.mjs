@@ -47,10 +47,11 @@ test("renders development preview metadata", async () => {
   assert.match(clientBundle, /Save for this computer/);
   assert.match(clientBundle, /Local server/);
   assert.match(clientBundle, /This computer/);
-  assert.match(clientBundle, /OLLAMA_ORIGINS=https:\/\/rp\.thehowlingwhispers\.com/);
+  assert.match(clientBundle, /Refresh server models/);
+  assert.match(clientBundle, /Refresh this computer's models/);
+  assert.match(clientBundle, /OLLAMA_ORIGINS=/);
   assert.match(clientBundle, /Mistral Nemo 12B/);
-  assert.match(clientBundle, /Gemma 3 Heretic 12B/);
-  assert.match(clientBundle, /Private CPU generation through server-local Ollama/);
+  assert.match(clientBundle, /Generation through server-local Ollama/);
   assert.match(clientBundle, /fully canine anatomy/);
   assert.match(clientBundle, /never wears glasses/);
   assert.match(clientBundle, /assets\/Coda\/coda-moonlit-study\.png/);
@@ -114,7 +115,7 @@ test("renders development preview metadata", async () => {
 
   const workerSource = await readFile(workerUrl, "utf8");
   assert.match(workerSource, /Continuation task/);
-  assert.match(workerSource, /mistral-nemo:12b/);
+  assert.match(workerSource, /OLLAMA_MAX_CONCURRENT_GENERATIONS/);
   assert.match(workerSource, /relevant-world-lore/);
 
   const comparisonResponse = await worker.fetch(

@@ -2,7 +2,7 @@ import {
   legacyCharacterToCanon,
   parseCanonicalCharacter,
   type CanonicalCharacterV1,
-} from "../../../lib/characters/canonical";
+} from "../../../lib/characters/canonical.ts";
 import { resolveLatestBuiltinCanon } from "../../../lib/characters/builtins.ts";
 import {
   compileContext,
@@ -10,24 +10,28 @@ import {
   type ContextMode,
   type RoleplayMessage,
   type StoryPreferences,
-} from "../../../lib/generation/compile-context";
+} from "../../../lib/generation/compile-context.ts";
 import { resolveBuiltinWorldLore } from "../../../lib/worlds/builtins.ts";
 import type { WorldLorebookV1 } from "../../../lib/worlds/schema.ts";
 import { parseWorldLorebook } from "../../../lib/worlds/schema.ts";
+import { isValidOllamaModelName } from "../../../lib/ollama.ts";
+import {
+  fetchInstalledOllamaModels,
+  isAdultOllamaModel,
+  OLLAMA_BASE_URL,
+} from "../../../lib/ollama-server.ts";
 
 export const runtime = "edge";
 
 const NOVELAI_BASE = "https://text.novelai.net/oa/v1";
-const OLLAMA_BASE = "http://127.0.0.1:11434";
-const DEFAULT_LOCAL_MODEL = "mistral-nemo:12b";
-const ADULT_LOCAL_MODEL = "R4C3R/gemma-3-12b-it-heretic:q4_k_m";
-const LOCAL_MODELS = new Set([
-  DEFAULT_LOCAL_MODEL,
-  ADULT_LOCAL_MODEL,
-]);
 const CONNECTION_TEST_RESPONSE = "The Howling Whispers connected";
 const ALLOWED_MODELS = new Set(["xialong-v1", "glm-4-6"]);
 const ALLOWED_SENDERS = new Set(["character", "player", "narrator"]);
+const MAX_SERVER_GENERATIONS = positiveInteger(
+  process.env.OLLAMA_MAX_CONCURRENT_GENERATIONS,
+  1,
+);
+let activeServerGenerations = 0;
 
 const REPLY_LENGTHS = {
   quick: {
@@ -144,7 +148,7 @@ export async function POST(request: Request) {
     ? body.provider
     : "novelai";
   const requestedModel = limitedString(body.model, 120);
-  const model = provider === "local" ? requestedModel || DEFAULT_LOCAL_MODEL : requestedModel;
+  let model = requestedModel;
   const temperature = boundedNumber(body.temperature, 0.1, 1, 0.8);
   const replyLength = parseReplyLength(body.replyLength);
   const preferences = parseStoryPreferences(body);
@@ -161,17 +165,27 @@ export async function POST(request: Request) {
   if (provider === "novelai" && !ALLOWED_MODELS.has(model)) {
     return Response.json({ error: "Choose Xialong or GLM 4.6." }, { status: 400 });
   }
-  if (provider === "local" && !LOCAL_MODELS.has(model)) {
-    return Response.json({ error: "Choose one of the installed local models." }, { status: 400 });
+  if (provider === "local") {
+    let installedModels;
+    try {
+      installedModels = await fetchInstalledOllamaModels();
+    } catch {
+      return Response.json({ error: "The app server could not list its Ollama models." }, { status: 502 });
+    }
+    model ||= installedModels[0]?.name ?? "";
+    if (!installedModels.some((candidate) => candidate.name === model)) {
+      return Response.json({ error: "Choose a model currently installed on the app server." }, { status: 400 });
+    }
   }
-  if (provider === "device" && !model) {
+  if (provider === "device" && !isValidOllamaModelName(model)) {
     return Response.json({ error: "Enter the Ollama model installed on this computer." }, { status: 400 });
   }
   if (!isConnectionTest && (!character || messages.length === 0)) {
     return Response.json({ error: "The character or conversation is incomplete." }, { status: 400 });
   }
   if (
-    model === ADULT_LOCAL_MODEL
+    provider === "local"
+    && isAdultOllamaModel(model)
     && !isConnectionTest
     && (character?.canonical.safety.ageCategory !== "adult" || character.canonical.safety.isMinor !== false)
   ) {
@@ -230,7 +244,7 @@ Local output contract: Return a JSON object with a segments array containing at 
         keep_alive: "10m",
         format: structuredRoleplay ? localRoleplayFormat(minimumSegments) : undefined,
         options: {
-          num_ctx: 8_192,
+          num_ctx: 16_384,
           num_predict: REPLY_LENGTHS[replyLength].maxTokens,
           temperature,
           top_p: 0.95,
@@ -243,15 +257,29 @@ Local output contract: Return a JSON object with a segments array containing at 
     });
   }
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), provider === "local" ? 600_000 : 45_000);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    provider === "local" ? isConnectionTest ? 60_000 : 600_000 : 45_000,
+  );
 
   try {
     if (provider === "local") {
-      return await localReply(
-        model, prompt, isConnectionTest, temperature, generationLength,
-        outputName, preferences.proseFormat,
-        outputKind, stopSequences, compiled?.manifest, controller, timeout,
-      );
+      if (activeServerGenerations >= MAX_SERVER_GENERATIONS) {
+        clearTimeout(timeout);
+        return Response.json({
+          error: "The server model is busy with another generation. Try again shortly.",
+        }, { status: 429 });
+      }
+      activeServerGenerations += 1;
+      try {
+        return await localReply(
+          model, prompt, isConnectionTest, temperature, generationLength,
+          outputName, preferences.proseFormat,
+          outputKind, stopSequences, compiled?.manifest, controller, timeout,
+        );
+      } finally {
+        activeServerGenerations -= 1;
+      }
     }
 
     if (doStream) {
@@ -286,10 +314,16 @@ async function localReply(
   contextManifest: ContextManifest | undefined, controller: AbortController, timeout: NodeJS.Timeout,
 ) {
   if (isTest) {
-    const upstream = await fetch(`${OLLAMA_BASE}/api/show`, {
+    const upstream = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model }),
+      body: JSON.stringify({
+        model,
+        prompt: `Reply with exactly this text and nothing else: ${CONNECTION_TEST_RESPONSE}`,
+        stream: false,
+        keep_alive: "5m",
+        options: { num_ctx: 2_048, num_predict: 24, temperature: 0.1 },
+      }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
@@ -298,6 +332,11 @@ async function localReply(
       return Response.json({
         error: `Ollama could not find ${model}. ${details}`.trim(),
       }, { status: 502 });
+    }
+    const result: unknown = await upstream.json();
+    const reply = isRecord(result) && typeof result.response === "string" ? result.response : "";
+    if (!isSuccessfulConnectionReply(reply)) {
+      return Response.json({ error: "The local model returned an unexpected test response." }, { status: 502 });
     }
     return Response.json({ ok: true, message: CONNECTION_TEST_RESPONSE });
   }
@@ -310,7 +349,7 @@ async function localReply(
 
 Local output contract: Return a JSON object with a segments array containing at least ${minimumSegments} substantial segments and at least ${minimumWords} words total. The selected ${replyLength} length is mandatory; a shorter draft is invalid. Each segment has kind dialogue, action, or narration and plain text without asterisks, brackets, quotation marks, or speaker labels. A dialogue segment contains only words spoken aloud. Put gestures, dialogue tags, sensory description, and internal or external narration in separate action or narration segments. Preserve the intended reading order. Never address the player by the character's own name. In an open sandbox, do not invent a current location, earlier meeting, or shared history that the player did not establish.`
     : prompt;
-  const generate = (generationPrompt: string) => fetch(`${OLLAMA_BASE}/api/generate`, {
+  const generate = (generationPrompt: string) => fetch(`${OLLAMA_BASE_URL}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -320,7 +359,7 @@ Local output contract: Return a JSON object with a segments array containing at 
         keep_alive: "10m",
         format: structuredRoleplay ? localRoleplayFormat(minimumSegments) : undefined,
         options: {
-          num_ctx: 8_192,
+          num_ctx: 16_384,
           num_predict: REPLY_LENGTHS[replyLength].maxTokens,
           temperature,
           top_p: 0.95,
@@ -664,6 +703,11 @@ function limitedString(v: unknown, max: number): string {
 
 function boundedNumber(v: unknown, min: number, max: number, fallback: number) {
   return typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
+}
+
+function positiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, 16) : fallback;
 }
 
 function parseReplyLength(v: unknown): ReplyLength {

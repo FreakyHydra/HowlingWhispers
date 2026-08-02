@@ -30,9 +30,14 @@ Supported NovelAI models:
 - `xialong-v1` (Xialong)
 - `glm-4-6` (GLM 4.6)
 
-Supported local model:
+Default Windows local model:
 
 - `mistral-nemo:12b` through Ollama, configured with a 16K roleplay context
+
+The settings page discovers installed Ollama models dynamically. **Local
+server** lists models from the app server; **This computer** asks Ollama in the
+current browser's computer and falls back to manual entry if browser security
+blocks discovery.
 
 Install the local engine on Windows:
 
@@ -41,8 +46,13 @@ winget install --id Ollama.Ollama --exact
 ollama pull mistral-nemo:12b
 ```
 
-Select **Settings → Generation provider → Local GPU**, then run **Test connection**.
-Ollama remains on localhost; the browser talks only to the application server.
+Select **Settings → Generation provider → This computer**, then run **Test
+connection**. Ollama remains on localhost and the browser contacts it directly.
+For a deployed host, **Local server** keeps the browser isolated from Ollama.
+
+Server deployments can set `OLLAMA_BASE_URL`, `OLLAMA_ADULT_MODELS`, and
+`OLLAMA_MAX_CONCURRENT_GENERATIONS` as documented in `.env.example`. Keep
+Ollama private; do not expose port `11434` to the internet.
 
 ## Quick Start on Windows
 
