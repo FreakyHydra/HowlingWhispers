@@ -1193,6 +1193,26 @@ a:focus-visible {
   position: absolute;
 }
 
+.autopilot-preset-card {
+  background:
+    radial-gradient(circle at 78% 20%, color-mix(in srgb, var(--theme-accent) 24%, transparent), transparent 30%),
+    linear-gradient(145deg, #171217, #08080a 72%);
+}
+
+.autopilot-grid {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--theme-accent) 12%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--theme-accent) 12%, transparent) 1px, transparent 1px);
+  background-size: 34px 34px;
+  inset: 0;
+  mask-image: linear-gradient(120deg, #0007, transparent 72%);
+  position: absolute;
+}
+
+.autopilot-preset-card .scene-motif {
+  color: var(--gold);
+}
+
 .scene-preset-wash {
   background: var(--scene-wash);
   inset: 0;
@@ -2447,12 +2467,23 @@ a:focus-visible {
 }
 
 .story-stage {
-  background-image: var(--scene-image);
-  background-position: var(--scene-position, center top);
-  background-size: cover;
+  background: var(--ink);
   min-height: 0;
   overflow: hidden;
   position: relative;
+}
+
+.story-stage::after {
+  background-image: var(--scene-image);
+  background-position: var(--scene-position, center top);
+  background-size: cover;
+  content: "";
+  filter: blur(var(--scene-blur, 0px));
+  inset: -24px;
+  pointer-events: none;
+  position: absolute;
+  transform: scale(1.03);
+  z-index: 0;
 }
 
 .story-stage.no-image::before {
@@ -2473,6 +2504,7 @@ a:focus-visible {
   inset: 0;
   pointer-events: none;
   position: absolute;
+  z-index: 1;
 }
 
 .scene-title {
@@ -2509,6 +2541,35 @@ a:focus-visible {
   color: var(--cream);
 }
 
+.story-blur-control {
+  align-items: center;
+  background: rgba(10, 9, 12, 0.78);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 32%, transparent);
+  color: var(--muted);
+  display: flex;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.story-blur-control span,
+.story-blur-control output {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.story-blur-control input[type="range"] {
+  accent-color: var(--theme-accent);
+  width: 76px;
+}
+
+.story-blur-control output {
+  color: var(--gold);
+  min-width: 28px;
+  text-align: right;
+}
+
 .scene-title h1 {
   font-family: var(--serif);
   font-size: clamp(36px, 3vw, 52px);
@@ -2540,6 +2601,207 @@ a:focus-visible {
   width: 9px;
 }
 
+.autopilot-toggle {
+  align-items: center;
+  background: rgba(10, 9, 12, 0.78);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 32%, transparent);
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: var(--sans);
+  font-size: 10px;
+  gap: 7px;
+  letter-spacing: 0.06em;
+  margin-top: 14px;
+  min-height: 30px;
+  padding: 0 11px;
+  text-transform: uppercase;
+}
+
+.autopilot-toggle:hover {
+  border-color: var(--theme-accent);
+  color: var(--cream);
+}
+
+.autopilot-toggle.is-running {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.auto-dot {
+  background: var(--muted);
+  border-radius: 50%;
+  height: 7px;
+  width: 7px;
+}
+
+.auto-dot.is-running {
+  animation: auto-pulse 1.8s ease-in-out infinite;
+  background: var(--gold);
+  box-shadow: 0 0 10px var(--gold);
+}
+
+@keyframes auto-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.auto-error {
+  color: #e0866b;
+  font-size: 11px;
+  margin-top: 10px;
+  text-shadow: 0 1px 8px #000;
+}
+
+.autopilot-controls {
+  align-items: center;
+  background: rgba(26, 19, 21, 0.97);
+  border: 1px solid rgba(215, 138, 94, 0.72);
+  border-radius: 5px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.48);
+  display: flex;
+  gap: 12px;
+  min-height: 76px;
+  padding: 18px 20px;
+  position: relative;
+}
+
+.autopilot-controls .autopilot-status {
+  color: var(--muted);
+  flex: 1;
+  font-family: var(--serif);
+  font-size: 15px;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.autopilot-controls.is-paused .autopilot-status {
+  color: var(--gold);
+}
+
+.autopilot-controls.is-collapsed {
+  cursor: pointer;
+  min-height: 0;
+  padding: 4px 8px;
+}
+
+.autopilot-pov {
+  border: 0;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.autopilot-pov legend {
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.autopilot-pov-options {
+  display: flex;
+  gap: 8px;
+}
+
+.autopilot-pov-options button {
+  background: rgba(10, 9, 12, 0.78);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 32%, transparent);
+  color: var(--muted);
+  cursor: pointer;
+  flex: 1;
+  font-family: var(--sans);
+  font-size: 11px;
+  min-height: 36px;
+  padding: 0 10px;
+}
+
+.autopilot-pov-options button.active {
+  background: color-mix(in srgb, var(--theme-accent) 22%, #171114);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.autopilot-pov small {
+  color: var(--muted);
+  display: block;
+  margin-top: 8px;
+}
+
+.autopilot-controls.is-collapsed .autopilot-collapse-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  padding: 0;
+  width: 100%;
+}
+
+.autopilot-controls.is-collapsed .autopilot-status {
+  color: var(--gold);
+  flex: 1;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.autopilot-collapse-icon {
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 10px;
+}
+
+.autopilot-collapse-toggle:hover .autopilot-status,
+.autopilot-collapse-toggle:hover .autopilot-collapse-icon {
+  color: var(--gold);
+}
+
+.autopilot-control-buttons {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.autopilot-control-buttons button {
+  background: rgba(10, 9, 12, 0.78);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 32%, transparent);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  min-height: 34px;
+  padding: 0 14px;
+  text-transform: uppercase;
+}
+
+.autopilot-control-buttons button:hover:not(:disabled) {
+  border-color: var(--theme-accent);
+  color: var(--cream);
+}
+
+.autopilot-control-buttons button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.autopilot-control-buttons .autopilot-stop {
+  border-color: rgba(201, 92, 70, 0.52);
+  color: #e4a092;
+}
+
+.autopilot-control-buttons .autopilot-stop:hover:not(:disabled) {
+  border-color: #c95c46;
+  color: #f2c3b8;
+}
+
 .messages {
   align-items: flex-start;
   bottom: 172px;
@@ -2554,6 +2816,22 @@ a:focus-visible {
   scrollbar-color: rgba(183, 101, 63, 0.42) transparent;
   width: calc(100% - 48px);
   z-index: 4;
+}
+
+/* Autopilot reads as one continuous manuscript instead of a chat transcript. */
+.messages.storytelling {
+  align-items: center;
+  gap: 0;
+  padding: 30px 10px 42px;
+}
+
+.storytelling .message {
+  padding: 0;
+  width: min(100%, 760px);
+}
+
+.storytelling .message + .message {
+  margin-top: 0;
 }
 
 .sandbox-empty-state {
@@ -2665,6 +2943,40 @@ a:focus-visible {
   font-style: italic;
   line-height: 1.25;
   padding: 4px 16px;
+}
+
+.storytelling .message {
+  align-items: flex-start;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  gap: 0;
+  max-width: 100%;
+  padding: 0;
+}
+
+.storytelling .message .portrait {
+  display: none;
+}
+
+.storytelling .message.character p,
+.storytelling .message.player,
+.storytelling .message.narrator {
+  color: var(--body);
+  font-family: var(--serif);
+  font-size: var(--chat-font-size, 19px);
+  font-style: normal;
+  line-height: 1.6;
+}
+
+.storytelling .message.player {
+  border: 0;
+  color: var(--body);
+}
+
+.storytelling .message.typing {
+  padding-bottom: 16px;
 }
 
 .message-actions {

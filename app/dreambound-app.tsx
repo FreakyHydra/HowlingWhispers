@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { FormEvent, useMemo, useRef, useState, useEffect, useSyncExternalStore } from "react";
+import { FormEvent, useCallback, useMemo, useRef, useState, useEffect, useSyncExternalStore } from "react";
 import packageInfo from "../package.json";
 import { legacyCharacterToCanon, type AgeCategory } from "../lib/characters/canonical";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
@@ -66,6 +66,10 @@ type StorySession = {
   createdAt: number;
   updatedAt: number;
   sandbox?: boolean;
+  autopilot?: boolean;
+  autopilotPaused?: boolean;
+  autopilotStopped?: boolean;
+  autopilotPov?: "first" | "third" | "narrator";
   playerRole?: string;
   playerRoleContext?: string;
 };
@@ -101,7 +105,6 @@ type ReplyLength = "quick" | "immersive" | "novel";
 type Initiative = "reactive" | "balanced" | "proactive";
 type Viewpoint = "user" | "character" | "roving";
 type StoryTense = "present" | "past";
-type ProseFormat = "roleplay" | "novel";
 type TokenStorageMode = "tab" | "computer";
 type UpdateState = "idle" | "checking" | "current" | "available" | "unconfigured" | "error";
 type AppView = "home" | "scenes" | "chat" | "changelog" | "settings";
@@ -957,9 +960,6 @@ export default function DreamboundApp() {
   const [storyTense, setStoryTense] = useState<StoryTense>(
     () => readSession<StoryTense>("storyTense", "present"),
   );
-  const [proseFormat, setProseFormat] = useState<ProseFormat>(
-    () => readSession<ProseFormat>("proseFormat", "roleplay"),
-  );
   const [providerState, setProviderState] =
     useState<ProviderState>(() => readSession<ProviderState>("provider", "disconnected"));
   const [isReplying, setIsReplying] = useState(false);
@@ -1171,10 +1171,9 @@ export default function DreamboundApp() {
     writeSession("initiative", initiative);
     writeSession("viewpoint", viewpoint);
     writeSession("storyTense", storyTense);
-    writeSession("proseFormat", proseFormat);
   }, [
     view, selectedId, apiToken, selectedModel, selectedLocalModel, deviceModel, storyProvider, creativity, replyLength,
-    initiative, viewpoint, storyTense, proseFormat,
+    initiative, viewpoint, storyTense,
   ]);
 
   useEffect(() => {
@@ -1231,7 +1230,8 @@ export default function DreamboundApp() {
     : selectedScenes.find((scene) => scene.id === activeSession?.sceneId) ?? selectedScenes[0];
   const activeMessageKey = activeSession?.messageKey ?? selected.id;
   const storedContextManifest = contextManifests[activeMessageKey];
-  const activeContextManifest = storedContextManifest?.compilerVersion === 2
+  const activeContextManifest = storedContextManifest
+    && (storedContextManifest.compilerVersion === 2 || storedContextManifest.compilerVersion === 3)
     ? storedContextManifest
     : undefined;
   const activeMessages = messages[activeMessageKey] ?? [];
@@ -1372,6 +1372,7 @@ export default function DreamboundApp() {
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
     setSelectedId(character.id);
+    setAutopilotError("");
     setChatError("");
     setView("chat");
   }
@@ -1412,12 +1413,51 @@ export default function DreamboundApp() {
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
     setSelectedId(character.id);
+    setAutopilotError("");
+    setChatError("");
+    setView("chat");
+  }
+
+  function openAutopilotStart() {
+    setAutopilotSeed("");
+    setAutopilotError("");
+    setAutopilotPov("third");
+    setShowAutopilotStart(true);
+  }
+
+  function beginAutopilot() {
+    setShowAutopilotStart(false);
+    if (!configured) {
+      setChatError("Set up and test a story engine before starting Autopilot.");
+      setView("settings");
+      return;
+    }
+    const scene = sandboxSceneFor(selected);
+    const session: StorySession = {
+      ...createStorySession(selected, scene),
+      sandbox: true,
+      autopilot: true,
+      autopilotPaused: false,
+      autopilotPov: autopilotPov,
+    };
+    const seed = autopilotSeed.trim();
+    setMessages((current) => ({
+      ...current,
+      [session.messageKey]: seed
+        ? [{ id: session.createdAt, sender: "narrator", text: seed }]
+        : [],
+    }));
+    setSessions((current) => [session, ...current]);
+    setCurrentSessionId(session.id);
+    setSelectedId(selected.id);
+    setAutopilotError("");
     setChatError("");
     setView("chat");
   }
 
   function continueRoleplay(session: StorySession) {
     setChatError("");
+    setAutopilotError("");
     setSelectedId(session.characterId);
     setCurrentSessionId(session.id);
     setSessions((current) => current.map((item) =>
@@ -1689,7 +1729,7 @@ export default function DreamboundApp() {
 
   async function requestStoryReply(
     conversation: Message[],
-    action?: "impersonate",
+    action?: "impersonate" | "autopilot",
     playerDirection?: string,
   ): Promise<string> {
     const controller = new AbortController();
@@ -1709,7 +1749,8 @@ export default function DreamboundApp() {
         initiative,
         viewpoint,
         tense: storyTense,
-        proseFormat,
+        proseFormat: "roleplay",
+        autopilotPov: activeSession?.autopilot ? (activeSession.autopilotPov ?? "third") : undefined,
         character: {
           id: selected.id,
           name: selected.name,
@@ -1814,6 +1855,118 @@ export default function DreamboundApp() {
     }
     return payload.reply;
   }
+
+  const requestStoryReplyRef = useRef<typeof requestStoryReply | null>(null);
+  const messagesRef = useRef<Record<string, Message[]>>(messages);
+  const isReplyingRef = useRef(isReplying);
+  const isImpersonatingRef = useRef(isImpersonating);
+  const autopilotBusyRef = useRef(false);
+  const [autopilotBusy, setAutopilotBusy] = useState(false);
+  const [autopilotError, setAutopilotError] = useState("");
+  const [beatRequest, setBeatRequest] = useState(0);
+  const [showAutopilotStart, setShowAutopilotStart] = useState(false);
+  const [autopilotSeed, setAutopilotSeed] = useState("");
+  const [autopilotPov, setAutopilotPov] = useState<"first" | "third" | "narrator">("third");
+  const [autopilotControlsCollapsed, setAutopilotControlsCollapsed] = useState(false);
+  const [storyBackgroundBlur, setStoryBackgroundBlur] = useState(8);
+  useEffect(() => {
+    requestStoryReplyRef.current = requestStoryReply;
+    messagesRef.current = messages;
+    isReplyingRef.current = isReplying;
+    isImpersonatingRef.current = isImpersonating;
+  });
+
+  const runAutopilotBeat = useCallback(async (messageKey: string) => {
+    if (autopilotBusyRef.current || isReplyingRef.current || isImpersonatingRef.current) return;
+    autopilotBusyRef.current = true;
+    setAutopilotBusy(true);
+    setAutopilotError("");
+    try {
+      const conversation = messagesRef.current[messageKey] ?? [];
+      const replyText = await requestStoryReplyRef.current?.(conversation, "autopilot") ?? "";
+      if (replyText) {
+        setMessages((current) => ({
+          ...current,
+          [messageKey]: [
+            ...(current[messageKey] ?? []),
+            { id: Date.now() + 1, sender: "character", text: replyText },
+          ],
+        }));
+        setSessions((current) => current.map((session) =>
+          session.messageKey === messageKey ? { ...session, updatedAt: Date.now() } : session,
+        ));
+        setProviderState("connected");
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setProviderState("error");
+      setAutopilotError(
+        error instanceof Error && error.message
+          ? `Autopilot: ${error.message}`
+          : "Autopilot could not reach the story engine.",
+      );
+    } finally {
+      autopilotBusyRef.current = false;
+      setAutopilotBusy(false);
+    }
+  }, []);
+
+  function toggleAutopilot() {
+    if (!activeSession) return;
+    if (!configured) {
+      setChatError("Set up and test a story engine before turning on Autopilot.");
+      setView("settings");
+      return;
+    }
+    setSessions((current) => current.map((session) =>
+      session.id === activeSession.id
+        ? {
+          ...session,
+          autopilot: !session.autopilot,
+          autopilotPaused: false,
+          updatedAt: Date.now(),
+        }
+        : session,
+    ));
+    setAutopilotError("");
+  }
+
+  function toggleAutopilotPause() {
+    if (!activeSession) return;
+    setSessions((current) => current.map((session) =>
+      session.id === activeSession.id
+        ? { ...session, autopilotPaused: !session.autopilotPaused, autopilotStopped: false, updatedAt: Date.now() }
+        : session,
+    ));
+  }
+
+  function stopAutopilot() {
+    if (!activeSession) return;
+    generationAbortRef.current?.abort();
+    setAutopilotControlsCollapsed(false);
+    setSessions((current) => current.map((session) =>
+      session.id === activeSession.id
+        ? { ...session, autopilot: true, autopilotPaused: true, autopilotStopped: true, updatedAt: Date.now() }
+        : session,
+    ));
+    setAutopilotError("");
+  }
+
+  useEffect(() => {
+    if (view !== "chat" || !activeSession?.autopilot || activeSession?.autopilotPaused || !activeMessageKey) return;
+    const messageKey = activeMessageKey;
+    const initial = window.setTimeout(() => { void runAutopilotBeat(messageKey); }, 1200);
+    const interval = window.setInterval(() => { void runAutopilotBeat(messageKey); }, 12000);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(interval);
+    };
+  }, [view, activeMessageKey, activeSession?.autopilot, activeSession?.autopilotPaused, runAutopilotBeat]);
+
+  useEffect(() => {
+    if (beatRequest === 0 || view !== "chat" || !activeSession?.autopilot || !activeMessageKey) return;
+    void runAutopilotBeat(activeMessageKey);
+  }, [beatRequest, view, activeMessageKey, activeSession?.autopilot, runAutopilotBeat]);
 
   function isAbortError(error: unknown): boolean {
     return error instanceof DOMException && error.name === "AbortError";
@@ -2241,7 +2394,7 @@ export default function DreamboundApp() {
     const formattedText = text
       .replace(/\s*(\*[^*]+\*)\s*/g, "\n\n$1\n\n")
       .replace(
-        /(?:^|\s+)([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2}):\s*/g,
+        /(?:^|\s+)([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2})(?:\s*\(as\))?:\s*/g,
         "\n\n$1\n\n",
       )
       .replace(/\n{3,}/g, "\n\n")
@@ -2254,7 +2407,7 @@ export default function DreamboundApp() {
     return (
       <div className="message-copy-text">
         {(paragraphs.length > 0 ? paragraphs : [formattedText]).map((paragraph, index) => {
-          const isSpeakerLabel = /^[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2}:$/.test(paragraph);
+          const isSpeakerLabel = /^[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2}(?:\s*\(as\))?:$/.test(paragraph);
           const escapedName = selected.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           const isUnmarkedAction = sender === "character"
             && !paragraph.startsWith("*")
@@ -2731,6 +2884,27 @@ export default function DreamboundApp() {
                     <div className="scene-preset-actions">
                       <button onClick={() => startSandbox(selected.id)}>
                         Enter sandbox <span aria-hidden="true">→</span>
+                      </button>
+                    </div>
+                  </div>
+                </article>
+                <article
+                  className="scene-preset-card autopilot-preset-card"
+                  style={{
+                    "--theme-accent": selected.accent,
+                    "--theme-glow": `${selected.accent}45`,
+                  } as React.CSSProperties}
+                >
+                  <div className="autopilot-grid" aria-hidden="true" />
+                  <span className="scene-motif">LIVE</span>
+                  <div className="scene-preset-copy">
+                    <span>Self-driven roleplay</span>
+                    <h3>Autopilot</h3>
+                    <p>Nothing but {selected.name}&apos;s core identity — and they act on their own.</p>
+                    <small>No preset opening. {selected.name} writes the first beat and keeps living while you step in whenever you like.</small>
+                    <div className="scene-preset-actions">
+                      <button onClick={openAutopilotStart}>
+                        Enter autopilot <span aria-hidden="true">→</span>
                       </button>
                     </div>
                   </div>
@@ -3425,19 +3599,6 @@ export default function DreamboundApp() {
                       </select>
                       <small>Sets the requested narrative tense.</small>
                     </label>
-                    <label>
-                      Prose format
-                      <select
-                        value={proseFormat}
-                        onChange={(event) => setProseFormat(event.target.value as ProseFormat)}
-                      >
-                        <option value="roleplay">Roleplay</option>
-                        <option value="novel">Novel prose</option>
-                      </select>
-                      <small>
-                        Roleplay uses *actions* and plain dialogue. Novel prose uses quotation marks.
-                      </small>
-                    </label>
                   </div>
                 </fieldset>
 
@@ -3683,6 +3844,7 @@ export default function DreamboundApp() {
                 ? `url("${activeScene.background}")`
                 : "linear-gradient(145deg, #211416, #09090b)",
               "--scene-position": activeScene.backgroundFocalPoint,
+              "--scene-blur": `${activeSession?.autopilot ? storyBackgroundBlur : 0}px`,
             } as React.CSSProperties
           }
           aria-label={`Conversation with ${selected.name}`}
@@ -3705,6 +3867,21 @@ export default function DreamboundApp() {
             >
               Context <span aria-hidden="true">☰</span>
             </button>
+            {activeSession?.autopilot && (
+              <label className="story-blur-control">
+                <span>Blur</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="24"
+                  step="1"
+                  value={storyBackgroundBlur}
+                  onChange={(event) => setStoryBackgroundBlur(Number(event.target.value))}
+                  aria-label="Story background blur"
+                />
+                <output>{storyBackgroundBlur}px</output>
+              </label>
+            )}
           </div>
           <div className="scene-title">
             <h1>{selected.name}</h1>
@@ -3712,9 +3889,32 @@ export default function DreamboundApp() {
               <span className="presence-dot" style={{ background: activeTheme.accent }} />
               {activeScene.status} <i>·</i> {activeTheme.motif}
             </p>
+            {activeSession && !activeSession.autopilot && (
+              <button
+                className="autopilot-toggle"
+                onClick={toggleAutopilot}
+                aria-pressed={false}
+                title="Let this character live on their own"
+              >
+                <span className="auto-dot" aria-hidden="true" />
+                Autopilot
+              </button>
+            )}
+            {autopilotError && <p className="auto-error">{autopilotError}</p>}
           </div>
 
-          <div className="messages" aria-live="polite">
+          <div className={`messages${activeSession?.autopilot ? " storytelling" : ""}`} aria-live="polite">
+            {activeMessages.length === 0 && activeSession?.autopilot && (
+              <div className="sandbox-empty-state">
+                <span aria-hidden="true">◉</span>
+                <p className="eyebrow">Autopilot</p>
+                <h2>{selected.name} is stirring awake.</h2>
+                <p>
+                  Nothing has been written yet. {selected.name} will write the first
+                  beat on their own in a moment — step in whenever you like.
+                </p>
+              </div>
+            )}
             {activeMessages.length === 0 && activeSession?.sandbox && (
               <div className="sandbox-empty-state">
                 <span aria-hidden="true">◇</span>
@@ -3812,7 +4012,65 @@ export default function DreamboundApp() {
                 )}
               </div>
             )}
-            <div className="composer">
+            {activeSession?.autopilot && (
+              autopilotControlsCollapsed && activeSession.autopilotPaused ? (
+                <div
+                  className="autopilot-controls is-collapsed is-paused"
+                  aria-label="Autopilot controls (minimized)"
+                >
+                  <button
+                    className="autopilot-collapse-toggle"
+                    onClick={() => setAutopilotControlsCollapsed(false)}
+                    aria-label="Expand autopilot controls"
+                  >
+                    <span aria-hidden="true" className="auto-dot is-running" />
+                    <span className="autopilot-status">Paused — minimized</span>
+                    <span aria-hidden="true" className="autopilot-collapse-icon">▲</span>
+                  </button>
+                </div>
+              ) : (
+              <div
+                className={`autopilot-controls${activeSession.autopilotPaused ? " is-paused" : ""}`}
+                aria-label="Autopilot controls"
+              >
+                <span aria-hidden="true" className="auto-dot is-running" />
+                <p className="autopilot-status">
+                  {activeSession.autopilotStopped
+                    ? "Stopped — story preserved"
+                    : activeSession.autopilotPaused
+                    ? "Paused — write whenever you like"
+                    : autopilotBusy
+                      ? `${selected.name} is living on their own…`
+                      : selected.name}
+                </p>
+                <div className="autopilot-control-buttons">
+                  {activeSession.autopilotPaused && (
+                    <button
+                      onClick={() => setAutopilotControlsCollapsed(true)}
+                      className="autopilot-collapse"
+                      aria-label="Minimize autopilot controls"
+                    >
+                      Minimize
+                    </button>
+                  )}
+                  <button onClick={toggleAutopilotPause} disabled={autopilotBusy}>
+                    {activeSession.autopilotPaused ? "Resume" : "Pause"}
+                  </button>
+                  <button
+                    onClick={() => setBeatRequest((count) => count + 1)}
+                    disabled={autopilotBusy}
+                  >
+                    Next
+                  </button>
+                  <button onClick={stopAutopilot} className="autopilot-stop">
+                    Stop
+                  </button>
+                </div>
+              </div>
+              )
+            )}
+            {(!activeSession?.autopilot || activeSession?.autopilotPaused) && !autopilotControlsCollapsed && (
+              <div className="composer">
               <label htmlFor="story-input" className="sr-only">
                 Message {selected.name}
               </label>
@@ -3879,6 +4137,7 @@ export default function DreamboundApp() {
                 </div>
               </div>
             </div>
+            )}
           </div>
         </section>
 
@@ -4123,6 +4382,91 @@ export default function DreamboundApp() {
                 </button>
                 <button type="submit" className="primary-button">
                   Impersonate &amp; send
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {showAutopilotStart && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setShowAutopilotStart(false)}>
+          <section
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="autopilot-start-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button className="modal-close" onClick={() => setShowAutopilotStart(false)} aria-label="Close">
+              ×
+            </button>
+            <p className="eyebrow">Autopilot</p>
+            <h2 id="autopilot-start-title">Where does the story begin?</h2>
+            <p className="modal-intro">
+              Set the opening for {selected.name}&apos;s own story — where they are, what is
+              happening, who you are to them. They will take it from there, living beat by beat.
+            </p>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                beginAutopilot();
+              }}
+            >
+              <fieldset className="autopilot-pov">
+                <legend>Mode</legend>
+                <div className="autopilot-pov-options">
+                  <button
+                    type="button"
+                    className={autopilotPov === "first" ? "active" : ""}
+                    onClick={() => setAutopilotPov("first")}
+                  >
+                    First person
+                  </button>
+                  <button
+                    type="button"
+                    className={autopilotPov === "third" ? "active" : ""}
+                    onClick={() => setAutopilotPov("third")}
+                  >
+                    Third person
+                  </button>
+                  <button
+                    type="button"
+                    className={autopilotPov === "narrator" ? "active" : ""}
+                    onClick={() => setAutopilotPov("narrator")}
+                  >
+                    Narrative telling
+                  </button>
+                </div>
+                <small>
+                  {autopilotPov === "first" && "Written from the character's own voice using I/my."}
+                  {autopilotPov === "third" && "Close third-person limited to the character (she/he)."}
+                  {autopilotPov === "narrator" && "A storytelling voice free to move between characters and scenes."}
+                </small>
+              </fieldset>
+              <label>
+                Opening prompt <small>Optional</small>
+                <textarea
+                  value={autopilotSeed}
+                  onChange={(event) => setAutopilotSeed(event.target.value)}
+                  rows={5}
+                  placeholder={`For example: It is past midnight and ${selected.name} is alone in the greenhouse while rain taps the glass.`}
+                  autoFocus
+                />
+              </label>
+              <p className="modal-intro">
+                Leave it blank and {selected.name} will open the story on their own.
+              </p>
+              <div className="impersonate-actions">
+                <button
+                  type="button"
+                  className="outline-button"
+                  onClick={() => setShowAutopilotStart(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="primary-button">
+                  Begin autopilot
                 </button>
               </div>
             </form>

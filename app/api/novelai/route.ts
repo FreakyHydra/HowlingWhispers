@@ -82,6 +82,9 @@ const IMPERSONATION_LENGTHS: Record<keyof typeof REPLY_LENGTHS, string> = {
   novel: "Write 3–6 substantial paragraphs totaling 300–550 words. A response under 300 words is incomplete.",
 };
 
+const AUTOPILOT_BEAT_INSTRUCTION = "Write one self-contained story beat rather than a full reply: a distinct action or development followed by dialogue or narration, usually 80-150 words. It must advance the scene on its own and never hand the turn back to the player. Follow the same output format as before: actions and narration in single asterisks, inner voice in square brackets, spoken dialogue as plain text with no quotation marks.";
+const AUTOPILOT_MAX_TOKENS = 264;
+
 type ReplyLength = keyof typeof REPLY_LENGTHS;
 type CharacterPrompt = {
   name: string;
@@ -98,7 +101,7 @@ type CharacterPrompt = {
   worldLore: WorldLorebookV1 | null;
   sceneId: string;
 };
-type ProseFormat = "roleplay" | "novel";
+type ProseFormat = "roleplay";
 type StoryProvider = "novelai" | "local" | "device";
 
 const LOCAL_MINIMUM_WORDS: Record<ReplyLength, { character: number; player: number }> = {
@@ -155,12 +158,11 @@ export async function POST(request: Request) {
     const rawReply = limitedString(body.rawReply, 50_000);
     const outputName = limitedString(body.outputName, 120);
     const outputKind = body.outputKind === "player" ? "player" : "character";
-    const proseFormat: ProseFormat = body.proseFormat === "novel" ? "novel" : "roleplay";
-    const preparedReply = proseFormat === "roleplay"
-      ? formatLocalRoleplayReply(rawReply, outputKind, outputName)
-      : rawReply;
+    const proseFormat: ProseFormat = "roleplay";
+    const preparedReply = rawReply;
     const reply = cleanReply(
       preparedReply, outputName, limitedString(body.playerName, 100), proseFormat, outputKind,
+      body.autopilot === true,
     );
     return reply
       ? Response.json({ reply })
@@ -180,6 +182,9 @@ export async function POST(request: Request) {
   const preferences = parseStoryPreferences(body);
   const isConnectionTest = body.action === "test";
   const isImpersonation = body.action === "impersonate";
+  const isAutopilot = body.action === "autopilot";
+  const autopilotPov: "first" | "third" | "narrator" =
+    body.autopilotPov === "first" || body.autopilotPov === "narrator" ? body.autopilotPov : "third";
   const impersonationPrompt = limitedString(body.impersonationPrompt, 1200);
   const doStream = body.stream === true;
   const character = isConnectionTest ? null : parseCharacter(body.character);
@@ -206,7 +211,7 @@ export async function POST(request: Request) {
   if (provider === "device" && !isValidOllamaModelName(model)) {
     return Response.json({ error: "Enter the Ollama model installed on this computer." }, { status: 400 });
   }
-  if (!isConnectionTest && (!character || messages.length === 0)) {
+  if (!isConnectionTest && (!character || (messages.length === 0 && !isAutopilot))) {
     return Response.json({ error: "The character or conversation is incomplete." }, { status: 400 });
   }
   if (
@@ -221,10 +226,10 @@ export async function POST(request: Request) {
   }
 
   const compiled = isConnectionTest ? null : compileContext({
-      kind: isImpersonation ? "impersonation" : "roleplay",
+      kind: isAutopilot ? "autopilot" : isImpersonation ? "impersonation" : "roleplay",
       provider: provider === "novelai" ? "novelai" : "local",
       model,
-      outputTokens: REPLY_LENGTHS[replyLength].maxTokens,
+      outputTokens: isAutopilot ? REPLY_LENGTHS.quick.maxTokens : REPLY_LENGTHS[replyLength].maxTokens,
       contextMode: character!.contextMode,
       matureContentRequested: character!.matureContentRequested,
       character: character!.canonical,
@@ -240,15 +245,19 @@ export async function POST(request: Request) {
       playerName,
       playerPersona,
       preferences,
+      autopilotPov,
       lengthInstruction: isImpersonation
         ? IMPERSONATION_LENGTHS[replyLength]
-        : REPLY_LENGTHS[replyLength].instruction,
+        : isAutopilot
+          ? AUTOPILOT_BEAT_INSTRUCTION
+          : REPLY_LENGTHS[replyLength].instruction,
       playerDirection: impersonationPrompt,
     });
   const prompt = isConnectionTest
     ? `Reply with exactly this text and nothing else: ${CONNECTION_TEST_RESPONSE}`
     : compiled!.prompt;
-  const generationLength = replyLength;
+  const generationLength = isAutopilot ? "quick" : replyLength;
+  const maxTokens = isAutopilot ? AUTOPILOT_MAX_TOKENS : REPLY_LENGTHS[replyLength].maxTokens;
   const stopSequences = isImpersonation
     ? impersonationStops(character?.name ?? "")
     : roleplayStops(playerName);
@@ -272,14 +281,20 @@ Local output contract: Return a JSON object with a segments array containing at 
         format: structuredRoleplay ? localRoleplayFormat(minimumSegments) : undefined,
         options: {
           num_ctx: 16_384,
-          num_predict: REPLY_LENGTHS[replyLength].maxTokens,
+          num_predict: maxTokens,
           temperature,
           top_p: 0.95,
           repeat_penalty: 1.08,
           stop: stopSequences,
         },
       },
-      finalization: { outputName, outputKind, playerName, proseFormat: preferences.proseFormat },
+        finalization: {
+          outputName,
+          outputKind,
+          playerName,
+          proseFormat: preferences.proseFormat,
+          autopilot: isAutopilot,
+        },
       context: compiled?.manifest,
     });
   }
@@ -316,7 +331,7 @@ Local output contract: Return a JSON object with a segments array containing at 
         return await localReply(
           model, prompt, isConnectionTest, temperature, generationLength,
           outputName, playerName, preferences.proseFormat,
-          outputKind, stopSequences, compiled?.manifest, controller, timeout,
+          outputKind, stopSequences, compiled?.manifest, controller, timeout, maxTokens, isAutopilot,
         );
       } finally {
         releaseGenerationSlot(slotId);
@@ -326,14 +341,14 @@ Local output contract: Return a JSON object with a segments array containing at 
     if (doStream) {
       return streamReply(
         apiToken, model, prompt, isConnectionTest, temperature, generationLength,
-        stopSequences, controller, timeout,
+        stopSequences, controller, timeout, maxTokens,
       );
     }
 
     return await nonStreamReply(
       apiToken, model, prompt, isConnectionTest, temperature, generationLength,
       isImpersonation ? playerName : character?.name ?? "", playerName, preferences.proseFormat,
-      isImpersonation ? "player" : "character", stopSequences, compiled?.manifest, controller, timeout,
+      isImpersonation ? "player" : "character", stopSequences, compiled?.manifest, controller, timeout, maxTokens, isAutopilot,
     );
   } catch (error) {
     clearTimeout(timeout);
@@ -353,6 +368,7 @@ async function localReply(
   temperature: number, replyLength: ReplyLength, outputName: string, playerName: string,
   proseFormat: ProseFormat, outputKind: "player" | "character", stopSequences: string[],
   contextManifest: ContextManifest | undefined, controller: AbortController, timeout: NodeJS.Timeout,
+  maxTokens: number, autopilot: boolean,
 ) {
   if (isTest) {
     const upstream = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
@@ -469,7 +485,7 @@ Local output contract: Return a JSON object with a segments array containing at 
         format: structuredRoleplay ? localRoleplayFormat(minimumSegments) : undefined,
         options: {
           num_ctx: 16_384,
-          num_predict: REPLY_LENGTHS[replyLength].maxTokens,
+          num_predict: maxTokens,
           temperature,
           top_p: 0.95,
           repeat_penalty: 1.08,
@@ -521,10 +537,10 @@ ${preparedReply}`);
   clearTimeout(timeout);
   const reply = isTest
     ? rawReply.trim().slice(0, 200)
-    : cleanReply(
-      preparedReply,
-      outputName, playerName, proseFormat, outputKind,
-    );
+      : cleanReply(
+       preparedReply,
+       outputName, playerName, proseFormat, outputKind, autopilot,
+     );
 
   if (!reply) {
     return Response.json({
@@ -580,6 +596,7 @@ async function streamReply(
   apiToken: string, model: string, prompt: string, isTest: boolean,
   temperature: number, replyLength: ReplyLength,
   stopSequences: string[], controller: AbortController, timeout: NodeJS.Timeout,
+  maxTokens: number,
 ) {
   const upstream = await fetch(`${NOVELAI_BASE}/completions`, {
     method: "POST",
@@ -587,7 +604,7 @@ async function streamReply(
     body: JSON.stringify({
       model,
       prompt,
-      max_tokens: isTest ? 32 : REPLY_LENGTHS[replyLength].maxTokens,
+      max_tokens: isTest ? 32 : maxTokens,
       temperature: isTest ? 0.1 : temperature,
       top_p: 1,
       frequency_penalty: 0,
@@ -634,6 +651,7 @@ async function nonStreamReply(
   temperature: number, replyLength: ReplyLength, outputName: string, playerName: string,
   proseFormat: ProseFormat, outputKind: "player" | "character", stopSequences: string[],
   contextManifest: ContextManifest | undefined, controller: AbortController, timeout: NodeJS.Timeout,
+  maxTokens: number, autopilot: boolean,
 ) {
   const upstream = await fetch(`${NOVELAI_BASE}/completions`, {
     method: "POST",
@@ -641,7 +659,7 @@ async function nonStreamReply(
     body: JSON.stringify({
       model,
       prompt,
-      max_tokens: isTest ? 32 : REPLY_LENGTHS[replyLength].maxTokens,
+      max_tokens: isTest ? 32 : maxTokens,
       temperature: isTest ? 0.1 : temperature,
       top_p: 1,
       frequency_penalty: 0,
@@ -662,7 +680,7 @@ async function nonStreamReply(
   const rawReply = extractReply(result);
   const reply = isTest
     ? rawReply.trim().slice(0, 200)
-    : cleanReply(rawReply, outputName, playerName, proseFormat, outputKind);
+    : cleanReply(rawReply, outputName, playerName, proseFormat, outputKind, autopilot);
 
   if (!reply) {
     return Response.json({
@@ -749,7 +767,8 @@ function extractReply(v: unknown): string {
 }
 
 function cleanReply(
-  v: string, name: string, playerName: string, proseFormat: ProseFormat, outputKind: "player" | "character",
+  v: string, name: string, playerName: string, proseFormat: ProseFormat,
+  outputKind: "player" | "character", autopilot = false,
 ): string {
   const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const wrappedReply = outputKind === "player"
@@ -765,14 +784,15 @@ function cleanReply(
     if (leakedTurn >= 0) candidate = candidate.slice(0, leakedTurn).trim();
   }
   const withoutLeakTail = candidate
-    .split(/\n\s*(?:<\/?(?:player|user|system|scene|character_reply)\b|(?:Player|User|System|Emotion|Mood|Analysis|Thinking|Write only the next roleplay passage)(?:\s*:|\s*$))/i)[0];
+    .split(/<system-reminder\b|\n\s*(?:<\/?(?:player|user|system|scene|character_reply)\b|(?:Player|User|System|Emotion|Mood|Analysis|Thinking|Rule|Rules|Format|Output format|Write only the next roleplay passage|Do not wait for the player|Do not write the player|Never end the beat|a self-contained development followed by dialogue or narration|in the same format as above|end without prompting the player)(?:\s*[:.,-]|\s*$)|[0-9]+\s*[–—,-]\s*[0-9]+\s*words)/i)[0];
   let reply = withoutLeakTail
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/<\/?[a-z][^>]*>/gi, "")
+    .replace(/^\s*[A-Z][A-Za-z'’. -]*\s*\(as\)\s*:?\s*/i, "")
     .replace(/^(?:(?:Message|Response|Character|Narrator|Scene|Emotion|Mood|Analysis|Thinking)(?:\s*:\s*|\s*\n+))+/i, "")
     .replace(new RegExp(`\\b${esc}\\s*:\\s*`, "gi"), "")
     .replace(
-      /(?:^|\s+)([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2}):\s*/g,
+      /(?:^|\s+)([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2})(?:\s*\(as\))?:\s*/g,
       "\n\n$1\n\n",
     )
     .replace(/\n[ \t]+/g, "\n")
@@ -782,12 +802,34 @@ function cleanReply(
   if (proseFormat === "roleplay") {
     reply = reply
       .replace(/[“”"]/g, "")
+      .replace(/^\s*(?:\*\s*)+$/gm, "")
       .replace(/\s*(\*[^*]+\*)\s*/g, "\n\n$1\n\n")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
   }
 
-  return reply.slice(0, 12_000);
+  return autopilot ? limitAutopilotBeat(reply) : reply.slice(0, 12_000);
+}
+
+function limitAutopilotBeat(value: string): string {
+  const words = value.split(/\s+/).filter(Boolean);
+  if (words.length <= 150) return removeUnfinishedMarkers(value);
+
+  const draft = words.slice(0, 150).join(" ");
+  const sentenceEnd = Math.max(draft.lastIndexOf("."), draft.lastIndexOf("!"), draft.lastIndexOf("?"));
+  const complete = sentenceEnd >= 0 ? draft.slice(0, sentenceEnd + 1) : draft;
+  return removeUnfinishedMarkers(complete);
+}
+
+function removeUnfinishedMarkers(value: string): string {
+  let result = value.trim();
+  if ((result.match(/\*/g) ?? []).length % 2 !== 0) {
+    result = result.slice(0, result.lastIndexOf("*")).trim();
+  }
+  if ((result.match(/\[/g) ?? []).length > (result.match(/\]/g) ?? []).length) {
+    result = result.slice(0, result.lastIndexOf("[")).trim();
+  }
+  return result.replace(/^\s*(?:\*\s*)+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function roleplayStops(playerName: string): string[] {
@@ -859,7 +901,7 @@ function parseStoryPreferences(v: Record<string, unknown>): StoryPreferences {
       ? v.viewpoint
       : "character",
     tense: v.tense === "past" ? "past" : "present",
-    proseFormat: v.proseFormat === "novel" ? "novel" : "roleplay",
+    proseFormat: "roleplay",
   };
 }
 

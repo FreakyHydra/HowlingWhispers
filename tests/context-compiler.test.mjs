@@ -190,6 +190,18 @@ test("impersonation receives authoritative character safety", () => {
   assert.match(result.prompt, /Suggest a kind response/);
 });
 
+test("autopilot compiles the autonomy law without handover cues", () => {
+  const result = compile(adultCharacter(), { kind: "autopilot", messages: [] });
+  assert.equal(result.manifest.compilerVersion, 3);
+  assert.equal(result.manifest.kind, "autopilot");
+  assert.match(result.prompt, /AUTOPILOT LAW/);
+  assert.match(result.prompt, /living on their own/);
+  assert.match(result.prompt, /never wait for the player/);
+  assert.doesNotMatch(result.prompt, /End naturally where the player's response matters/);
+  assert.match(result.prompt, /No conversation yet\./);
+  assert.match(result.prompt, /Continue living as Peony/);
+});
+
 test("local budget preserves mandatory canon and newest history", () => {
   const character = adultCharacter();
   character.sections = character.sections.filter((section) => section.rating === "general");
@@ -217,7 +229,7 @@ test("Coda world lore activates deterministically within its own budget", () => 
     sceneId: "bell-beneath-boiler",
     weather: "Heavy rain at the First Pumping House",
   });
-  assert.equal(result.manifest.compilerVersion, 2);
+  assert.equal(result.manifest.compilerVersion, 3);
   assert.equal(result.manifest.worldRevision, CODA_WORLD_LORE.revision);
   assert.ok(result.manifest.includedLore.some(({ id }) => id === "setting-foundation"));
   assert.ok(result.manifest.includedLore.some(({ id }) => id === "scenario-bell-beneath-boiler"));
