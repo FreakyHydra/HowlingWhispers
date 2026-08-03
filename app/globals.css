@@ -1598,6 +1598,19 @@ a:focus-visible {
   border-color: rgba(69, 184, 179, 0.42);
 }
 
+.changelog-entry.latest {
+  background:
+    linear-gradient(120deg, color-mix(in srgb, var(--gold) 18%, transparent), transparent 52%),
+    linear-gradient(120deg, rgba(36, 27, 20, 0.98), rgba(10, 9, 12, 0.98));
+  border-color: color-mix(in srgb, var(--gold) 68%, transparent);
+  box-shadow: 0 0 28px color-mix(in srgb, var(--gold) 12%, transparent);
+}
+
+.changelog-entry.latest .changelog-mark {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
 .changelog-entry.caution {
   border-color: rgba(227, 138, 121, 0.44);
 }

@@ -1,6 +1,6 @@
 # Changelog
 
-## Latest — Autopilot
+## 0.4.0 — Autopilot
 
 **✨ Autopilot is alive** — your character now lives on their own, writing one beat every ~12s. Step in anytime.
 

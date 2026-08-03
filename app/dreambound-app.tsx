@@ -3031,10 +3031,23 @@ export default function DreamboundApp() {
           </header>
 
           <div className="changelog-list">
+            <article className="changelog-entry featured latest">
+              <div className="changelog-mark">✦</div>
+              <div>
+                <span>Version {packageInfo.version} · Autopilot</span>
+                <h2>Read a living story like a book</h2>
+                <p>
+                  Autopilot now writes short self-driven beats in a continuous reading view.
+                  Choose first person, third person, or an omniscient narrator when starting,
+                  adjust the background blur, and pause or stop without losing the story.
+                </p>
+              </div>
+            </article>
+
             <article className="changelog-entry featured">
               <div className="changelog-mark">⌁</div>
               <div>
-                <span>Version {packageInfo.version} · Story intelligence</span>
+                <span>Version 0.3.0 · Story intelligence</span>
                 <h2>Every world sends only the details that matter</h2>
                 <p>
                   Every curated character now has selective world lore, while custom and imported
@@ -3047,7 +3060,7 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured">
               <div className="changelog-mark">◈</div>
               <div>
-                <span>New · Coda&apos;s world</span>
+                <span>Version 0.3.0 · Coda&apos;s world</span>
                 <h2>Eight mysteries now wait beyond the study</h2>
                 <p>
                   Coda now has a visible world guide, eight individually illustrated opening
@@ -3061,7 +3074,7 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured">
               <div className="changelog-mark">✦</div>
               <div>
-                <span>New · Character depth</span>
+                <span>Version 0.3.0 · Character depth</span>
                 <h2>Peony remembers who she is</h2>
                 <p>
                   Peony now uses her complete, carefully structured character canon in every
@@ -3075,7 +3088,7 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured">
               <div className="changelog-mark">◇</div>
               <div>
-                <span>New · Sandbox</span>
+                <span>Version 0.3.0 · Sandbox</span>
                 <h2>Start with a blank world</h2>
                 <p>
                   Every character now has an Open Sandbox. It keeps their core identity,
@@ -3088,7 +3101,7 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured">
               <div className="changelog-mark">◉</div>
               <div>
-                <span>New · Local generation</span>
+                <span>Version 0.3.0 · Local generation</span>
                 <h2>Roleplay without a cloud model</h2>
                 <p>
                   Settings now lets you switch between NovelAI and Mistral Nemo 12B
