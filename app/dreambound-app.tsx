@@ -1715,7 +1715,7 @@ export default function DreamboundApp() {
 
       if (isNewerVersion(release.tag_name, packageInfo.version)) {
         setUpdateState("available");
-        setUpdateMessage(`${release.tag_name} is available. Windows installations update at the next launch.`);
+        setUpdateMessage(`${release.tag_name} is available. Hosted deployments update when the server is redeployed.`);
         setReleaseUrl(release.html_url ?? "");
       } else {
         setUpdateState("current");
@@ -3764,9 +3764,8 @@ export default function DreamboundApp() {
                 )}
               </div>
               <small>
-                GitHub Releases provide Windows packages. Hosted installations are
-                updated by their server administrator. Stories and preferences remain
-                in this browser profile.
+                 Hosted installations are updated by their server administrator.
+                 Stories and preferences remain in this browser profile.
               </small>
             </section>
 
