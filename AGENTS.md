@@ -60,10 +60,14 @@ Bump the version in ALL of these together (the version test fails otherwise):
 - The in-app changelog UI in `app/dreambound-app.tsx` (`changelog-entry featured latest`):
   add a new latest entry and relabel the previous one to its fixed version.
 
+**Standing rule:** every shipped feature batch (user-visible change that reaches `main`)
+runs the version bump checklist above and gets a `## 0.4.x` CHANGELOG.md section. Never
+ship user-visible features with a stale version or changelog.
+
 ## Key files
 
 - `app/dreambound-app.tsx` — the entire client app: characters (`initialCharacters`),
-  `entranceFeatures` (~line 137, 5 entries incl. the curation ad), scene picker
+  `entranceFeatures` (~line 137, 6 entries incl. the curation ad and Valerie teaser), scene picker
   (`handcraftedScenes`, keyed by character name), message renderer/formatting, settings,
   connection test (`testConnection` ~line 1539), changelog UI.
 - `app/api/novelai/route.ts` — generation API: NovelAI + Ollama, connection test, JSON

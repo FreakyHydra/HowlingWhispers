@@ -3346,9 +3346,25 @@ export default function DreamboundApp() {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
+              <div className="changelog-mark">🖼️</div>
+              <div>
+                <span>Version {packageInfo.version} · Share the story</span>
+                <h2>The story, ready to share</h2>
+                <p>
+                  Every conversation can now become an image. The chat&apos;s ⇣ Share button
+                  opens a small config popup — how many messages to include, name captions on
+                  bubbles, and a scene header — then renders a crisp PNG you can paste straight
+                  into Discord. The entrance also picks a fresh featured character on every
+                  visit, Valerie Whiteclaw rotates in as a coming-soon teaser, and every curated
+                  character now credits its creator.
+                </p>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
               <div className="changelog-mark">🌕</div>
               <div>
-                <span>Version {packageInfo.version} · Heather rebuilt</span>
+                <span>Version 0.4.1 · Heather rebuilt</span>
                 <h2>The ranger is back, exactly as written</h2>
                 <p>
                   Heather now runs on her official character card: the 42-year-old werewolf

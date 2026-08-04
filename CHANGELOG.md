@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.2 — Share the story
+
+**🖼️ The chat is now a picture you can paste.** The latest moments of any conversation render into a crisp, zoomable image you can drop straight into Discord.
+
+### What's new
+- **Share as image** — a **⇣ Share** button in the chat opens a config popup: how many messages to include (default 5), optional name captions on bubbles, and an optional scene header. **Copy image** puts a 2×-resolution PNG on your clipboard for pasting into Discord; **Download PNG** saves it instead.
+- **Random entrance rotation** — the landing card no longer sticks to the same feature all day; every load picks a fresh one, and **Valerie Whiteclaw** now rotates in as a "coming soon" teaser.
+- **Valerie teaser** — a movie-style *"Coming to a forest near you."* card on the character selection home page.
+- **Credits** — every curated character now names its creator: Coda by Arrax Shadowfang, Heather & Valerie by Gigasad, Peony by Derkomor, Senako by FurbyMask.
+- **New Peony art** — her portrait and scene got a fresh painting (served under a new URL to bust the year-long cache).
+
+### Quality
+- 30/30 unit tests · lint clean · build okay.
+
 ## 0.4.1 — Heather rebuilt
 
 **🌕 Heather is back, exactly as written** — her official character card is now the canon: the 42-year-old werewolf supremacist, her vanished mate, and her grown daughter Valerie.
