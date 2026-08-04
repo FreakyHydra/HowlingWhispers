@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.5.3 — Send direct player turns correctly
+## 0.4.2.6 — Send direct player turns correctly
 
 **◐ Complete first-person lines in Impersonate are now sent as the player turn.** The model no longer gets a chance to mistake a line like “I want…” for something the character should say or do.
 
@@ -10,7 +10,7 @@
 ### Quality
 - 30/30 unit tests · lint clean · build okay.
 
-## 0.4.5.2 — Keep impersonation in first person
+## 0.4.2.5 — Keep impersonation in first person
 
 **◐ Impersonation now stays on the player's side of the scene.** It explicitly uses first-person player voice and rejects character-side descriptions such as voice, eyes, body, or reactions in the draft.
 
@@ -20,7 +20,7 @@
 ### Quality
 - 30/30 unit tests · lint clean · build okay.
 
-## 0.4.5.1 — Keep Skip turn focused
+## 0.4.2.4 — Keep Skip turn focused
 
 **» Skip turn now produces one short character beat.** It no longer uses the full novel-length reply setting or allows the model to invent both sides of the conversation.
 
@@ -30,7 +30,7 @@
 ### Quality
 - 30/30 unit tests · lint clean · build okay.
 
-## 0.4.5 — Keep turns contained
+## 0.4.2.3 — Keep turns contained
 
 **🛑 Autopilot Next is now one beat, not a marathon.** Error messages can also be dismissed, and impersonation directions are clearly separated from story text so they are less likely to be echoed into the conversation.
 
@@ -42,7 +42,7 @@
 ### Quality
 - 30/30 unit tests · lint clean · build okay.
 
-## 0.4.4 — Sharper shares
+## 0.4.2.2 — Sharper shares
 
 **🔍 Shared scenes are now rendered at higher resolution** so you can zoom into the pasted image in Discord and actually read every line without downloading.
 
@@ -52,7 +52,7 @@
 ### Quality
 - 30/30 unit tests · lint clean · build okay.
 
-## 0.4.3 — Share, redrawn
+## 0.4.2.1 — Share, redrawn
 
 **🖼️ The shared image actually renders now.** The first cut relied on a page-to-picture technique that silently lost the theme colors and could capture a blank frame. The image is now painted directly onto a canvas with the same fonts, theme colors, bubbles, and portraits you see in the chat.
 

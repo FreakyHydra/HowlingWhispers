@@ -3877,7 +3877,7 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured">
               <div className="changelog-mark">◐</div>
               <div>
-                <span>Version 0.4.5.2 · Keep impersonation in first person</span>
+                <span>Version 0.4.2.5 · Keep impersonation in first person</span>
                 <h2>Impersonate stays on your side</h2>
                 <p>
                   Impersonation drafts now use first-person player voice and are explicitly blocked
@@ -3890,7 +3890,7 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured">
               <div className="changelog-mark">»</div>
               <div>
-                <span>Version 0.4.5.1 · Keep Skip turn focused</span>
+                <span>Version 0.4.2.4 · Keep Skip turn focused</span>
                 <h2>Skip turn stays on one side</h2>
                 <p>
                   The normal roleplay skip action now produces one concise character-only beat,
@@ -3903,7 +3903,7 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured">
               <div className="changelog-mark">🛑</div>
               <div>
-                <span>Version 0.4.5 · Keep turns contained</span>
+                <span>Version 0.4.2.3 · Keep turns contained</span>
                 <h2>Next is one beat, not a marathon</h2>
                 <p>
                   Manually advancing Autopilot now generates one character beat and pauses instead
@@ -3917,7 +3917,7 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured">
               <div className="changelog-mark">🔍</div>
               <div>
-                <span>Version 0.4.4 · Sharper shares</span>
+                <span>Version 0.4.2.2 · Sharper shares</span>
                 <h2>Zoom in and actually read it</h2>
                 <p>
                   Shared scenes now render at 50% higher resolution, so when you paste one into
@@ -3931,7 +3931,7 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured">
               <div className="changelog-mark">🖼️</div>
               <div>
-                <span>Version 0.4.3 · Share, redrawn</span>
+                <span>Version 0.4.2.1 · Share, redrawn</span>
                 <h2>The image actually renders now</h2>
                 <p>
                   The first cut of the share feature relied on a page-to-picture technique that
@@ -4109,11 +4109,11 @@ export default function DreamboundApp() {
               <div className="changelog-mark">!</div>
               <div>
                 <span>Need to know · Remote access</span>
-                <h2>Remote test mode is not encrypted</h2>
+                <h2>Hosted access is encrypted</h2>
                 <p>
-                  Direct remote access uses HTTP and is intended only for temporary testing.
-                  NovelAI tokens and story traffic are not encrypted in transit. Disable remote
-                  access when testing is finished.
+                  This hosted site uses HTTPS, so NovelAI tokens and story traffic are encrypted
+                  in transit. If you intentionally run the app in direct HTTP remote test mode,
+                  that separate setup is not encrypted and should only be used temporarily.
                 </p>
               </div>
             </article>
