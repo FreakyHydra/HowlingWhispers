@@ -770,6 +770,50 @@ a:focus-visible {
   z-index: 2;
 }
 
+.home-character-teaser {
+  border-color: rgba(200, 169, 79, 0.4);
+  cursor: default;
+}
+
+.home-character-teaser .home-character-wash {
+  background:
+    linear-gradient(0deg, rgba(7, 7, 9, 0.98) 0%, rgba(7, 7, 9, 0.72) 38%, rgba(7, 7, 9, 0.3) 74%, transparent 88%),
+    linear-gradient(115deg, rgba(7, 7, 9, 0.5), transparent 60%);
+}
+
+.home-character-teaser:hover .home-character-wash {
+  background:
+    linear-gradient(0deg, rgba(7, 7, 9, 0.98) 0%, rgba(7, 7, 9, 0.68) 42%, rgba(7, 7, 9, 0.24) 78%, transparent 90%),
+    linear-gradient(115deg, rgba(7, 7, 9, 0.4), transparent 60%);
+}
+
+.home-character-teaser-badge {
+  background: rgba(200, 169, 79, 0.14);
+  border: 1px solid rgba(200, 169, 79, 0.5);
+  color: #e6c86a;
+  font-size: 10px;
+  left: 24px;
+  letter-spacing: 0.22em;
+  padding: 6px 10px;
+  position: absolute;
+  text-transform: uppercase;
+  top: 24px;
+  z-index: 2;
+}
+
+.home-character-teaser .home-character-copy p {
+  font-style: italic;
+}
+
+.home-character-teaser .home-character-teaser-tagline {
+  color: color-mix(in srgb, #e6c86a 82%, var(--cream));
+  font-family: var(--serif);
+  font-size: 14px;
+  font-style: italic;
+  letter-spacing: 0.08em;
+  text-transform: none;
+}
+
 .scene-library {
   background: #09090b;
   height: calc(100vh - 76px);

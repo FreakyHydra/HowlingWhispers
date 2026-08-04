@@ -2787,6 +2787,31 @@ export default function DreamboundApp() {
                 </article>
               );
             })}
+            <article
+              className="home-character home-character-teaser"
+              aria-label="Valerie Whiteclaw, coming soon"
+              style={
+                {
+                  "--card-image": `url("/assets/Heather/valerie-whiteclaw-teaser.png")`,
+                  "--character-accent": "#c8a94f",
+                  "--card-position": "center",
+                } as React.CSSProperties
+              }
+            >
+              <div className="home-character-wash" />
+              <span className="home-character-teaser-badge">Coming soon</span>
+              <div className="home-character-copy">
+                <span className="home-character-status">
+                  <i />
+                  A new scent on the wind
+                </span>
+                <h3>Valerie Whiteclaw</h3>
+                <p>Heather&apos;s daughter · The pack&apos;s future</p>
+                <small className="home-character-teaser-tagline">
+                  Coming to a forest near you.
+                </small>
+              </div>
+            </article>
             <button className="new-character-card" onClick={() => setIsCreating(true)}>
               <span aria-hidden="true">＋</span>
               <strong>Awaken someone new</strong>
