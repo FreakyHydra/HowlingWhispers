@@ -1931,7 +1931,7 @@ export default function DreamboundApp() {
 
   async function requestStoryReply(
     conversation: Message[],
-    action?: "impersonate" | "autopilot",
+    action?: "impersonate" | "autopilot" | "skip",
     playerDirection?: string,
   ): Promise<string> {
     const controller = new AbortController();
@@ -2333,7 +2333,7 @@ export default function DreamboundApp() {
     setIsReplying(true);
     setChatError("");
     try {
-      const replyText = await requestStoryReply(activeMessages);
+      const replyText = await requestStoryReply(activeMessages, "skip");
       setMessages((current) => ({
         ...current,
         [activeMessageKey]: [
@@ -3858,9 +3858,22 @@ export default function DreamboundApp() {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
+              <div className="changelog-mark">»</div>
+              <div>
+                <span>Version {packageInfo.version} · Keep Skip turn focused</span>
+                <h2>Skip turn stays on one side</h2>
+                <p>
+                  The normal roleplay skip action now produces one concise character-only beat,
+                  capped at 150 words, instead of using the full novel-length reply setting or
+                  letting the model write both sides of the conversation.
+                </p>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
               <div className="changelog-mark">🛑</div>
               <div>
-                <span>Version {packageInfo.version} · Keep turns contained</span>
+                <span>Version 0.4.5 · Keep turns contained</span>
                 <h2>Next is one beat, not a marathon</h2>
                 <p>
                   Manually advancing Autopilot now generates one character beat and pauses instead

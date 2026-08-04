@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.6 — Keep Skip turn focused
+
+**» Skip turn now produces one short character beat.** It no longer uses the full novel-length reply setting or allows the model to invent both sides of the conversation.
+
+### What's new
+- **Character-only skip** — the normal roleplay skip action now uses a dedicated 60–150-word contract and hard output cap.
+
+### Quality
+- 30/30 unit tests · lint clean · build okay.
+
 ## 0.4.5 — Keep turns contained
 
 **🛑 Autopilot Next is now one beat, not a marathon.** Error messages can also be dismissed, and impersonation directions are clearly separated from story text so they are less likely to be echoed into the conversation.

@@ -183,6 +183,8 @@ export async function POST(request: Request) {
   const isConnectionTest = body.action === "test";
   const isImpersonation = body.action === "impersonate";
   const isAutopilot = body.action === "autopilot";
+  const isSkipTurn = body.action === "skip";
+  const isAutonomousBeat = isAutopilot || isSkipTurn;
   const autopilotPov: "first" | "third" | "narrator" =
     body.autopilotPov === "first" || body.autopilotPov === "narrator" ? body.autopilotPov : "third";
   const impersonationPrompt = limitedString(body.impersonationPrompt, 1200);
@@ -229,7 +231,7 @@ export async function POST(request: Request) {
       kind: isAutopilot ? "autopilot" : isImpersonation ? "impersonation" : "roleplay",
       provider: provider === "novelai" ? "novelai" : "local",
       model,
-      outputTokens: isAutopilot ? REPLY_LENGTHS.quick.maxTokens : REPLY_LENGTHS[replyLength].maxTokens,
+      outputTokens: isAutonomousBeat ? REPLY_LENGTHS.quick.maxTokens : REPLY_LENGTHS[replyLength].maxTokens,
       contextMode: character!.contextMode,
       matureContentRequested: character!.matureContentRequested,
       character: character!.canonical,
@@ -250,14 +252,16 @@ export async function POST(request: Request) {
         ? IMPERSONATION_LENGTHS[replyLength]
         : isAutopilot
           ? AUTOPILOT_BEAT_INSTRUCTION
-          : REPLY_LENGTHS[replyLength].instruction,
+          : isSkipTurn
+            ? "Write one concise character-only continuation, usually 60-150 words. Advance the scene with one action, reaction, or piece of dialogue, then stop. Never write the player's words, actions, thoughts, feelings, decisions, or a second speaker."
+            : REPLY_LENGTHS[replyLength].instruction,
       playerDirection: impersonationPrompt,
     });
   const prompt = isConnectionTest
     ? `Reply with exactly this text and nothing else: ${CONNECTION_TEST_RESPONSE}`
     : compiled!.prompt;
-  const generationLength = isAutopilot ? "quick" : replyLength;
-  const maxTokens = isAutopilot ? AUTOPILOT_MAX_TOKENS : REPLY_LENGTHS[replyLength].maxTokens;
+  const generationLength = isAutonomousBeat ? "quick" : replyLength;
+  const maxTokens = isAutonomousBeat ? AUTOPILOT_MAX_TOKENS : REPLY_LENGTHS[replyLength].maxTokens;
   const stopSequences = isImpersonation
     ? impersonationStops(character?.name ?? "")
     : roleplayStops(playerName);
@@ -293,7 +297,7 @@ Local output contract: Return a JSON object with a segments array containing at 
           outputKind,
           playerName,
           proseFormat: preferences.proseFormat,
-          autopilot: isAutopilot,
+          autopilot: isAutonomousBeat,
         },
       context: compiled?.manifest,
     });
@@ -331,7 +335,7 @@ Local output contract: Return a JSON object with a segments array containing at 
         return await localReply(
           model, prompt, isConnectionTest, temperature, generationLength,
           outputName, playerName, preferences.proseFormat,
-          outputKind, stopSequences, compiled?.manifest, controller, timeout, maxTokens, isAutopilot,
+          outputKind, stopSequences, compiled?.manifest, controller, timeout, maxTokens, isAutonomousBeat,
         );
       } finally {
         releaseGenerationSlot(slotId);
@@ -348,7 +352,7 @@ Local output contract: Return a JSON object with a segments array containing at 
     return await nonStreamReply(
       apiToken, model, prompt, isConnectionTest, temperature, generationLength,
       isImpersonation ? playerName : character?.name ?? "", playerName, preferences.proseFormat,
-      isImpersonation ? "player" : "character", stopSequences, compiled?.manifest, controller, timeout, maxTokens, isAutopilot,
+      isImpersonation ? "player" : "character", stopSequences, compiled?.manifest, controller, timeout, maxTokens, isAutonomousBeat,
     );
   } catch (error) {
     clearTimeout(timeout);
