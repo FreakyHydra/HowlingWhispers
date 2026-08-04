@@ -633,8 +633,8 @@ const handcraftedScenes: Record<string, SceneDefinition[]> = {
       subtitle: "A trespass beneath the full moon",
       status: "Patrolling the border",
       weather: "Pine wind under a full moon",
-      background: "/assets/heather-whiteclaw.png",
-      backgroundFocalPoint: "50% 20%",
+      background: "/assets/heather-whiteclaw-borderlands.png",
+      backgroundFocalPoint: "50% 30%",
       opening: "*The moonlight glowing overhead barely trickles past the thick forest canopy, bathing the undergrowth in a heavy, oppressive darkness that swallows everything. One shadowy stretch of the woods looks the same as any other, but there's a noticeable shift in the air the deeper you go. Even sound seems to disappear in the dark, right up until a footstep snaps a twig just inches behind you.*\n\nHands up. Nice and slow. *A woman's voice snarls from your back, followed by the click-clack of a shotgun being racked.* Start talking. Who the hell are you, and why'd you leave the road? *She growls each word through her teeth, her breath hot and furious but tightly controlled.* This is Whiteclaw territory. You better have a damn good reason to be stinking up my woods, punk.",
       theme: {
         accent: "#d9bd68",
