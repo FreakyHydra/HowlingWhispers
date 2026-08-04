@@ -188,6 +188,9 @@ test("impersonation receives authoritative character safety", () => {
   assert.match(result.prompt, /This character is a minor/);
   assert.match(result.prompt, /Disallowed content: romance; sexual content/);
   assert.match(result.prompt, /Suggest a kind response/);
+  assert.match(result.prompt, /<player-direction>/);
+  assert.match(result.prompt, /exactly one plausible next player turn/);
+  assert.match(result.prompt, /Never write the character's turn/);
 });
 
 test("autopilot compiles the autonomy law without handover cues", () => {

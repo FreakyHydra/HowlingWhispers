@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.5 — Keep turns contained
+
+**🛑 Autopilot Next is now one beat, not a marathon.** Error messages can also be dismissed, and impersonation directions are clearly separated from story text so they are less likely to be echoed into the conversation.
+
+### What's new
+- **One-shot Next** — manually advancing Autopilot generates one character beat and pauses instead of leaving the automatic 12-second loop running.
+- **Dismissible errors** — the red NovelAI/Ollama error banner now has a close button.
+- **Cleaner impersonation** — the model is explicitly restricted to one player turn, with private directions treated as control input rather than dialogue.
+
+### Quality
+- 30/30 unit tests · lint clean · build okay.
+
 ## 0.4.4 — Sharper shares
 
 **🔍 Shared scenes are now rendered at higher resolution** so you can zoom into the pasted image in Discord and actually read every line without downloading.

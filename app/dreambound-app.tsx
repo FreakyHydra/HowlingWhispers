@@ -2065,7 +2065,6 @@ export default function DreamboundApp() {
   const autopilotBusyRef = useRef(false);
   const [autopilotBusy, setAutopilotBusy] = useState(false);
   const [autopilotError, setAutopilotError] = useState("");
-  const [beatRequest, setBeatRequest] = useState(0);
   const [showAutopilotStart, setShowAutopilotStart] = useState(false);
   const [autopilotSeed, setAutopilotSeed] = useState("");
   const [autopilotPov, setAutopilotPov] = useState<"first" | "third" | "narrator">("third");
@@ -2154,6 +2153,19 @@ export default function DreamboundApp() {
     setAutopilotError("");
   }
 
+  function requestNextAutopilotBeat() {
+    if (!activeSession || !activeMessageKey || autopilotBusyRef.current || isReplyingRef.current || isImpersonatingRef.current) {
+      return;
+    }
+    const messageKey = activeMessageKey;
+    setSessions((current) => current.map((session) =>
+      session.id === activeSession.id
+        ? { ...session, autopilot: true, autopilotPaused: true, autopilotStopped: false, updatedAt: Date.now() }
+        : session,
+    ));
+    void runAutopilotBeat(messageKey);
+  }
+
   useEffect(() => {
     if (view !== "chat" || !activeSession?.autopilot || activeSession?.autopilotPaused || !activeMessageKey) return;
     const messageKey = activeMessageKey;
@@ -2164,11 +2176,6 @@ export default function DreamboundApp() {
       window.clearInterval(interval);
     };
   }, [view, activeMessageKey, activeSession?.autopilot, activeSession?.autopilotPaused, runAutopilotBeat]);
-
-  useEffect(() => {
-    if (beatRequest === 0 || view !== "chat" || !activeSession?.autopilot || !activeMessageKey) return;
-    void runAutopilotBeat(activeMessageKey);
-  }, [beatRequest, view, activeMessageKey, activeSession?.autopilot, runAutopilotBeat]);
 
   function isAbortError(error: unknown): boolean {
     return error instanceof DOMException && error.name === "AbortError";
@@ -3851,9 +3858,23 @@ export default function DreamboundApp() {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
+              <div className="changelog-mark">🛑</div>
+              <div>
+                <span>Version {packageInfo.version} · Keep turns contained</span>
+                <h2>Next is one beat, not a marathon</h2>
+                <p>
+                  Manually advancing Autopilot now generates one character beat and pauses instead
+                  of leaving the automatic loop running. NovelAI and Ollama errors can be dismissed,
+                  and impersonation directions are treated as private control input rather than
+                  story text.
+                </p>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
               <div className="changelog-mark">🔍</div>
               <div>
-                <span>Version {packageInfo.version} · Sharper shares</span>
+                <span>Version 0.4.4 · Sharper shares</span>
                 <h2>Zoom in and actually read it</h2>
                 <p>
                   Shared scenes now render at 50% higher resolution, so when you paste one into
@@ -4851,6 +4872,14 @@ export default function DreamboundApp() {
                 {!configured && (
                   <button onClick={() => setView("settings")}>Connect NovelAI</button>
                 )}
+                <button
+                  className="chat-error-close"
+                  onClick={() => setChatError("")}
+                  aria-label="Dismiss error"
+                  title="Dismiss error"
+                >
+                  ×
+                </button>
               </div>
             )}
             {activeSession?.autopilot && (
@@ -4898,8 +4927,8 @@ export default function DreamboundApp() {
                     {activeSession.autopilotPaused ? "Resume" : "Pause"}
                   </button>
                   <button
-                    onClick={() => setBeatRequest((count) => count + 1)}
-                    disabled={autopilotBusy}
+                      onClick={requestNextAutopilotBeat}
+                      disabled={autopilotBusy}
                   >
                     Next
                   </button>

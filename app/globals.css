@@ -3251,6 +3251,14 @@ a:focus-visible {
   text-underline-offset: 3px;
 }
 
+.chat-error .chat-error-close {
+  font-size: 18px;
+  line-height: 1;
+  margin-left: 2px;
+  padding: 0 2px;
+  text-decoration: none;
+}
+
 .composer {
   background: rgba(26, 19, 21, 0.97);
   border: 1px solid rgba(215, 138, 94, 0.72);
