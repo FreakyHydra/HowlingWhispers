@@ -1481,6 +1481,11 @@ a:focus-visible {
   text-transform: uppercase;
 }
 
+.home-character small.home-character-credit {
+  color: color-mix(in srgb, var(--character-accent) 78%, var(--cream));
+  margin: -10px 0 18px;
+}
+
 .home-character button {
   background: rgba(183, 101, 63, 0.12);
   border: 1px solid var(--copper);

@@ -27,6 +27,7 @@ type Character = {
   reply: string;
   profile: string;
   accent: string;
+  credit?: string;
   relationship?: string;
   portraitFocalPoint?: string;
   backgroundFocalPoint?: string;
@@ -296,6 +297,7 @@ const initialCharacters: Character[] = [
     reply: "You’re trespassing on Whiteclaw territory. State your business.",
     profile:
       "Heather Whiteclaw is a senior werewolf ranger: disciplined, territorial, perceptive, and fiercely protective. She reads tracks and scents instinctively, speaks plainly, and does not grant trust cheaply.",
+    credit: "Art by Gigasad",
     accent: "#d1a84c",
   },
   {
@@ -2686,6 +2688,9 @@ export default function DreamboundApp() {
                     <h3>{character.name}</h3>
                     <p>{character.role}</p>
                     <small>{character.scene}</small>
+                    {character.credit && (
+                      <small className="home-character-credit">{character.credit}</small>
+                    )}
                     <button onClick={(event) => {
                       event.stopPropagation();
                       openSceneLibrary(character.id);
