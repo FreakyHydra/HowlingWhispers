@@ -1053,10 +1053,19 @@ function buildParagraphs(
   });
 }
 
-function isDirectPlayerTurn(value: string): boolean {
-  const text = value.trim();
-  return /^(?:I\b|I'm\b|I've\b|I'd\b|I'll\b|me\b|my\b|can I\b|may I\b|will you\b|do you\b|please\b|\*)/i.test(text)
-    || /[?!]["']?$/.test(text);
+function normalizeDirection(value: string): string {
+  return value.toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function isInvalidImpersonationDraft(direction: string, draft: string, characterName: string): boolean {
+  const normalizedDirection = normalizeDirection(direction);
+  const normalizedDraft = normalizeDirection(draft);
+  if (!normalizedDraft) return true;
+  if (normalizedDirection && (normalizedDraft === normalizedDirection || normalizedDraft.includes(normalizedDirection))) {
+    return normalizedDraft.split(" ").length <= normalizedDirection.split(" ").length + 8;
+  }
+  const escapedName = characterName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^(?:she|her|he|him|they|them|${escapedName})\\b`, "i").test(draft.trim());
 }
 
 export default function DreamboundApp() {
@@ -2281,9 +2290,17 @@ export default function DreamboundApp() {
     setIsImpersonating(true);
     setChatError("");
     try {
-      const suggestion = playerDirection && isDirectPlayerTurn(playerDirection)
-        ? playerDirection
-        : await requestStoryReply(activeMessages, "impersonate", playerDirection);
+      let suggestion = await requestStoryReply(activeMessages, "impersonate", playerDirection);
+      if (isInvalidImpersonationDraft(playerDirection, suggestion, selected.name)) {
+        suggestion = await requestStoryReply(
+          activeMessages,
+          "impersonate",
+          `${playerDirection}\n\nTurn this direction into a new concrete first-person player action or dialogue. Do not repeat the direction, answer it as ${selected.name}, or describe ${selected.name}'s reaction.`,
+        );
+      }
+      if (isInvalidImpersonationDraft(playerDirection, suggestion, selected.name)) {
+        throw new Error("Impersonation could not create a player-side turn. Try a shorter direction.");
+      }
       const playerMessage: Message = {
         id: Date.now(),
         sender: "player",
@@ -3864,7 +3881,20 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured latest">
               <div className="changelog-mark">◐</div>
               <div>
-                <span>Version {packageInfo.version} · Send direct player turns correctly</span>
+                <span>Version {packageInfo.version} · Make Impersonate directional</span>
+                <h2>Your prompt becomes a road sign</h2>
+                <p>
+                  Impersonate now keeps your direction private and turns its intent into a new
+                  player-side action or line of dialogue. Echoed directions and character-side
+                  drafts are rejected and retried instead of being posted in your bubble.
+                </p>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
+              <div className="changelog-mark">◐</div>
+              <div>
+                <span>Version 0.4.2.6 · Send direct player turns correctly</span>
                 <h2>Your first-person line stays yours</h2>
                 <p>
                   A complete line such as “I want…” is now sent directly as the player turn, so
@@ -5266,8 +5296,8 @@ export default function DreamboundApp() {
             <p className="eyebrow">Take the player&apos;s turn</p>
             <h2 id="impersonate-title">Guide the impersonation</h2>
             <p className="modal-intro">
-              Write a complete first-person line to send it exactly as your turn, or give the story
-              engine an intention, action, or tone to draft for you. Leave it empty to choose a
+              Give the story engine a private direction for your next turn. It will use that
+              direction as a road sign, not copy it into the chat. Leave it empty to choose a
               plausible response from the story so far.
             </p>
             <form

@@ -193,6 +193,7 @@ test("impersonation receives authoritative character safety", () => {
   assert.match(result.prompt, /Never write the character's turn/);
   assert.match(result.prompt, /PLAYER VOICE RULE/);
   assert.match(result.prompt, /first-person point of view/);
+  assert.match(result.prompt, /out-of-character road sign/);
 });
 
 test("autopilot compiles the autonomy law without handover cues", () => {

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2.7 — Make Impersonate directional
+
+**◐ Impersonate now treats your text as a private road sign.** It generates a new player-side turn instead of copying the direction, answering it as the character, or placing character prose in the player bubble.
+
+### What's new
+- **Marinara-style separation** — direction input stays out of the visible conversation, while the generated player turn is checked and retried if it echoes the direction or starts as character-side prose.
+
+### Quality
+- 30/30 unit tests · lint clean · build okay.
+
 ## 0.4.2.6 — Send direct player turns correctly
 
 **◐ Complete first-person lines in Impersonate are now sent as the player turn.** The model no longer gets a chance to mistake a line like “I want…” for something the character should say or do.
