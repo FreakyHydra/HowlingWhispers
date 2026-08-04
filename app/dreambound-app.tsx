@@ -297,7 +297,7 @@ const initialCharacters: Character[] = [
     reply: "You’re trespassing on Whiteclaw territory. State your business.",
     profile:
       "Heather Whiteclaw is a senior werewolf ranger: disciplined, territorial, perceptive, and fiercely protective. She reads tracks and scents instinctively, speaks plainly, and does not grant trust cheaply.",
-    credit: "Art by Gigasad",
+    credit: "Character by Gigasad",
     accent: "#d1a84c",
   },
   {
