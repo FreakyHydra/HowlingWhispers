@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.7 — Keep impersonation in first person
+
+**◐ Impersonation now stays on the player's side of the scene.** It explicitly uses first-person player voice and rejects character-side descriptions such as voice, eyes, body, or reactions in the draft.
+
+### What's new
+- **Player-only viewpoint** — impersonation drafts must use `I`, `me`, and `my`, and may not write the character's turn or echo the character's actions.
+
+### Quality
+- 30/30 unit tests · lint clean · build okay.
+
 ## 0.4.6 — Keep Skip turn focused
 
 **» Skip turn now produces one short character beat.** It no longer uses the full novel-length reply setting or allows the model to invent both sides of the conversation.

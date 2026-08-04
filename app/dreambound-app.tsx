@@ -3858,9 +3858,22 @@ export default function DreamboundApp() {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
+              <div className="changelog-mark">◐</div>
+              <div>
+                <span>Version {packageInfo.version} · Keep impersonation in first person</span>
+                <h2>Impersonate stays on your side</h2>
+                <p>
+                  Impersonation drafts now use first-person player voice and are explicitly blocked
+                  from writing the character&apos;s voice, eyes, body, feelings, or reaction inside the
+                  player bubble.
+                </p>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
               <div className="changelog-mark">»</div>
               <div>
-                <span>Version {packageInfo.version} · Keep Skip turn focused</span>
+                <span>Version 0.4.6 · Keep Skip turn focused</span>
                 <h2>Skip turn stays on one side</h2>
                 <p>
                   The normal roleplay skip action now produces one concise character-only beat,

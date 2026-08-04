@@ -191,6 +191,8 @@ test("impersonation receives authoritative character safety", () => {
   assert.match(result.prompt, /<player-direction>/);
   assert.match(result.prompt, /exactly one plausible next player turn/);
   assert.match(result.prompt, /Never write the character's turn/);
+  assert.match(result.prompt, /PLAYER VOICE RULE/);
+  assert.match(result.prompt, /first-person point of view/);
 });
 
 test("autopilot compiles the autonomy law without handover cues", () => {
