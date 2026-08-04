@@ -1495,6 +1495,20 @@ a:focus-visible {
   margin: -10px 0 18px;
 }
 
+.home-character h3 a,
+.entrance-feature-copy h2 a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 5px;
+}
+
+.home-character h3 a:hover,
+.entrance-feature-copy h2 a:hover {
+  text-decoration-color: currentColor;
+}
+
 .home-character-credit a,
 .entrance-feature-credit a {
   color: inherit;
