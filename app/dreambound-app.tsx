@@ -3025,12 +3025,14 @@ export default function DreamboundApp() {
                         <button onClick={() => startScene(selected.id, scene)}>
                           Begin this scene <span aria-hidden="true">→</span>
                         </button>
-                        <button
-                          className="scene-edit-button"
-                          onClick={() => setStoryEditor({ mode: "edit", scene })}
-                        >
-                          Edit story
-                        </button>
+                        {scene.id.startsWith("custom-") && (
+                          <button
+                            className="scene-edit-button"
+                            onClick={() => setStoryEditor({ mode: "edit", scene })}
+                          >
+                            Edit story
+                          </button>
+                        )}
                         {scene.id.startsWith("custom-") && (
                           <button
                             className="scene-delete-button"
