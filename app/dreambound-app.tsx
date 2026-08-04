@@ -146,6 +146,7 @@ const entranceFeatures = [
     accent: "#45b8b3",
     credit: "",
     creditUrl: "",
+    contactUrl: "",
   },
   {
     id: "heather",
@@ -158,6 +159,7 @@ const entranceFeatures = [
     accent: "#d1a84c",
     credit: "Character by Gigasad",
     creditUrl: "https://botbooru.com/character/15573",
+    contactUrl: "",
   },
   {
     id: "peony",
@@ -170,6 +172,7 @@ const entranceFeatures = [
     accent: "#bd72da",
     credit: "",
     creditUrl: "",
+    contactUrl: "",
   },
   {
     id: "senako-steel",
@@ -182,6 +185,20 @@ const entranceFeatures = [
     accent: "#b7d620",
     credit: "",
     creditUrl: "",
+    contactUrl: "",
+  },
+  {
+    id: "curation",
+    name: "Your character here",
+    role: "Curated spotlight",
+    line: "Want your character curated into The Howling Whispers? Join the Discord and let's talk.",
+    image: "",
+    position: "center right",
+    mobilePosition: "68% top",
+    accent: "#e0b15c",
+    credit: "",
+    creditUrl: "",
+    contactUrl: "https://discord.gg/jrJRrAXBRH",
   },
 ] as const;
 
@@ -2457,7 +2474,9 @@ export default function DreamboundApp() {
       <main
         className="login-shell"
         style={{
-          "--entrance-image": `url("${entranceFeature.image}")`,
+          "--entrance-image": entranceFeature.image
+            ? `url("${entranceFeature.image}")`
+            : "linear-gradient(120deg, #241a10, #0a090b)",
           "--entrance-position": entranceFeature.position,
           "--entrance-mobile-position": entranceFeature.mobilePosition,
           "--entrance-accent": entranceFeature.accent,
@@ -2494,11 +2513,11 @@ export default function DreamboundApp() {
         </section>
         <aside className="entrance-feature" aria-label="Featured character">
           <div className="entrance-feature-copy">
-            <p className="eyebrow">Tonight&apos;s voice</p>
+            <p className="eyebrow">{entranceFeature.contactUrl ? "Curation call" : "Tonight's voice"}</p>
             <h2>
-              {entranceFeature.creditUrl ? (
+              {(entranceFeature.creditUrl || entranceFeature.contactUrl) ? (
                 <a
-                  href={entranceFeature.creditUrl}
+                  href={entranceFeature.creditUrl || entranceFeature.contactUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
