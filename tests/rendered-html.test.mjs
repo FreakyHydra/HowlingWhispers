@@ -45,6 +45,7 @@ test("renders development preview metadata", async () => {
   assert.match(clientBundle, /peony-void-garden-v2\.png/);
   assert.match(clientBundle, /peony-bookcraft-workshop\.png/);
   assert.match(clientBundle, /Save for this computer/);
+  assert.match(clientBundle, /Save a scene as an image/);
   assert.match(clientBundle, /Local server/);
   assert.match(clientBundle, /This computer/);
   assert.match(clientBundle, /Refresh server models/);

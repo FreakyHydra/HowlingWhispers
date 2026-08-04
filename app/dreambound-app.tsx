@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { FormEvent, useCallback, useMemo, useRef, useState, useEffect, useSyncExternalStore } from "react";
+import { toBlob } from "html-to-image";
 import packageInfo from "../package.json";
 import { legacyCharacterToCanon, type AgeCategory } from "../lib/characters/canonical";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
@@ -1051,6 +1052,14 @@ export default function DreamboundApp() {
   const [importError, setImportError] = useState("");
   const [connectionError, setConnectionError] = useState("");
   const [chatError, setChatError] = useState("");
+  const [showShare, setShowShare] = useState(false);
+  const [shareCount, setShareCount] = useState(() => readSession<number>("shareCount", 5));
+  const [shareCaptions, setShareCaptions] = useState(() => readSession<boolean>("shareCaptions", true));
+  const [shareHeader, setShareHeader] = useState(() => readSession<boolean>("shareHeader", true));
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareFeedback, setShareFeedback] = useState("");
+  const [shareError, setShareError] = useState("");
+  const exportSurfaceRef = useRef<HTMLDivElement | null>(null);
   const [connectionFeedback, setConnectionFeedback] = useState("");
   const [testProgress, setTestProgress] = useState<{
     phase: "connecting" | "loading" | "generating";
@@ -1133,6 +1142,18 @@ export default function DreamboundApp() {
     writeSession("showCharacterRail", showCharacterRail);
     writeSession("showContextRail", showContextRail);
   }, [showCharacterRail, showContextRail]);
+
+  useEffect(() => {
+    writeSession("shareCount", shareCount);
+  }, [shareCount]);
+
+  useEffect(() => {
+    writeSession("shareCaptions", shareCaptions);
+  }, [shareCaptions]);
+
+  useEffect(() => {
+    writeSession("shareHeader", shareHeader);
+  }, [shareHeader]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -1315,6 +1336,7 @@ export default function DreamboundApp() {
     ? storedContextManifest
     : undefined;
   const activeMessages = messages[activeMessageKey] ?? [];
+  const shareMessages = activeMessages.slice(-Math.max(1, Math.min(shareCount, activeMessages.length)));
   const activeTheme = activeScene.theme;
   const selectedSessions = sessions
     .filter((session) => session.characterId === selected.id)
@@ -2503,6 +2525,157 @@ export default function DreamboundApp() {
         })}
       </div>
     );
+  }
+
+  function renderMessageBubble(
+    message: Message,
+    isLastCharacter: boolean,
+    options: { live: boolean; showCaption: boolean },
+  ) {
+    const isEditing = options.live && editingId === message.id;
+    const caption =
+      options.showCaption && message.sender !== "narrator"
+        ? message.sender === "character"
+          ? selected.name
+          : playerProfile.name.trim() || "You"
+        : "";
+    return (
+      <article
+        className={`message ${message.sender}${options.live && !seenMessageIds.has(`${activeMessageKey}:${message.id}`) ? " message-new" : ""}`}
+        key={message.id}
+      >
+        {message.sender === "character" && <Portrait character={selected} accent={activeTheme.accent} />}
+        <div className="message-body">
+          {caption && <span className="message-name">{caption}</span>}
+          {isEditing ? (
+            <div className="message-edit">
+              <textarea
+                value={editDraft}
+                onChange={(event) => setEditDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    saveEditMessage(message.id);
+                  }
+                  if (event.key === "Escape") cancelEditMessage();
+                }}
+                autoFocus
+                rows={3}
+              />
+              <div className="message-edit-actions">
+                <button onClick={() => saveEditMessage(message.id)}>Save</button>
+                <button onClick={cancelEditMessage}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {renderMessageText(message.text, message.sender)}
+              {options.live && (
+                <div className="message-actions">
+                  <button
+                    onClick={() => startEditMessage(message.id, message.text)}
+                    aria-label="Edit message"
+                    title="Edit"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    onClick={() => setPendingDeleteMessage(message)}
+                    aria-label="Delete message"
+                    title="Delete"
+                  >
+                    ✕
+                  </button>
+                  {isLastCharacter && (
+                    <button
+                      onClick={() => rerollMessage(message)}
+                      aria-label="Re-roll reply"
+                      title="Re-roll reply"
+                      disabled={isReplying}
+                    >
+                      ↻
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </article>
+    );
+  }
+
+  async function captureChatImage(): Promise<Blob | null> {
+    const node = exportSurfaceRef.current;
+    if (!node) return null;
+    try {
+      await document.fonts.ready;
+      const width = node.scrollWidth || node.offsetWidth;
+      const height = node.scrollHeight || node.offsetHeight;
+      const maxEdge = 15000;
+      let pixelRatio = 2;
+      if (height * pixelRatio > maxEdge || width * pixelRatio > maxEdge) {
+        pixelRatio = Math.max(1, Math.floor(maxEdge / Math.max(width, height)));
+      }
+      const blob = await toBlob(node, { pixelRatio, cacheBust: true });
+      return blob;
+    } catch {
+      return null;
+    }
+  }
+
+  function downloadChatImage(blob: Blob) {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${selected.name.trim().toLowerCase().replace(/\s+/g, "-") || "conversation"}-conversation.png`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function copyChatImage() {
+    if (shareBusy || activeMessages.length === 0) return;
+    setShareBusy(true);
+    setShareError("");
+    try {
+      const blob = await captureChatImage();
+      if (!blob) {
+        setShareError("Couldn't render the image. Try fewer messages.");
+        return;
+      }
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard) {
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+          setShareFeedback("Image copied — paste into Discord");
+          return;
+        } catch {
+          // fall through to download
+        }
+      }
+      downloadChatImage(blob);
+      setShareFeedback("Image downloaded");
+    } finally {
+      setShareBusy(false);
+      window.setTimeout(() => setShareFeedback(""), 3200);
+    }
+  }
+
+  async function downloadChatImageFromButton() {
+    if (shareBusy || activeMessages.length === 0) return;
+    setShareBusy(true);
+    setShareError("");
+    try {
+      const blob = await captureChatImage();
+      if (!blob) {
+        setShareError("Couldn't render the image. Try fewer messages.");
+        return;
+      }
+      downloadChatImage(blob);
+    } finally {
+      setShareBusy(false);
+    }
   }
 
   if (!isHydrated) {
@@ -4050,6 +4223,14 @@ export default function DreamboundApp() {
                 <output>{storyBackgroundBlur}px</output>
               </label>
             )}
+            <button
+              className="share-button"
+              onClick={() => setShowShare(true)}
+              disabled={activeMessages.length === 0}
+              title={activeMessages.length === 0 ? "Nothing to share yet" : "Share this conversation as an image"}
+            >
+              <span aria-hidden="true">⇣</span> Share
+            </button>
           </div>
           <div className="scene-title">
             <h1>{selected.name}</h1>
@@ -4098,65 +4279,7 @@ export default function DreamboundApp() {
               const isLastCharacter =
                 message.sender === "character" &&
                 activeMessages.slice(index + 1).every((m) => m.sender !== "character");
-              return (
-                <article
-                  className={`message ${message.sender}${seenMessageIds.has(`${activeMessageKey}:${message.id}`) ? "" : " message-new"}`}
-                  key={message.id}
-                >
-                  {message.sender === "character" && <Portrait character={selected} accent={activeTheme.accent} />}
-                  {editingId === message.id ? (
-                    <div className="message-edit">
-                      <textarea
-                        value={editDraft}
-                        onChange={(event) => setEditDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" && !event.shiftKey) {
-                            event.preventDefault();
-                            saveEditMessage(message.id);
-                          }
-                          if (event.key === "Escape") cancelEditMessage();
-                        }}
-                        autoFocus
-                        rows={3}
-                      />
-                      <div className="message-edit-actions">
-                        <button onClick={() => saveEditMessage(message.id)}>Save</button>
-                        <button onClick={cancelEditMessage}>Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      {renderMessageText(message.text, message.sender)}
-                      <div className="message-actions">
-                        <button
-                          onClick={() => startEditMessage(message.id, message.text)}
-                          aria-label="Edit message"
-                          title="Edit"
-                        >
-                          ✎
-                        </button>
-                        <button
-                          onClick={() => setPendingDeleteMessage(message)}
-                          aria-label="Delete message"
-                          title="Delete"
-                        >
-                          ✕
-                        </button>
-                        {isLastCharacter && (
-                          <button
-                            onClick={() => rerollMessage(message)}
-                            aria-label="Re-roll reply"
-                            title="Re-roll reply"
-                            disabled={isReplying}
-                          >
-                            ↻
-                          </button>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </article>
-              );
+              return renderMessageBubble(message, isLastCharacter, { live: true, showCaption: false });
             })}
             {isReplying && (
               <article className="message character typing" aria-label={`${selected.name} is replying`}>
@@ -4692,6 +4815,117 @@ export default function DreamboundApp() {
               </button>
             </form>
           </section>
+        </div>
+      )}
+
+      {showShare && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setShowShare(false)}>
+          <section
+            className="modal share-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="share-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button className="modal-close" onClick={() => setShowShare(false)} aria-label="Close">
+              ×
+            </button>
+            <p className="eyebrow">Share the story</p>
+            <h2 id="share-title">Save a scene as an image</h2>
+            <p className="modal-intro">
+              Render the latest moments into a crisp image you can paste straight into Discord.
+              Open the image to zoom in and read every line.
+            </p>
+            <div className="share-options">
+              <label>
+                Messages to include
+                <input
+                  type="number"
+                  min={1}
+                  max={Math.max(1, activeMessages.length)}
+                  value={shareCount}
+                  onChange={(event) =>
+                    setShareCount(Math.max(1, Math.min(Number(event.target.value) || 1, Math.max(1, activeMessages.length))))
+                  }
+                />
+              </label>
+              <label className="share-toggle">
+                <input
+                  type="checkbox"
+                  checked={shareCaptions}
+                  onChange={(event) => setShareCaptions(event.target.checked)}
+                />
+                <span>Name captions on bubbles</span>
+              </label>
+              <label className="share-toggle">
+                <input
+                  type="checkbox"
+                  checked={shareHeader}
+                  onChange={(event) => setShareHeader(event.target.checked)}
+                />
+                <span>Scene header</span>
+              </label>
+            </div>
+            {shareError && <p className="share-error">{shareError}</p>}
+            <div className="share-actions">
+              <button
+                className="primary-button"
+                onClick={copyChatImage}
+                disabled={shareBusy || activeMessages.length === 0}
+              >
+                {shareBusy ? "Rendering…" : shareFeedback || "Copy image"}
+              </button>
+              <button
+                className="outline-button"
+                onClick={downloadChatImageFromButton}
+                disabled={shareBusy || activeMessages.length === 0}
+              >
+                Download PNG
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {showShare && (
+        <div className="chat-export-root" aria-hidden="true">
+          <div
+            className="chat-export-surface"
+            ref={exportSurfaceRef}
+            style={
+              {
+                "--theme-accent": activeTheme.accent,
+                "--theme-accent-muted": activeTheme.accentMuted,
+                "--theme-glow": activeTheme.glow,
+                "--theme-surface": activeTheme.surface,
+                "--scene-wash": activeTheme.wash,
+                "--copper": activeTheme.accentMuted,
+                "--copper-bright": activeTheme.accent,
+                "--rune": activeTheme.accent,
+                "--chat-font-size": `${textStyle.fontSize}px`,
+              } as React.CSSProperties
+            }
+          >
+            {shareHeader && (
+              <div className="chat-export-header">
+                <h2>{selected.name}</h2>
+                <p>
+                  {activeScene.title} · {activeScene.weather}
+                </p>
+              </div>
+            )}
+            <div className="messages chat-export-messages">
+              {shareMessages.map((message, index) => {
+                const isLastCharacter =
+                  message.sender === "character" &&
+                  shareMessages.slice(index + 1).every((m) => m.sender !== "character");
+                return renderMessageBubble(message, isLastCharacter, {
+                  live: false,
+                  showCaption: shareCaptions,
+                });
+              })}
+            </div>
+          </div>
         </div>
       )}
 

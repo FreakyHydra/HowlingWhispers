@@ -2668,6 +2668,101 @@ a:focus-visible {
   text-align: right;
 }
 
+.chat-view-controls button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.chat-export-root {
+  left: -99999px;
+  position: fixed;
+  top: 0;
+  z-index: -1;
+}
+
+.chat-export-surface {
+  background:
+    radial-gradient(120% 90% at 20% 0%, color-mix(in srgb, var(--theme-accent) 10%, transparent), transparent 55%),
+    linear-gradient(165deg, #181019, #0c0a0e 58%, #100d11);
+  border: 1px solid rgba(183, 101, 63, 0.35);
+  border-radius: 12px;
+  box-sizing: border-box;
+  padding: 34px 30px 30px;
+  width: 720px;
+}
+
+.chat-export-header {
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-accent) 42%, transparent);
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+}
+
+.chat-export-header h2 {
+  color: var(--cream);
+  font-family: var(--serif);
+  font-size: 32px;
+  font-weight: 500;
+  line-height: 1;
+  margin: 0 0 7px;
+}
+
+.chat-export-header p {
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.chat-export-messages {
+  align-items: flex-start;
+  bottom: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  left: auto;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  position: static;
+  width: 100%;
+}
+
+.chat-export-messages .message {
+  max-width: 86%;
+}
+
+.chat-export-messages .message.player {
+  align-self: flex-end;
+}
+
+.message-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.message-name {
+  align-self: flex-start;
+  background: #17101a;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 42%, transparent);
+  border-radius: 999px;
+  color: var(--theme-accent);
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  padding: 4px 9px;
+  text-transform: uppercase;
+}
+
+.message.player .message-name {
+  align-self: flex-end;
+}
+
 .scene-title h1 {
   font-family: var(--serif);
   font-size: clamp(36px, 3vw, 52px);
@@ -3939,6 +4034,60 @@ a:focus-visible {
 
 .modal input[type="range"] {
   accent-color: var(--copper);
+}
+
+.share-options {
+  display: grid;
+  gap: 15px;
+  margin: 4px 0 18px;
+}
+
+.share-options label {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.share-options input[type="number"] {
+  width: 96px;
+}
+
+.share-options input[type="checkbox"] {
+  accent-color: var(--copper);
+  background: none;
+  border: 0;
+  flex: 0 0 auto;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+  width: 15px;
+}
+
+.share-toggle {
+  cursor: pointer;
+}
+
+.share-toggle span {
+  color: var(--body);
+  flex: 1 1 auto;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.share-error {
+  color: #e0705a;
+  font-size: 13px;
+  margin: -4px 0 14px;
+}
+
+.share-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 4px;
 }
 
 .model-description {
