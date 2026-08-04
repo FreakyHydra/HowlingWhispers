@@ -2,7 +2,6 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { FormEvent, useCallback, useMemo, useRef, useState, useEffect, useSyncExternalStore } from "react";
-import { toBlob } from "html-to-image";
 import packageInfo from "../package.json";
 import { legacyCharacterToCanon, type AgeCategory } from "../lib/characters/canonical";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
@@ -952,6 +951,108 @@ function Portrait({ character, accent }: { character: Character; accent?: string
   );
 }
 
+function hexToRgba(hex: string, alpha: number): string {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!match) return `rgba(69, 184, 179, ${alpha})`;
+  const value = parseInt(match[1], 16);
+  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${alpha})`;
+}
+
+function mixHex(hexA: string, hexB: string, amount: number): string {
+  const a = /^#?([0-9a-f]{6})$/i.exec(hexA.trim());
+  const b = /^#?([0-9a-f]{6})$/i.exec(hexB.trim());
+  if (!a || !b) return hexA;
+  const va = parseInt(a[1], 16);
+  const vb = parseInt(b[1], 16);
+  const channel = (from: number, to: number) => Math.round(from + (to - from) * amount);
+  return `rgba(${channel((va >> 16) & 255, (vb >> 16) & 255)}, ${channel((va >> 8) & 255, (vb >> 8) & 255)}, ${channel(va & 255, vb & 255)}, 1)`;
+}
+
+function setLetterSpacing(ctx: CanvasRenderingContext2D, spacing: string) {
+  const canvas2d = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
+  canvas2d.letterSpacing = spacing;
+}
+
+function roundRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radii: [number, number, number, number],
+) {
+  const [topLeft, topRight, bottomRight, bottomLeft] = radii;
+  ctx.beginPath();
+  ctx.moveTo(x + topLeft, y);
+  ctx.lineTo(x + width - topRight, y);
+  ctx.arcTo(x + width, y, x + width, y + topRight, topRight);
+  ctx.lineTo(x + width, y + height - bottomRight);
+  ctx.arcTo(x + width, y + height, x + width - bottomRight, y + height, bottomRight);
+  ctx.lineTo(x + bottomLeft, y + height);
+  ctx.arcTo(x, y + height, x, y + height - bottomLeft, bottomLeft);
+  ctx.lineTo(x, y + topLeft);
+  ctx.arcTo(x, y, x + topLeft, y, topLeft);
+  ctx.closePath();
+}
+
+type PaintedRun = { text: string; color: string; italic: boolean };
+type PaintedLine = PaintedRun[];
+type PaintedParagraph = { runs: PaintedRun[]; isLabel: boolean };
+
+function buildParagraphs(
+  text: string,
+  sender: Message["sender"],
+  characterName: string,
+  textStyle: TextStyle,
+): PaintedParagraph[] {
+  const formattedText = text
+    .replace(/\s*(\*[^*]+\*)\s*/g, "\n\n$1\n\n")
+    .replace(
+      /(?:^|\s+)([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2})(?:\s*\(as\))?:\s*/g,
+      "\n\n$1\n\n",
+    )
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  const raw = formattedText
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+  const paragraphs = raw.length > 0 ? raw : [formattedText];
+  const escapedName = characterName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return paragraphs.map((paragraph) => {
+    const isLabel = /^[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2}(?:\s*\(as\))?:$/.test(paragraph);
+    const isAction =
+      sender === "character" &&
+      !paragraph.startsWith("*") &&
+      new RegExp(`^(?:${escapedName}|she|he|they)\\b`, "i").test(paragraph);
+    const runs: PaintedRun[] = [];
+    if (isAction) {
+      runs.push({ text: paragraph, color: textStyle.action, italic: true });
+    } else {
+      const regex = /(\*[^*]+\*|\[[^\]]+\])/g;
+      let lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(paragraph)) !== null) {
+        if (match.index > lastIndex) {
+          runs.push({ text: paragraph.slice(lastIndex, match.index), color: textStyle.dialogue, italic: false });
+        }
+        const inner = match[0];
+        if (inner.startsWith("*")) {
+          runs.push({ text: inner.slice(1, -1), color: textStyle.action, italic: true });
+        } else {
+          runs.push({ text: inner.slice(1, -1), color: textStyle.narration, italic: false });
+        }
+        lastIndex = regex.lastIndex;
+      }
+      if (lastIndex < paragraph.length) {
+        runs.push({ text: paragraph.slice(lastIndex), color: textStyle.dialogue, italic: false });
+      }
+      if (runs.length === 0) runs.push({ text: paragraph, color: textStyle.dialogue, italic: false });
+    }
+    return { runs, isLabel };
+  });
+}
+
 export default function DreamboundApp() {
   const isHydrated = useSyncExternalStore(
     () => () => {},
@@ -1059,7 +1160,6 @@ export default function DreamboundApp() {
   const [shareBusy, setShareBusy] = useState(false);
   const [shareFeedback, setShareFeedback] = useState("");
   const [shareError, setShareError] = useState("");
-  const exportSurfaceRef = useRef<HTMLDivElement | null>(null);
   const [connectionFeedback, setConnectionFeedback] = useState("");
   const [testProgress, setTestProgress] = useState<{
     phase: "connecting" | "loading" | "generating";
@@ -2606,22 +2706,413 @@ export default function DreamboundApp() {
   }
 
   async function captureChatImage(): Promise<Blob | null> {
-    const node = exportSurfaceRef.current;
-    if (!node) return null;
-    try {
-      await document.fonts.ready;
-      const width = node.scrollWidth || node.offsetWidth;
-      const height = node.scrollHeight || node.offsetHeight;
-      const maxEdge = 15000;
-      let pixelRatio = 2;
-      if (height * pixelRatio > maxEdge || width * pixelRatio > maxEdge) {
-        pixelRatio = Math.max(1, Math.floor(maxEdge / Math.max(width, height)));
+    if (shareMessages.length === 0) return null;
+
+    const scale = 2;
+    const width = 1080;
+    const pad = 64;
+    const contentWidth = width - pad * 2;
+    const maxBubbleWidth = contentWidth * 0.86;
+    const gap = 20;
+
+    const serifFamily = '"Cormorant Garamond", Georgia, serif';
+    const sansFamily = '"Inter", system-ui, sans-serif';
+    const serifFont = (size: number, italic = false) =>
+      `${italic ? "italic " : ""}400 ${size}px ${serifFamily}`;
+    const sansFont = (size: number, weight = 600) => `${weight} ${size}px ${sansFamily}`;
+
+    const baseSize = textStyle.fontSize;
+    const dialogue = textStyle.dialogue;
+    const accent = activeTheme.accent;
+    const accentRgba = (alpha: number) => hexToRgba(accent, alpha);
+    const cream = "#f2dec2";
+    const muted = "#8f8284";
+    const playerName = playerProfile.name.trim() || "You";
+
+    await Promise.all(
+      [
+        serifFont(baseSize),
+        serifFont(baseSize, true),
+        serifFont(baseSize - 1),
+        serifFont(baseSize - 2),
+        serifFont(34),
+        sansFont(10),
+        sansFont(11, 700),
+      ].map((font) => document.fonts.load(font).catch(() => null)),
+    );
+    await document.fonts.ready;
+
+    let portraitImage: HTMLImageElement | null = null;
+    if (selected.image) {
+      portraitImage = new Image();
+      portraitImage.crossOrigin = "anonymous";
+      portraitImage.src = selected.image;
+      try {
+        await portraitImage.decode();
+      } catch {
+        portraitImage = null;
       }
-      const blob = await toBlob(node, { pixelRatio, cacheBust: true });
-      return blob;
-    } catch {
-      return null;
     }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = 2 * scale;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.textBaseline = "middle";
+
+    const measureWord = (text: string, fontSize: number, italic: boolean) => {
+      ctx.font = serifFont(fontSize, italic);
+      return ctx.measureText(text).width;
+    };
+
+    const wrapRuns = (
+      runs: PaintedRun[],
+      maxWidth: number,
+      fontSize: number,
+      italicAll: boolean,
+    ): PaintedLine[] => {
+      const words: Array<{ text: string; color: string; italic: boolean }> = [];
+      for (const run of runs) {
+        const segments = run.text.split("\n");
+        segments.forEach((segment, index) => {
+          if (index > 0) words.push({ text: "\n", color: run.color, italic: run.italic });
+          for (const word of segment.split(/\s+/).filter(Boolean)) {
+            words.push({ text: word, color: run.color, italic: run.italic });
+          }
+        });
+      }
+      const spaceWidth = measureWord(" ", fontSize, false);
+      const lines: PaintedLine[] = [];
+      let line: PaintedLine = [];
+      let lineWidth = 0;
+      const flush = () => {
+        if (line.length) {
+          lines.push(line);
+          line = [];
+          lineWidth = 0;
+        }
+      };
+      for (const word of words) {
+        if (word.text === "\n") {
+          flush();
+          continue;
+        }
+        const italic = italicAll || word.italic;
+        const wordWidth = measureWord(word.text, fontSize, italic);
+        if (wordWidth > maxWidth) {
+          flush();
+          let chunk = "";
+          for (const char of word.text) {
+            const candidate = chunk + char;
+            if (chunk && measureWord(candidate, fontSize, italic) > maxWidth) {
+              lines.push([{ text: chunk, color: word.color, italic: word.italic }]);
+              chunk = char;
+            } else {
+              chunk = candidate;
+            }
+          }
+          if (chunk) line = [{ text: chunk, color: word.color, italic: word.italic }];
+          lineWidth = chunk ? measureWord(chunk, fontSize, italic) : 0;
+          continue;
+        }
+        const separator = line.length ? spaceWidth : 0;
+        if (line.length && lineWidth + separator + wordWidth > maxWidth) {
+          flush();
+          line = [{ text: word.text, color: word.color, italic: word.italic }];
+          lineWidth = wordWidth;
+        } else {
+          if (line.length) lineWidth += separator;
+          line.push({ text: word.text, color: word.color, italic: word.italic });
+          lineWidth += wordWidth;
+        }
+      }
+      flush();
+      if (lines.length === 0) lines.push([{ text: "", color: dialogue, italic: false }]);
+      return lines;
+    };
+
+    const measureLinesWidth = (lines: PaintedLine[], fontSize: number) => {
+      let max = 0;
+      for (const line of lines) {
+        let lineWidth = 0;
+        line.forEach((run, index) => {
+          if (index > 0) lineWidth += measureWord(" ", fontSize, false);
+          lineWidth += measureWord(run.text, fontSize, run.italic);
+        });
+        max = Math.max(max, lineWidth);
+      }
+      return max;
+    };
+
+    const drawMessageText = (
+      wrapped: Array<{ lines: PaintedLine[]; isLabel: boolean; labelWidth: number; label: string }>,
+      x: number,
+      yTop: number,
+      fontSize: number,
+      lineHeight: number,
+      italicAll: boolean,
+    ) => {
+      let y = yTop;
+      for (const paragraph of wrapped) {
+        if (paragraph.isLabel) {
+          setLetterSpacing(ctx, "1.2px");
+          ctx.font = sansFont(11, 700);
+          ctx.fillStyle = accent;
+          ctx.fillText(paragraph.label.toUpperCase(), x, y + 13 / 2);
+          setLetterSpacing(ctx, "0px");
+          y += 13;
+        } else {
+          for (const line of paragraph.lines) {
+            let cx = x;
+            let first = true;
+            for (const run of line) {
+              if (!first) cx += measureWord(" ", fontSize, italicAll);
+              first = false;
+              ctx.font = serifFont(fontSize, italicAll || run.italic);
+              ctx.fillStyle = run.color;
+              ctx.fillText(run.text, cx, y + lineHeight / 2);
+              cx += measureWord(run.text, fontSize, italicAll || run.italic);
+            }
+            y += lineHeight;
+          }
+        }
+      }
+    };
+
+    const measurePill = (text: string) => {
+      setLetterSpacing(ctx, "1.2px");
+      ctx.font = sansFont(10, 600);
+      const textWidth = ctx.measureText(text.toUpperCase()).width;
+      setLetterSpacing(ctx, "0px");
+      return textWidth + 20;
+    };
+
+    const drawPill = (text: string, x: number, y: number) => {
+      const pillHeight = 20;
+      const pillWidth = measurePill(text);
+      roundRectPath(ctx, x, y, pillWidth, pillHeight, [10, 10, 10, 10]);
+      ctx.fillStyle = "#17101a";
+      ctx.fill();
+      ctx.strokeStyle = accentRgba(0.42);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      setLetterSpacing(ctx, "1.2px");
+      ctx.font = sansFont(10, 600);
+      ctx.fillStyle = accent;
+      ctx.fillText(text.toUpperCase(), x + 10, y + pillHeight / 2);
+      setLetterSpacing(ctx, "0px");
+    };
+
+    const drawPortrait = (cx: number, cy: number, radius: number) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      if (portraitImage && portraitImage.naturalWidth > 0) {
+        const cover = Math.max((radius * 2) / portraitImage.naturalWidth, (radius * 2) / portraitImage.naturalHeight);
+        const drawWidth = portraitImage.naturalWidth * cover;
+        const drawHeight = portraitImage.naturalHeight * cover;
+        ctx.drawImage(portraitImage, cx - drawWidth / 2, cy - drawHeight / 2, drawWidth, drawHeight);
+      } else {
+        ctx.fillStyle = "#17101a";
+        ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+      }
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = accentRgba(0.52);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    };
+
+    const blocks: Array<{ top: number; height: number; paint: () => void }> = [];
+    let cursorY = pad;
+
+    if (shareHeader) {
+      const nameSize = 34;
+      const nameLineHeight = Math.round(nameSize * 1.02);
+      const subtitleLine = 12;
+      const inner = nameLineHeight + 7 + subtitleLine;
+      const blockHeight = inner + 16 + 1 + gap;
+      const top = cursorY;
+      blocks.push({
+        top,
+        height: blockHeight,
+        paint: () => {
+          ctx.font = serifFont(nameSize);
+          ctx.fillStyle = cream;
+          ctx.fillText(selected.name, pad, top + nameLineHeight / 2);
+          setLetterSpacing(ctx, "1.4px");
+          ctx.font = sansFont(10, 600);
+          ctx.fillStyle = muted;
+          ctx.fillText(
+            `${activeScene.title} · ${activeScene.weather}`.toUpperCase(),
+            pad,
+            top + nameLineHeight + 7 + subtitleLine / 2,
+          );
+          setLetterSpacing(ctx, "0px");
+          const ruleY = top + inner + 16;
+          ctx.strokeStyle = accentRgba(0.42);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(pad, ruleY);
+          ctx.lineTo(width - pad, ruleY);
+          ctx.stroke();
+        },
+      });
+      cursorY += blockHeight;
+    }
+
+    for (const message of shareMessages) {
+      const { sender } = message;
+      const caption =
+        shareCaptions && sender !== "narrator"
+          ? sender === "character"
+            ? selected.name
+            : playerName
+          : "";
+      const paragraphs = buildParagraphs(message.text, sender, selected.name, textStyle);
+
+      let fontSize = baseSize;
+      let lineHeight: number;
+      let textColumnMax: number;
+      let padTop = 0;
+      let padLeft = 0;
+      let padRight = 0;
+      let alignRight = false;
+      let italicAll = false;
+      if (sender === "character") {
+        fontSize = baseSize;
+        lineHeight = Math.round(baseSize * 1.42);
+        padTop = 11;
+        padLeft = 10;
+        padRight = 21;
+        textColumnMax = maxBubbleWidth - 44 - 13 - padLeft - padRight;
+      } else if (sender === "player") {
+        fontSize = baseSize - 1;
+        lineHeight = Math.round(fontSize * 1.42);
+        padTop = 12;
+        padLeft = 20;
+        padRight = 20;
+        alignRight = true;
+        textColumnMax = maxBubbleWidth - padLeft - padRight;
+      } else {
+        fontSize = baseSize - 2;
+        lineHeight = Math.round(fontSize * 1.25);
+        padTop = 4;
+        padLeft = 16;
+        padRight = 16;
+        italicAll = true;
+        textColumnMax = maxBubbleWidth - padLeft - padRight;
+      }
+
+      const captionWidth = caption ? measurePill(caption) : 0;
+      const captionHeight = caption ? 20 + 6 : 0;
+
+      const wrapped: Array<{ lines: PaintedLine[]; isLabel: boolean; labelWidth: number; label: string }> = [];
+      let textHeight = 0;
+      let previousLabel = false;
+      let maxLineWidth = 0;
+      for (const paragraph of paragraphs) {
+        if (paragraph.isLabel) {
+          setLetterSpacing(ctx, "1.2px");
+          ctx.font = sansFont(11, 700);
+          const labelWidth = Math.round(ctx.measureText(paragraph.text.toUpperCase()).width + 2);
+          setLetterSpacing(ctx, "0px");
+          maxLineWidth = Math.max(maxLineWidth, labelWidth);
+          if (textHeight > 0) textHeight += previousLabel ? 8 : 14;
+          textHeight += 13;
+          wrapped.push({ lines: [], isLabel: true, labelWidth, label: paragraph.text });
+          previousLabel = true;
+        } else {
+          const lines = wrapRuns(paragraph.runs, textColumnMax, fontSize, italicAll);
+          maxLineWidth = Math.max(maxLineWidth, measureLinesWidth(lines, fontSize));
+          if (textHeight > 0) textHeight += previousLabel ? 8 : 14;
+          textHeight += lines.length * lineHeight;
+          wrapped.push({ lines, isLabel: false, labelWidth: 0, label: "" });
+          previousLabel = false;
+        }
+      }
+
+      const textWidth = Math.min(Math.ceil(maxLineWidth), textColumnMax);
+      const contentWidth = Math.max(textWidth, captionWidth);
+      const bubbleWidth =
+        sender === "character"
+          ? Math.min(maxBubbleWidth, contentWidth + 44 + 13 + padLeft + padRight)
+          : Math.min(maxBubbleWidth, contentWidth + padLeft + padRight);
+      const bodyHeight = captionHeight + textHeight;
+      const bubbleHeight =
+        sender === "character"
+          ? Math.max(bodyHeight, 46) + padTop + 11
+          : bodyHeight + padTop + (sender === "narrator" ? 4 : 12);
+      const bubbleX = alignRight ? width - pad - bubbleWidth : pad;
+      const top = cursorY;
+      const textTop = top + padTop + captionHeight;
+      const textLeft = sender === "character" ? bubbleX + padLeft + 44 + 13 : bubbleX + padLeft;
+
+      blocks.push({
+        top,
+        height: bubbleHeight + gap,
+        paint: () => {
+          if (sender !== "narrator") {
+            if (sender === "character") {
+              ctx.fillStyle = activeTheme.surface;
+              ctx.strokeStyle = accentRgba(0.52);
+              roundRectPath(ctx, bubbleX, top, bubbleWidth, bubbleHeight, [6, 22, 22, 6]);
+            } else {
+              const gradient = ctx.createLinearGradient(bubbleX, top, bubbleX + bubbleWidth, top + bubbleHeight);
+              gradient.addColorStop(0, mixHex(accent, "#24171a", 0.34));
+              gradient.addColorStop(1, "rgba(23, 17, 20, 0.96)");
+              ctx.fillStyle = gradient;
+              ctx.strokeStyle = accent;
+              roundRectPath(ctx, bubbleX, top, bubbleWidth, bubbleHeight, [22, 6, 6, 22]);
+            }
+            ctx.fill();
+            ctx.stroke();
+          }
+
+          if (sender === "character") {
+            drawPortrait(bubbleX + padLeft + 22, top + (bubbleHeight - 44) / 2 + 22, 22);
+          }
+
+          if (caption) {
+            if (alignRight) {
+              drawPill(caption, bubbleX + bubbleWidth - padRight - measurePill(caption), top + padTop);
+            } else {
+              drawPill(caption, textLeft, top + padTop);
+            }
+          }
+
+          drawMessageText(wrapped, textLeft, textTop, fontSize, lineHeight, italicAll);
+        },
+      });
+      cursorY += bubbleHeight + gap;
+    }
+
+    const totalHeight = cursorY - gap + pad;
+    canvas.height = Math.max(1, Math.round(totalHeight * scale));
+    ctx.scale(scale, scale);
+    ctx.textBaseline = "middle";
+
+    const background = ctx.createLinearGradient(0, 0, 0, totalHeight);
+    background.addColorStop(0, "#181019");
+    background.addColorStop(0.58, "#0c0a0e");
+    background.addColorStop(1, "#100d11");
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, width, totalHeight);
+    const wash = ctx.createRadialGradient(width * 0.2, 0, 0, width * 0.2, 0, width * 0.6);
+    wash.addColorStop(0, accentRgba(0.1));
+    wash.addColorStop(1, accentRgba(0));
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, width, totalHeight);
+
+    for (const block of blocks) block.paint();
+
+    return await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), "image/png");
+    });
   }
 
   function downloadChatImage(blob: Blob) {
@@ -3348,7 +3839,22 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured latest">
               <div className="changelog-mark">🖼️</div>
               <div>
-                <span>Version {packageInfo.version} · Share the story</span>
+                <span>Version {packageInfo.version} · Share, redrawn</span>
+                <h2>The image actually renders now</h2>
+                <p>
+                  The first cut of the share feature relied on a page-to-picture technique that
+                  silently lost the theme colors and could capture a blank frame. The image is now
+                  painted directly with the same fonts, theme colors, bubbles, and portraits you
+                  see in the chat — so what lands in your clipboard is always the conversation,
+                  every time, on any browser.
+                </p>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
+              <div className="changelog-mark">🖼️</div>
+              <div>
+                <span>Version 0.4.2 · Share the story</span>
                 <h2>The story, ready to share</h2>
                 <p>
                   Every conversation can now become an image. The chat&apos;s ⇣ Share button
@@ -4900,48 +5406,6 @@ export default function DreamboundApp() {
               </button>
             </div>
           </section>
-        </div>
-      )}
-
-      {showShare && (
-        <div className="chat-export-root" aria-hidden="true">
-          <div
-            className="chat-export-surface"
-            ref={exportSurfaceRef}
-            style={
-              {
-                "--theme-accent": activeTheme.accent,
-                "--theme-accent-muted": activeTheme.accentMuted,
-                "--theme-glow": activeTheme.glow,
-                "--theme-surface": activeTheme.surface,
-                "--scene-wash": activeTheme.wash,
-                "--copper": activeTheme.accentMuted,
-                "--copper-bright": activeTheme.accent,
-                "--rune": activeTheme.accent,
-                "--chat-font-size": `${textStyle.fontSize}px`,
-              } as React.CSSProperties
-            }
-          >
-            {shareHeader && (
-              <div className="chat-export-header">
-                <h2>{selected.name}</h2>
-                <p>
-                  {activeScene.title} · {activeScene.weather}
-                </p>
-              </div>
-            )}
-            <div className="messages chat-export-messages">
-              {shareMessages.map((message, index) => {
-                const isLastCharacter =
-                  message.sender === "character" &&
-                  shareMessages.slice(index + 1).every((m) => m.sender !== "character");
-                return renderMessageBubble(message, isLastCharacter, {
-                  live: false,
-                  showCaption: shareCaptions,
-                });
-              })}
-            </div>
-          </div>
         </div>
       )}
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.3 — Share, redrawn
+
+**🖼️ The shared image actually renders now.** The first cut relied on a page-to-picture technique that silently lost the theme colors and could capture a blank frame. The image is now painted directly onto a canvas with the same fonts, theme colors, bubbles, and portraits you see in the chat.
+
+### What's new
+- **Dependable image export** — the share popup now draws the conversation itself instead of photographing the page, so copying or downloading always produces the conversation — no more blank pastes.
+- **Faithful styling** — every conversation renders with its character's theme accent, portrait, name pills, and speech styling, in the chat font size you chose.
+
+### Quality
+- 30/30 unit tests · lint clean · build okay.
+
 ## 0.4.2 — Share the story
 
 **🖼️ The chat is now a picture you can paste.** The latest moments of any conversation render into a crisp, zoomable image you can drop straight into Discord.

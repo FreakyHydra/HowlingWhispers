@@ -1,6 +1,6 @@
 {
   "name": "thehowlingwhispers-roleplay",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -23,7 +23,6 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {
-    "html-to-image": "^1.11.13",
     "next": "16.2.12",
     "react": "19.2.8",
     "react-dom": "19.2.8"

@@ -8,8 +8,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Windows launcher for The Howling Whispers")]
 [assembly: AssemblyCompany("Patina Works")]
 [assembly: AssemblyProduct("The Howling Whispers")]
-[assembly: AssemblyVersion("0.4.2.0")]
-[assembly: AssemblyFileVersion("0.4.2.0")]
+[assembly: AssemblyVersion("0.4.3.0")]
+[assembly: AssemblyFileVersion("0.4.3.0")]
 
 internal static class HowlingWhispersLauncher
 {
