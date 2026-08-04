@@ -305,9 +305,11 @@ function autopilotInstructions(input: CompileContextInput, safetyBlock: string):
 
 function impersonationInstructions(input: CompileContextInput, safetyBlock: string): string[] {
   const name = input.character.identity.name;
+  const playerLabel = input.playerName.trim() || "You";
   const formatInstruction = "Use single asterisks for the player's actions and plain text without quotation marks for dialogue.";
   return [
     `Write exactly one plausible next player turn in the scene with ${name}.`,
+    `The player is ${playerLabel}. The player is the user who controls the turn, not ${name}.`,
     "This is an optional draft the player will review and edit. Write only the player's words, actions, and narration from the player's side.",
     "Never write the character's turn, a narrator's continuation, a second speaker, or a second turn after the player's response.",
     `PLAYER VOICE RULE: Write from the player's first-person point of view using I, me, and my for the player's actions, thoughts, feelings, and perceptions. Never describe ${name}'s voice, eyes, body, feelings, actions, or reaction as the player's turn. Never use she, her, he, him, they, them, or ${name}'s name as the subject of the player's actions.`,

@@ -1065,7 +1065,10 @@ function isInvalidImpersonationDraft(direction: string, draft: string, character
     return normalizedDraft.split(" ").length <= normalizedDirection.split(" ").length + 8;
   }
   const escapedName = characterName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`^(?:she|her|he|him|they|them|${escapedName})\\b`, "i").test(draft.trim());
+  return new RegExp(
+    `^(?:she|her|he|him|they|them|${escapedName})\\b|\\b(?:her|his|their)\\s+(?:voice|eyes|hips|body|face|hands|breath|smile|reaction)\\b|\\b(?:she|he|they)\\s+(?:looks|smiles|speaks|says|moves|waits|starts|begins)\\b`,
+    "i",
+  ).test(draft.trim());
 }
 
 export default function DreamboundApp() {
@@ -3881,7 +3884,20 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured latest">
               <div className="changelog-mark">◐</div>
               <div>
-                <span>Version {packageInfo.version} · Make Impersonate directional</span>
+                <span>Version {packageInfo.version} · Anchor the player identity</span>
+                <h2>Impersonate knows who is speaking</h2>
+                <p>
+                  Even without a display name or persona, the model now receives an explicit
+                  fallback player identity. Character-style drafts are rejected wherever they
+                  appear, not only when they start the message.
+                </p>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
+              <div className="changelog-mark">◐</div>
+              <div>
+                <span>Version 0.4.2.7 · Make Impersonate directional</span>
                 <h2>Your prompt becomes a road sign</h2>
                 <p>
                   Impersonate now keeps your direction private and turns its intent into a new

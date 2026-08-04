@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2.8 — Anchor the player identity
+
+**◐ Impersonate now has an explicit fallback player identity.** An empty display name or persona no longer leaves the model guessing who it is supposed to write.
+
+### What's new
+- **Stable player boundary** — unnamed players are explicitly identified as `You`, and character-style prose is rejected even when it appears inside a longer draft.
+
+### Quality
+- 30/30 unit tests · lint clean · build okay.
+
 ## 0.4.2.7 — Make Impersonate directional
 
 **◐ Impersonate now treats your text as a private road sign.** It generates a new player-side turn instead of copying the direction, answering it as the character, or placing character prose in the player bubble.
