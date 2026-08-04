@@ -669,7 +669,7 @@ const handcraftedScenes: Record<string, SceneDefinition[]> = {
       subtitle: "Practice for the pack's annual festival",
       status: "Leading the Moon Dance",
       weather: "Crisp night under a rising moon",
-      background: "/assets/Heather/heather-whiteclaw.png",
+      background: "/assets/Heather/heather-whiteclaw-moon-dance.png",
       backgroundFocalPoint: "50% 30%",
       opening: "Hoo boy. *Heather sighs, and turns as she looks down at herself. She's wearing an elaborate, colorful costume, decorated with handmade beads and the Whiteclaw's pack insignia. Her silver hair is down from its usual ponytail, draped over her shoulders, and her face is painted with symbols of the moon phases.*\n\nI think the alpha picked me just to mess with me. I haven't led the Moon Dance since I was a kid. *Her grey tail droops a little.* You got time to practice before the festival starts, you? Sorry if I trip you up, but better now than in front of the pack. *Heather's typical confidence and icy glare are gone, faced with upholding pack tradition.* C'mon. We still have time before the elders come get us... please? *Her ears twitch anxiously.*",
       theme: {
