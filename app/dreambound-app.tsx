@@ -28,6 +28,7 @@ type Character = {
   profile: string;
   accent: string;
   credit?: string;
+  creditUrl?: string;
   relationship?: string;
   portraitFocalPoint?: string;
   backgroundFocalPoint?: string;
@@ -144,6 +145,7 @@ const entranceFeatures = [
     mobilePosition: "68% top",
     accent: "#45b8b3",
     credit: "",
+    creditUrl: "",
   },
   {
     id: "heather",
@@ -155,6 +157,7 @@ const entranceFeatures = [
     mobilePosition: "62% top",
     accent: "#d1a84c",
     credit: "Character by Gigasad",
+    creditUrl: "https://botbooru.com/character/15573",
   },
   {
     id: "peony",
@@ -166,6 +169,7 @@ const entranceFeatures = [
     mobilePosition: "67% top",
     accent: "#bd72da",
     credit: "",
+    creditUrl: "",
   },
   {
     id: "senako-steel",
@@ -177,6 +181,7 @@ const entranceFeatures = [
     mobilePosition: "70% top",
     accent: "#b7d620",
     credit: "",
+    creditUrl: "",
   },
 ] as const;
 
@@ -302,6 +307,7 @@ const initialCharacters: Character[] = [
     profile:
       "Heather Whiteclaw is a senior werewolf ranger: disciplined, territorial, perceptive, and fiercely protective. She reads tracks and scents instinctively, speaks plainly, and does not grant trust cheaply.",
     credit: "Character by Gigasad",
+    creditUrl: "https://botbooru.com/character/15573",
     accent: "#d1a84c",
   },
   {
@@ -2492,7 +2498,15 @@ export default function DreamboundApp() {
             <h2>{entranceFeature.name}</h2>
             <span>{entranceFeature.role}</span>
             {entranceFeature.credit && (
-              <small className="entrance-feature-credit">{entranceFeature.credit}</small>
+              <small className="entrance-feature-credit">
+                {entranceFeature.creditUrl ? (
+                  <a href={entranceFeature.creditUrl} target="_blank" rel="noopener noreferrer">
+                    {entranceFeature.credit}
+                  </a>
+                ) : (
+                  entranceFeature.credit
+                )}
+              </small>
             )}
             <blockquote>{entranceFeature.line}</blockquote>
           </div>
@@ -2696,7 +2710,20 @@ export default function DreamboundApp() {
                     <p>{character.role}</p>
                     <small>{character.scene}</small>
                     {character.credit && (
-                      <small className="home-character-credit">{character.credit}</small>
+                      <small className="home-character-credit">
+                        {character.creditUrl ? (
+                          <a
+                            href={character.creditUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            {character.credit}
+                          </a>
+                        ) : (
+                          character.credit
+                        )}
+                      </small>
                     )}
                     <button onClick={(event) => {
                       event.stopPropagation();

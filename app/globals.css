@@ -1495,6 +1495,19 @@ a:focus-visible {
   margin: -10px 0 18px;
 }
 
+.home-character-credit a,
+.entrance-feature-credit a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+  text-underline-offset: 3px;
+}
+
+.home-character-credit a:hover,
+.entrance-feature-credit a:hover {
+  text-decoration-color: currentColor;
+}
+
 .home-character button {
   background: rgba(183, 101, 63, 0.12);
   border: 1px solid var(--copper);
