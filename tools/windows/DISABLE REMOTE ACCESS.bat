@@ -1,10 +1,11 @@
 @echo off
 setlocal EnableExtensions
-cd /d "%~dp0"
+set "PROJECT_DIR=%~dp0"
+if exist "%~dp0..\..\package.json" set "PROJECT_DIR=%~dp0..\.."
+set "SYSTEM_DIR=%PROJECT_DIR%"
+if exist "%PROJECT_DIR%\System\package.json" set "SYSTEM_DIR=%PROJECT_DIR%\System"
+cd /d "%PROJECT_DIR%"
 title The Howling Whispers - Disable Remote Access
-
-set "SYSTEM_DIR=%~dp0System"
-if not exist "%SYSTEM_DIR%\scripts\disable-remote-firewall.ps1" set "SYSTEM_DIR=%~dp0"
 
 powershell.exe -NoProfile -Command "Start-Process powershell.exe -Verb RunAs -Wait -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File ""%SYSTEM_DIR%\scripts\disable-remote-firewall.ps1""'"
 if errorlevel 1 (

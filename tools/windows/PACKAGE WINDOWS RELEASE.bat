@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions
-cd /d "%~dp0"
+cd /d "%~dp0..\.."
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts\package-windows-release.ps1"
 if errorlevel 1 (

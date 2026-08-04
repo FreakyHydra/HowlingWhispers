@@ -211,6 +211,6 @@ Review a selective staging list before every commit; generated files and
 machine-specific metadata are intentionally ignored.
 
 Publication clearance for bundled character content and artwork is recorded in
-`CONTENT-RIGHTS.md`; font licenses are under `public/fonts/`. No general source
+`docs/CONTENT-RIGHTS.md`; font licenses are under `public/fonts/`. No general source
 code license is currently declared, so source availability does not grant reuse
 rights beyond applicable law or separate written permission.

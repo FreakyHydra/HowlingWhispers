@@ -26,6 +26,10 @@ internal static class HowlingWhispersLauncher
         {
             launcher = Path.Combine(applicationDirectory, "START THE HOWLING WHISPERS.bat");
         }
+        if (!File.Exists(launcher))
+        {
+            launcher = Path.Combine(applicationDirectory, "tools", "windows", "START THE HOWLING WHISPERS.bat");
+        }
 
         if (!File.Exists(launcher))
         {

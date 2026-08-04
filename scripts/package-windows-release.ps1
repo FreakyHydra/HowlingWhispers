@@ -27,12 +27,10 @@ $excludedNames = @(
     "node_modules",
     "outputs",
     "release",
+    "tools",
     "work",
     "The Howling Whispers.exe",
-    "DEPENDENCIES AND FIRST START.txt",
-    "START REMOTE ACCESS.bat",
-    "DISABLE REMOTE ACCESS.bat",
-    "REMOTE ACCESS - READ ME.txt",
+    "START THE HOWLING WHISPERS.bat",
     "tsconfig.tsbuildinfo"
 )
 
@@ -43,10 +41,11 @@ Get-ChildItem -LiteralPath $root -Force |
     }
 
 Copy-Item -LiteralPath (Join-Path $root "The Howling Whispers.exe") -Destination $packageDirectory -Force
-Copy-Item -LiteralPath (Join-Path $root "DEPENDENCIES AND FIRST START.txt") -Destination $packageDirectory -Force
-Copy-Item -LiteralPath (Join-Path $root "START REMOTE ACCESS.bat") -Destination $packageDirectory -Force
-Copy-Item -LiteralPath (Join-Path $root "DISABLE REMOTE ACCESS.bat") -Destination $packageDirectory -Force
-Copy-Item -LiteralPath (Join-Path $root "REMOTE ACCESS - READ ME.txt") -Destination $packageDirectory -Force
+Copy-Item -LiteralPath (Join-Path $root "docs\DEPENDENCIES AND FIRST START.txt") -Destination $packageDirectory -Force
+Copy-Item -LiteralPath (Join-Path $root "docs\REMOTE ACCESS - READ ME.txt") -Destination $packageDirectory -Force
+Copy-Item -LiteralPath (Join-Path $root "tools\windows\START THE HOWLING WHISPERS.bat") -Destination $packageDirectory -Force
+Copy-Item -LiteralPath (Join-Path $root "tools\windows\START REMOTE ACCESS.bat") -Destination $packageDirectory -Force
+Copy-Item -LiteralPath (Join-Path $root "tools\windows\DISABLE REMOTE ACCESS.bat") -Destination $packageDirectory -Force
 
 Remove-Item -LiteralPath $archivePath, $checksumPath -Force -ErrorAction SilentlyContinue
 Add-Type -AssemblyName System.IO.Compression.FileSystem

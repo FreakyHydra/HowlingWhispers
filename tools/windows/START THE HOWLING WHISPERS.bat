@@ -1,6 +1,9 @@
 @echo off
 setlocal EnableExtensions
-cd /d "%~dp0"
+set "PROJECT_DIR=%~dp0"
+if exist "%~dp0..\..\package.json" set "PROJECT_DIR=%~dp0..\.."
+if exist "%~dp0System\package.json" set "PROJECT_DIR=%~dp0System"
+cd /d "%PROJECT_DIR%"
 title The Howling Whispers
 
 echo.

@@ -1,10 +1,13 @@
 @echo off
 setlocal EnableExtensions
-cd /d "%~dp0"
+set "PROJECT_DIR=%~dp0"
+if exist "%~dp0..\..\package.json" set "PROJECT_DIR=%~dp0..\.."
+set "SYSTEM_DIR=%PROJECT_DIR%"
+if exist "%PROJECT_DIR%\System\package.json" set "SYSTEM_DIR=%PROJECT_DIR%\System"
+cd /d "%PROJECT_DIR%"
 title The Howling Whispers - Remote Access
 
-set "SYSTEM_DIR=%~dp0System"
-if not exist "%SYSTEM_DIR%\START THE HOWLING WHISPERS.bat" set "SYSTEM_DIR=%~dp0"
+set "START_SCRIPT=%~dp0START THE HOWLING WHISPERS.bat"
 
 echo.
 echo  The Howling Whispers - Remote Test Mode
@@ -35,6 +38,6 @@ echo Keep this terminal open. Press Ctrl+C to stop the server.
 echo Run DISABLE REMOTE ACCESS.bat to remove the firewall rule.
 echo.
 
-call "%SYSTEM_DIR%\START THE HOWLING WHISPERS.bat"
+call "%START_SCRIPT%"
 set "EXIT_CODE=%ERRORLEVEL%"
 endlocal & exit /b %EXIT_CODE%
