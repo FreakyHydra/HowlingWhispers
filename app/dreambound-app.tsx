@@ -2708,7 +2708,7 @@ export default function DreamboundApp() {
   async function captureChatImage(): Promise<Blob | null> {
     if (shareMessages.length === 0) return null;
 
-    const scale = 2;
+    let scale = 3;
     const width = 1080;
     const pad = 64;
     const contentWidth = width - pad * 2;
@@ -3092,6 +3092,20 @@ export default function DreamboundApp() {
     }
 
     const totalHeight = cursorY - gap + pad;
+    const maxDimension = 16000;
+    const maxPixels = 100_000_000;
+    scale = Math.max(
+      1,
+      Math.floor(
+        Math.min(
+          scale,
+          maxDimension / width,
+          maxDimension / totalHeight,
+          Math.sqrt(maxPixels / (width * totalHeight)),
+        ) * 10,
+      ) / 10,
+    );
+    canvas.width = Math.max(1, Math.round(width * scale));
     canvas.height = Math.max(1, Math.round(totalHeight * scale));
     ctx.scale(scale, scale);
     ctx.textBaseline = "middle";
@@ -3837,9 +3851,23 @@ export default function DreamboundApp() {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
+              <div className="changelog-mark">🔍</div>
+              <div>
+                <span>Version {packageInfo.version} · Sharper shares</span>
+                <h2>Zoom in and actually read it</h2>
+                <p>
+                  Shared scenes now render at 50% higher resolution, so when you paste one into
+                  Discord and click to zoom, every line is crisp enough to read without
+                  downloading. Long conversations keep the highest safe resolution the browser
+                  can handle.
+                </p>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
               <div className="changelog-mark">🖼️</div>
               <div>
-                <span>Version {packageInfo.version} · Share, redrawn</span>
+                <span>Version 0.4.3 · Share, redrawn</span>
                 <h2>The image actually renders now</h2>
                 <p>
                   The first cut of the share feature relied on a page-to-picture technique that

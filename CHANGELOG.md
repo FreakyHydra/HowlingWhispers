@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.4 — Sharper shares
+
+**🔍 Shared scenes are now rendered at higher resolution** so you can zoom into the pasted image in Discord and actually read every line without downloading.
+
+### What's new
+- **50% more pixels** — the shared image is now painted at 3× density (3240px wide instead of 2160), and long conversations automatically hold the highest safe resolution the browser canvas allows.
+
+### Quality
+- 30/30 unit tests · lint clean · build okay.
+
 ## 0.4.3 — Share, redrawn
 
 **🖼️ The shared image actually renders now.** The first cut relied on a page-to-picture technique that silently lost the theme colors and could capture a blank frame. The image is now painted directly onto a canvas with the same fonts, theme colors, bubbles, and portraits you see in the chat.
