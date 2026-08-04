@@ -45,4 +45,4 @@
 
 - Characters, sessions, messages, settings, and saved NovelAI tokens remain local to this browser profile.
 - Clearing browser site data also clears those stories and settings.
-- Direct remote test mode uses unencrypted HTTP. Disable it after testing and do not use it for sensitive stories or tokens.
+- The hosted site uses HTTPS for encrypted traffic. Direct HTTP remote test mode is a separate local setup and should be disabled after testing.
