@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.4.7 — Keep impersonation in first person
+## 0.4.5.3 — Send direct player turns correctly
+
+**◐ Complete first-person lines in Impersonate are now sent as the player turn.** The model no longer gets a chance to mistake a line like “I want…” for something the character should say or do.
+
+### What's new
+- **Direct-turn detection** — first-person dialogue, questions, and marked actions are preserved exactly in the player bubble; instruction-style prompts still receive an AI-generated draft.
+
+### Quality
+- 30/30 unit tests · lint clean · build okay.
+
+## 0.4.5.2 — Keep impersonation in first person
 
 **◐ Impersonation now stays on the player's side of the scene.** It explicitly uses first-person player voice and rejects character-side descriptions such as voice, eyes, body, or reactions in the draft.
 
@@ -10,7 +20,7 @@
 ### Quality
 - 30/30 unit tests · lint clean · build okay.
 
-## 0.4.6 — Keep Skip turn focused
+## 0.4.5.1 — Keep Skip turn focused
 
 **» Skip turn now produces one short character beat.** It no longer uses the full novel-length reply setting or allows the model to invent both sides of the conversation.
 

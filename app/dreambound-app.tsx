@@ -1053,6 +1053,12 @@ function buildParagraphs(
   });
 }
 
+function isDirectPlayerTurn(value: string): boolean {
+  const text = value.trim();
+  return /^(?:I\b|I'm\b|I've\b|I'd\b|I'll\b|me\b|my\b|can I\b|may I\b|will you\b|do you\b|please\b|\*)/i.test(text)
+    || /[?!]["']?$/.test(text);
+}
+
 export default function DreamboundApp() {
   const isHydrated = useSyncExternalStore(
     () => () => {},
@@ -2275,11 +2281,9 @@ export default function DreamboundApp() {
     setIsImpersonating(true);
     setChatError("");
     try {
-      const suggestion = await requestStoryReply(
-        activeMessages,
-        "impersonate",
-        playerDirection,
-      );
+      const suggestion = playerDirection && isDirectPlayerTurn(playerDirection)
+        ? playerDirection
+        : await requestStoryReply(activeMessages, "impersonate", playerDirection);
       const playerMessage: Message = {
         id: Date.now(),
         sender: "player",
@@ -3860,7 +3864,20 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured latest">
               <div className="changelog-mark">◐</div>
               <div>
-                <span>Version {packageInfo.version} · Keep impersonation in first person</span>
+                <span>Version {packageInfo.version} · Send direct player turns correctly</span>
+                <h2>Your first-person line stays yours</h2>
+                <p>
+                  A complete line such as “I want…” is now sent directly as the player turn, so
+                  the character gets to respond in the character bubble instead of its reaction
+                  appearing as if the player said it.
+                </p>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
+              <div className="changelog-mark">◐</div>
+              <div>
+                <span>Version 0.4.5.2 · Keep impersonation in first person</span>
                 <h2>Impersonate stays on your side</h2>
                 <p>
                   Impersonation drafts now use first-person player voice and are explicitly blocked
@@ -3873,7 +3890,7 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured">
               <div className="changelog-mark">»</div>
               <div>
-                <span>Version 0.4.6 · Keep Skip turn focused</span>
+                <span>Version 0.4.5.1 · Keep Skip turn focused</span>
                 <h2>Skip turn stays on one side</h2>
                 <p>
                   The normal roleplay skip action now produces one concise character-only beat,
@@ -5249,8 +5266,9 @@ export default function DreamboundApp() {
             <p className="eyebrow">Take the player&apos;s turn</p>
             <h2 id="impersonate-title">Guide the impersonation</h2>
             <p className="modal-intro">
-              Give the story engine an optional intention, action, or tone. Leave it empty to choose
-              a plausible response from the story so far.
+              Write a complete first-person line to send it exactly as your turn, or give the story
+              engine an intention, action, or tone to draft for you. Leave it empty to choose a
+              plausible response from the story so far.
             </p>
             <form
               onSubmit={(event) => {
