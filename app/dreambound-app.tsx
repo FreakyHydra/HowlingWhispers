@@ -3125,9 +3125,24 @@ export default function DreamboundApp() {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
+              <div className="changelog-mark">🌕</div>
+              <div>
+                <span>Version {packageInfo.version} · Heather rebuilt</span>
+                <h2>The ranger is back, exactly as written</h2>
+                <p>
+                  Heather now runs on her official character card: the 42-year-old werewolf
+                  supremacist with a vanished mate and a grown daughter, plus all three of her
+                  real greetings — each given its own hand-crafted scene and custom art. The
+                  entrance also rotates a curation card inviting creators to the Howling
+                  Whispers Discord, and curated scenes are now locked from casual editing.
+                </p>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
               <div className="changelog-mark">✦</div>
               <div>
-                <span>Version {packageInfo.version} · Autopilot</span>
+                <span>Version 0.4.0 · Autopilot</span>
                 <h2>Read a living story like a book</h2>
                 <p>
                   Autopilot now writes short self-driven beats in a continuous reading view.
