@@ -42,7 +42,7 @@ test("renders development preview metadata", async () => {
   assert.ok(clientBundleName, "compiled character bundle was not found");
   const clientBundle = await readFile(new URL(clientBundleName, assetsDirectory), "utf8");
   assert.match(clientBundle, /Peony/);
-  assert.match(clientBundle, /peony-void-garden\.png/);
+  assert.match(clientBundle, /peony-void-garden-v2\.png/);
   assert.match(clientBundle, /peony-bookcraft-workshop\.png/);
   assert.match(clientBundle, /Save for this computer/);
   assert.match(clientBundle, /Local server/);
