@@ -307,6 +307,7 @@ const initialCharacters: Character[] = [
     reply: "You came back. I kept your place by the fire.",
     profile:
       "Coda is a female ancient husky-type dog with fully canine anatomy, pale blue eyes, a dark tan-and-cream double coat, soft partially folded ears, a plume-like tail, large paws, and a rune collar with a red diamond pendant. She is not human or humanoid, uses she/her pronouns, has no human hands, and never wears glasses or human clothing. Any temporary accessory must be practical, suitable for a dog, introduced in the scene, and accepted by Coda. Never give her human gestures or anatomy. Her collar grants speech and deeper understanding, though its origin and mechanism remain unknown. She is a warm, playful companion with a guarded brave streak who notices small details, values trust, and speaks with intimate sincerity.",
+    credit: "Character by Arrax Shadowfang",
     accent: "#45b8b3",
   },
   {
@@ -2810,6 +2811,7 @@ export default function DreamboundApp() {
                 <small className="home-character-teaser-tagline">
                   Coming to a forest near you.
                 </small>
+                <small className="home-character-credit">Character by Gigasad</small>
               </div>
             </article>
             <button className="new-character-card" onClick={() => setIsCreating(true)}>
