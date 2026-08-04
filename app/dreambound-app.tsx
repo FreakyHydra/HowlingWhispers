@@ -147,6 +147,7 @@ const entranceFeatures = [
     credit: "",
     creditUrl: "",
     contactUrl: "",
+    eyebrow: "",
   },
   {
     id: "heather",
@@ -160,6 +161,7 @@ const entranceFeatures = [
     credit: "Character by Gigasad",
     creditUrl: "https://botbooru.com/character/15573",
     contactUrl: "",
+    eyebrow: "",
   },
   {
     id: "peony",
@@ -173,6 +175,7 @@ const entranceFeatures = [
     credit: "",
     creditUrl: "",
     contactUrl: "",
+    eyebrow: "",
   },
   {
     id: "senako-steel",
@@ -186,6 +189,21 @@ const entranceFeatures = [
     credit: "",
     creditUrl: "",
     contactUrl: "",
+    eyebrow: "",
+  },
+  {
+    id: "valerie",
+    name: "Valerie Whiteclaw",
+    role: "Heather&apos;s daughter · The pack&apos;s future",
+    line: "Coming to a forest near you.",
+    image: "/assets/Heather/valerie-whiteclaw-teaser.png",
+    position: "center 30%",
+    mobilePosition: "62% top",
+    accent: "#c8a94f",
+    credit: "Character by Gigasad",
+    creditUrl: "",
+    contactUrl: "",
+    eyebrow: "Coming soon",
   },
   {
     id: "curation",
@@ -199,11 +217,12 @@ const entranceFeatures = [
     credit: "",
     creditUrl: "",
     contactUrl: "https://discord.gg/jrJRrAXBRH",
+    eyebrow: "",
   },
 ] as const;
 
-function dailyEntranceFeature(): number {
-  return Math.floor(Date.now() / 86_400_000) % entranceFeatures.length;
+function randomEntranceFeature(): number {
+  return Math.floor(Math.random() * entranceFeatures.length);
 }
 
 const replyLengths: {
@@ -1058,7 +1077,7 @@ export default function DreamboundApp() {
     () => readSession<boolean>("entranceCodaLocked", false),
   );
   const [entranceFeatureIndex, setEntranceFeatureIndex] = useState(
-    () => readSession<boolean>("entranceCodaLocked", false) ? 0 : dailyEntranceFeature(),
+    () => readSession<boolean>("entranceCodaLocked", false) ? 0 : randomEntranceFeature(),
   );
   const [reduceEntranceMotion, setReduceEntranceMotion] = useState(false);
   const [showCharacterRail, setShowCharacterRail] = useState(
@@ -2545,7 +2564,7 @@ export default function DreamboundApp() {
         </section>
         <aside className="entrance-feature" aria-label="Featured character">
           <div className="entrance-feature-copy">
-            <p className="eyebrow">{entranceFeature.contactUrl ? "Curation call" : "Tonight's voice"}</p>
+            <p className="eyebrow">{entranceFeature.eyebrow || (entranceFeature.contactUrl ? "Curation call" : "Tonight's voice")}</p>
             <h2>
               {(entranceFeature.creditUrl || entranceFeature.contactUrl) ? (
                 <a
