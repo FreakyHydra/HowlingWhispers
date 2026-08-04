@@ -244,6 +244,15 @@ body {
   text-transform: uppercase;
 }
 
+.entrance-feature-copy small.entrance-feature-credit {
+  color: var(--entrance-accent);
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  margin-top: 5px;
+  text-transform: uppercase;
+}
+
 .entrance-feature-copy blockquote {
   color: var(--cream);
   font-family: var(--serif);

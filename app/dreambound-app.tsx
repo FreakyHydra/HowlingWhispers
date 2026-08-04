@@ -143,6 +143,7 @@ const entranceFeatures = [
     position: "center right",
     mobilePosition: "68% top",
     accent: "#45b8b3",
+    credit: "",
   },
   {
     id: "heather",
@@ -153,6 +154,7 @@ const entranceFeatures = [
     position: "68% 30%",
     mobilePosition: "62% top",
     accent: "#d1a84c",
+    credit: "Character by Gigasad",
   },
   {
     id: "peony",
@@ -163,6 +165,7 @@ const entranceFeatures = [
     position: "70% 38%",
     mobilePosition: "67% top",
     accent: "#bd72da",
+    credit: "",
   },
   {
     id: "senako-steel",
@@ -173,6 +176,7 @@ const entranceFeatures = [
     position: "74% 45%",
     mobilePosition: "70% top",
     accent: "#b7d620",
+    credit: "",
   },
 ] as const;
 
@@ -2487,6 +2491,9 @@ export default function DreamboundApp() {
             <p className="eyebrow">Tonight&apos;s voice</p>
             <h2>{entranceFeature.name}</h2>
             <span>{entranceFeature.role}</span>
+            {entranceFeature.credit && (
+              <small className="entrance-feature-credit">{entranceFeature.credit}</small>
+            )}
             <blockquote>{entranceFeature.line}</blockquote>
           </div>
           <div className="entrance-feature-controls">
