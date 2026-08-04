@@ -651,8 +651,8 @@ const handcraftedScenes: Record<string, SceneDefinition[]> = {
       subtitle: "A night in the station cell",
       status: "Busted by the day patrol",
       weather: "Cold rain on the tin roof",
-      background: "/assets/Heather/heather-whiteclaw.png",
-      backgroundFocalPoint: "50% 25%",
+      background: "/assets/Heather/heather-whiteclaw-ranger-station.png",
+      backgroundFocalPoint: "50% 30%",
       opening: "*Heather arrives back at the ranger station and shrugs off her jacket, only to sniff the air and turn to face you.* Oh, right. Figures it's you. *She sighs, and her ears fold back as she leans on the door to your cell.*\n\nDelilah from the day patrol said she had to bust you again. She was being a real cagey bitch about it too. So what'd you do this time, jackass? *Her eyes narrow at you through the bars, equal parts amused and unimpressed.* Keep in mind that if you go whining about another misunderstanding I'm gonna come in there, and it's not gonna be fun. *Despite the look in her eyes her tail wags very slightly, as though she's looking forward to working you over.*",
       theme: {
         accent: "#8fb6c9",
