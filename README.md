@@ -2,6 +2,13 @@
 
 > Every whisper becomes a world.
 
+> [!IMPORTANT]
+> **Source-available local-use license.** You may download, run, and modify this
+> project for personal or private local use. You may not host it publicly, expose
+> it as an internet-accessible service, offer it as SaaS, or redistribute it as a
+> public service without written permission. See [`LICENSE`](./LICENSE) for the
+> complete terms.
+
 The Howling Whispers is a private, scene-based AI roleplay application powered
 by either NovelAI or a local Ollama model. Characters, scenes, and conversations are stored in the local
 browser. The user can keep the NovelAI token in the current tab or persist it in
