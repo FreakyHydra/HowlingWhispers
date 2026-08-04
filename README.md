@@ -6,141 +6,97 @@
 > **Source-available local-use license.** You may download, run, and modify this
 > project for personal or private local use. You may not host it publicly, expose
 > it as an internet-accessible service, offer it as SaaS, or redistribute it as a
-> public service without written permission. See [`LICENSE`](./LICENSE) for the
-> complete terms.
+> public service without written permission. See [`LICENSE`](./LICENSE).
 
-The Howling Whispers is a private, scene-based AI roleplay application powered
-by either NovelAI or a local Ollama model. Characters, scenes, and conversations are stored in the local
-browser. The user can keep the NovelAI token in the current tab or persist it in
-the browser profile's local storage; it is never written to server storage or
-logs.
+The Howling Whispers is a private, scene-based AI roleplay application. Stories,
+characters, sessions, messages, and preferences stay in the browser profile.
 
-Patina Works is the application's visual design language: black and charcoal
-surfaces, copper and bronze hardware, warm cream serif typography, etched
-details, subtle oxidized-green patina, and workshop-lit industrial fantasy.
+## Providers
 
-## Technology
+The Settings page supports three generation targets:
 
-- Vinext, React 19, TypeScript, and Vite
-- Next.js-compatible application and API routing
-- Cloudflare Worker runtime
-- Server-side dual-provider generation proxy
+- **NovelAI** — cloud generation using the tester's own NovelAI token.
+- **Local server** — Ollama running on the application server.
+- **This computer** — Ollama running on the browser user's computer.
 
-## Requirements
-
-- Node.js `>=22.13.0`
-- A NovelAI access token for cloud generation, or Ollama for local generation
-- Internet access on first launch to install the locked npm dependencies
-- A modern browser such as Chrome, Edge, Firefox, or Safari
+NovelAI tokens are sent over HTTPS to generate a reply, but are not written to
+server storage or logs. Users can store a token for the current tab or in their
+own browser profile. Do not use persistent storage on a shared computer.
 
 Supported NovelAI models:
 
-- `xialong-v1` (Xialong)
-- `glm-4-6` (GLM 4.6)
+- `xialong-v1`
+- `glm-4-6`
 
-Default local model:
+The default Ollama model is `mistral-nemo:12b`. Ollama should remain private;
+never expose port `11434` to the internet.
 
-- `mistral-nemo:12b` through Ollama, configured with a 16K roleplay context
+## Local Development
 
-The settings page discovers installed Ollama models dynamically. **Local
-server** lists models from the app server; **This computer** asks Ollama in the
-current browser's computer and falls back to manual entry if browser security
-blocks discovery.
+Requirements:
 
-Install Ollama for local generation:
+- Node.js `>=22.13.0`
+- A modern browser
+- A NovelAI token for cloud generation, or Ollama for local generation
 
-```powershell
-winget install --id Ollama.Ollama --exact
-ollama pull mistral-nemo:12b
-```
-
-Select **Settings → Generation provider → This computer**, then run **Test
-connection**. Ollama remains on localhost and the browser contacts it directly.
-For a deployed host, **Local server** keeps the browser isolated from Ollama.
-
-Server deployments can set `OLLAMA_BASE_URL`, `OLLAMA_ADULT_MODELS`,
-`OLLAMA_MAX_CONCURRENT_GENERATIONS`, `OLLAMA_CONNECTION_TEST_TIMEOUT_MS`, and
-`OLLAMA_GENERATION_TIMEOUT_MS` as documented in `.env.example`. Keep Ollama
-private; do not expose port `11434` to the internet.
-
-## Quick Start
-
-1. Install the current Node.js LTS release from
-   [nodejs.org](https://nodejs.org/en/download). Node.js 22.13 or newer is
-   required.
-2. Clone or download the repository, then install dependencies:
-
-   ```powershell
-   npm.cmd ci
-   ```
-
-3. Start the browser-based development server:
-
-   ```powershell
-   npm.cmd run dev:local
-   ```
-
-4. Open the URL printed by the server in your browser.
-
-The entrance requires no account. Select **Enter The Howling Whispers**, choose
-a character, then create a scene, enter the context-free **Open Sandbox**, or
-resume an existing local session. The in-app **What's new** page contains only
-user-impacting changes and important operational notes. A NovelAI access token
-is entered in Settings only for cloud generation; **Local GPU** requires no token.
-**Save for this tab** clears when
-the tab closes; **Save for this computer** remains in that browser profile until
-the user removes it. Chat font size and text colors are also available in
-Settings. While chatting, the character and context panels can be hidden
-independently; those layout choices persist in the browser.
-
-User-created scene presets can be deleted from the character's scene library.
-Deleting one also removes its linked sessions and message histories after confirmation.
-
-The entrance rotates through curated built-in characters. **Keep Coda** disables
-the rotation and persists a static Coda entrance in the current browser profile.
-
-## Autopilot Storytelling
-
-The scene picker includes **Autopilot**, a self-driven story mode where the
-selected character continues the scene in short beats. The start prompt accepts
-an optional opening and offers three narration modes:
-
-- **First person** — the character narrates with `I` and `my`.
-- **Third person** — close third-person narration focused on the character.
-- **Narrative telling** — an omniscient storyteller may move across the scene.
-
-Autopilot reads as a continuous book-like page rather than chat bubbles. Its
-controls provide Pause/Resume, Next, and Stop; stopping preserves the session as
-an Autopilot story while returning the composer. The background blur slider
-changes only the scene image, not the story text. While paused, the controller
-and composer can be minimized together for uninterrupted reading.
-
-Autopilot uses the application's roleplay format: actions and narration use
-`*asterisks*`, inner voice uses `[…]`, and spoken dialogue remains plain text.
-
-## Manual Launch and Development
-
-If PowerShell blocks `npm.ps1`, use the `npm.cmd` shim:
+Install dependencies and start the development server:
 
 ```powershell
 npm.cmd ci
 npm.cmd run dev:local
 ```
 
-Open the local URL printed by the development server, normally:
+Open the local URL printed by Vite, normally:
 
 ```text
 http://localhost:5173/?preview=app
 ```
 
-For browser testing from another device, bind the development server to a
-trusted network interface and use HTTPS plus appropriate access controls. The
-development server is not hardened production hosting.
+For local Ollama generation:
 
-When **Local GPU** is selected, remote browser sessions generate through Ollama
-on the host PC. Do not forward Ollama's port `11434`; only the application port
-should be reachable. Local prompts avoid a cloud provider but still cross the
-unencrypted remote HTTP connection.
+```powershell
+winget install --id Ollama.Ollama --exact
+ollama pull mistral-nemo:12b
+```
+
+Then choose **Settings → Generation provider → This computer** and run the
+connection test.
+
+## Windows Package
+
+The Windows launcher and packaging helpers are under [`tools/windows/`](./tools/windows/).
+The packaged release keeps its user-facing launcher, startup scripts, and help
+files at the release-folder root.
+
+The source package can be built from Windows with:
+
+```powershell
+tools\windows\BUILD WINDOWS LAUNCHER.bat
+tools\windows\PACKAGE WINDOWS RELEASE.bat
+```
+
+The packaged application starts a private local server. Public hosting is not
+permitted by the project license.
+
+## Features
+
+- Curated characters, custom character-card imports, scenes, memories, and roles
+- Open Sandbox scenes without preset world history
+- Persistent local browser sessions and story libraries
+- Autopilot storytelling with first-person, third-person, or narrator POV
+- Manual dialogue, action, narration, impersonation, and character-only Skip turn
+- Share-as-image export with captions, scene headers, and high-resolution PNGs
+- Character/context panels, chat font controls, and text color controls
+- Context inspection showing selected canon, lore, history, and token estimates
+
+## Storage And Privacy
+
+- Story data and preferences use browser `localStorage`.
+- Tab-only NovelAI tokens use `sessionStorage`.
+- Computer-persistent NovelAI tokens use browser-profile `localStorage`.
+- Clearing browser site data removes locally stored stories and settings.
+- Hosted HTTPS protects traffic in transit.
+- Direct HTTP remote test mode is separate, insecure, and intended only for temporary testing.
 
 ## Verification
 
@@ -149,68 +105,32 @@ npm.cmd run lint
 npm.cmd test
 ```
 
-These commands are cross-platform and include the production build, artifact
-validation, and all automated tests.
+The test command builds the application, validates the worker artifact, and runs
+the automated tests.
 
-## Storage
+## Repository Layout
 
-- Characters, sessions, messages, themes, and user preferences use browser
-  `localStorage`.
-- The NovelAI access token uses `sessionStorage` for **Save for this tab** or
-  browser-profile `localStorage` for **Save for this computer**.
-- Existing `dreambound_*` browser keys are intentionally retained so upgrades
-  do not erase previously saved stories.
+- `app/` — pages, UI, styles, and API routes
+- `lib/` — character canon, world lore, generation context, and provider helpers
+- `public/` — artwork, fonts, favicon, and update configuration
+- `docs/` — rights records, setup notes, and world/art documentation
+- `scripts/` — build, validation, update, and Windows packaging support
+- `tools/windows/` — Windows-only developer and local-launch helpers
+- `tests/` — compiler, provider, rendered-bundle, and version tests
 
-## Characters
+Generated and machine-local directories are intentionally ignored, including
+`node_modules/`, `dist/`, `.vinext/`, `.wrangler/`, `.sites-runtime/`, `release/`,
+`outputs/`, `.env*`, and `*.tsbuildinfo`.
 
-Handcrafted characters include Coda, Heather Whiteclaw, Peony, and Senako Steel.
-Imported character-card JSON is also supported. Senako is twelve;
-her prompts preserve strict age-appropriate friendship, classmate, neighbor,
-safe mentorship, teammate, and family-like boundaries.
+## Rights And License
 
-## Deployment
+Bundled character content and artwork rights are documented in
+[`docs/CONTENT-RIGHTS.md`](./docs/CONTENT-RIGHTS.md). Font licenses and notices
+are under [`public/fonts/`](./public/fonts/).
 
-Local development and browser-hosted operation are documented here. Production
-hosting requires a separate HTTPS deployment and explicit access controls.
+Project source is governed by [`LICENSE`](./LICENSE). Third-party dependencies,
+fonts, artwork, character content, trademarks, and AI-generated material may
+have separate rights or limitations.
 
-## Distribution
-
-Distribute the browser application source with `package.json`,
-`package-lock.json`, the application source, and public assets. Do not include
-generated or machine-local directories such as:
-
-- `node_modules/`
-- `dist/`
-- `.vinext/`
-- `.wrangler/`
-- `.sites-runtime/`
-- `.openai/`
-- `*.tsbuildinfo`
-- `.env*`
-
-Those paths are covered by `.gitignore`. Deploy the app as a browser-accessible
-web service or run it locally with the development server.
-
-## Updates
-
-Browser deployments are updated by redeploying the web application. Local
-browser data remains in the selected browser profile and is separate from the
-application source files.
-
-Stories, custom characters, scenarios, sessions, and preferences use browser
-`localStorage`. The NovelAI
-token uses either tab-only `sessionStorage` or browser-profile `localStorage`,
-according to the user's explicit choice. Computer storage survives application
-and PC restarts until explicitly removed. Updating or replacing application
-files does not remove user-created content or a persistently saved token.
-
-## Git and GitHub
-
-The configured remote is `https://github.com/FreakyHydra/HowlingWhispers.git`.
-Review a selective staging list before every commit; generated files and
-machine-specific metadata are intentionally ignored.
-
-Publication clearance for bundled character content and artwork is recorded in
-`docs/CONTENT-RIGHTS.md`; font licenses are under `public/fonts/`. No general source
-code license is currently declared, so source availability does not grant reuse
-rights beyond applicable law or separate written permission.
+Fix releases use a fourth version component. For example, `0.4.2` is a feature
+release and `0.4.2.1` is its first follow-up fix.
