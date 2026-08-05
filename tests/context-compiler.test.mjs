@@ -278,3 +278,56 @@ test("Peony private adult canon remains gated in compiled context", () => {
   assert.match(enabled.prompt, /Private adult intimacy/);
   assert.equal(enabled.manifest.matureCanonEnabled, true);
 });
+
+test("NovelAI roleplay serializes conversation with ChatML markers", () => {
+  const result = compile(adultCharacter(), {
+    provider: "novelai",
+    model: "xialong-v1",
+    messages: [
+      { sender: "character", text: "The rain is loud tonight." },
+      { sender: "player", text: "How are you feeling today?" },
+    ],
+  });
+  assert.match(result.prompt, /^<\|system\|>\n/);
+  assert.match(result.prompt, /<\|assistant\|>\n<think><\/think>\n/);
+  assert.match(result.prompt, /<\|user\|>\nPlayer: How are you feeling today\?\n\/nothink\n/);
+  assert.match(result.prompt, /Peony: The rain is loud tonight\./);
+  assert.doesNotMatch(result.prompt, /Conversation history:/);
+  assert.doesNotMatch(result.prompt, /Continue directly as/);
+  assert.ok(result.prompt.trimEnd().endsWith("Peony:"));
+});
+
+test("NovelAI impersonation targets the player user turn", () => {
+  const result = compile(adultCharacter(), {
+    provider: "novelai",
+    model: "glm-4-6",
+    kind: "impersonation",
+    playerName: "Kael",
+    playerDirection: "Suggest a hopeful line.",
+    messages: [{ sender: "character", text: "The rain will pass." }],
+  });
+  assert.match(result.prompt, /<\|assistant\|>\n<think><\/think>\n/);
+  assert.match(result.prompt, /<\|user\|>\nKael:$/);
+  assert.doesNotMatch(result.prompt, /Continue directly as/);
+});
+
+test("NovelAI narrator turns fold into the assistant role", () => {
+  const result = compile(adultCharacter(), {
+    provider: "novelai",
+    model: "xialong-v1",
+    messages: [{ sender: "narrator", text: "The lantern flickers." }],
+  });
+  assert.match(result.prompt, /<\|assistant\|>\n<think><\/think>\nNarration: The lantern flickers\./);
+});
+
+test("NovelAI autopilot with no history still opens the assistant turn", () => {
+  const result = compile(adultCharacter(), {
+    provider: "novelai",
+    model: "xialong-v1",
+    kind: "autopilot",
+    messages: [],
+  });
+  assert.doesNotMatch(result.prompt, /No conversation yet\./);
+  assert.ok(result.prompt.trimEnd().endsWith("Peony:"));
+  assert.match(result.prompt, /AUTOPILOT LAW/);
+});

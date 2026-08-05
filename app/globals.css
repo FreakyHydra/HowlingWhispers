@@ -4015,6 +4015,24 @@ a:focus-visible {
   margin-top: 4px;
 }
 
+.persona-fields {
+  display: grid;
+  gap: 15px;
+  margin: 4px 0 16px;
+}
+
+.persona-default-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0 0 14px;
+}
+
+.persona-default-note strong {
+  color: var(--body);
+  font-weight: 600;
+}
+
 .model-description {
   color: var(--muted);
   font-family: var(--serif);

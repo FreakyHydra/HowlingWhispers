@@ -775,10 +775,12 @@ function cleanReply(
   outputKind: "player" | "character", autopilot = false,
 ): string {
   const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const structuralEnd = v.search(/\n\s*<\|(?:user|assistant)\|>|\n\s*\/nothink/i);
+  const preStructured = structuralEnd >= 0 ? v.slice(0, structuralEnd).trim() : v;
   const wrappedReply = outputKind === "player"
-    ? v.match(/<(?:player|user)[^>]*>([\s\S]*?)<\/(?:player|user)>/i)
-    : v.match(/<character_reply[^>]*>([\s\S]*?)<\/character_reply>/i);
-  let candidate = wrappedReply?.[1] ?? v;
+    ? preStructured.match(/<(?:player|user)[^>]*>([\s\S]*?)<\/(?:player|user)>/i)
+    : preStructured.match(/<character_reply[^>]*>([\s\S]*?)<\/character_reply>/i);
+  let candidate = wrappedReply?.[1] ?? preStructured;
   if (outputKind === "character") {
     const labels = [playerName.trim() || "You", "Player", "User", "You"]
       .filter((label) => label && label.trim())
@@ -791,6 +793,8 @@ function cleanReply(
     .split(/<system-reminder\b|\n\s*(?:<\/?(?:player|user|system|scene|character_reply)\b|(?:Player|User|System|Emotion|Mood|Analysis|Thinking|Rule|Rules|Format|Output format|Write only the next roleplay passage|Do not wait for the player|Do not write the player|Never end the beat|a self-contained development followed by dialogue or narration|in the same format as above|end without prompting the player)(?:\s*[:.,-]|\s*$)|[0-9]+\s*[–—,-]\s*[0-9]+\s*words)/i)[0];
   let reply = withoutLeakTail
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<\|(?:user|assistant)\|>/gi, "")
+    .replace(/\n\s*\/nothink\s*/gi, "\n")
     .replace(/<\/?[a-z][^>]*>/gi, "")
     .replace(/^\s*[A-Z][A-Za-z'’. -]*\s*\(as\)\s*:?\s*/i, "")
     .replace(/^(?:(?:Message|Response|Character|Narrator|Scene|Emotion|Mood|Analysis|Thinking)(?:\s*:\s*|\s*\n+))+/i, "")
@@ -843,6 +847,7 @@ function roleplayStops(playerName: string): string[] {
     "\nPlayer:", "\nUser:", "\nSystem:", "\nEmotion:", "\nMood:",
     "\nAnalysis:", "\nThinking:", "\nWrite only the next roleplay passage",
     "\n<player>", "\n<user>", "\n<system>",
+    "\n<|user|>", "\n<|assistant|>", "\n/nothink",
   ];
 }
 
@@ -851,6 +856,7 @@ function impersonationStops(characterName: string): string[] {
     `\n${characterName}:`, "\nNarration:", "\nSystem:", "\nEmotion:", "\nMood:",
     "\nAnalysis:", "\nThinking:", "\nWrite the suggested player response",
     "\n<character_reply>", "\n<system>",
+    "\n<|assistant|>", "\n<|user|>", "\n/nothink",
   ];
 }
 

@@ -74,6 +74,8 @@ type StorySession = {
   autopilotPov?: "first" | "third" | "narrator";
   playerRole?: string;
   playerRoleContext?: string;
+  playerName?: string;
+  playerPersona?: string;
 };
 
 type StoryEditor = {
@@ -1172,6 +1174,7 @@ export default function DreamboundApp() {
   const [connectionError, setConnectionError] = useState("");
   const [chatError, setChatError] = useState("");
   const [showShare, setShowShare] = useState(false);
+  const [showPersonaModal, setShowPersonaModal] = useState(false);
   const [shareCount, setShareCount] = useState(() => readSession<number>("shareCount", 5));
   const [shareCaptions, setShareCaptions] = useState(() => readSession<boolean>("shareCaptions", true));
   const [shareHeader, setShareHeader] = useState(() => readSession<boolean>("shareHeader", true));
@@ -1435,6 +1438,24 @@ export default function DreamboundApp() {
     setCurrentUser((current) => (current ? { ...current, displayName: next.name.trim() } : current));
   }
 
+  function updateActiveSessionPersona(patch: Partial<{ playerName: string; playerPersona: string }>) {
+    if (!activeSession) return;
+    setSessions((current) => current.map((session) =>
+      session.id === activeSession.id
+        ? { ...session, ...patch, updatedAt: Date.now() }
+        : session,
+    ));
+  }
+
+  function clearActiveSessionPersona() {
+    if (!activeSession) return;
+    setSessions((current) => current.map((session) =>
+      session.id === activeSession.id
+        ? { ...session, playerName: "", playerPersona: "", updatedAt: Date.now() }
+        : session,
+    ));
+  }
+
   const selected = useMemo(
     () => characters.find((character) => character.id === selectedId) ?? characters[0],
     [characters, selectedId],
@@ -1447,6 +1468,10 @@ export default function DreamboundApp() {
   const activeScene = activeSession?.sandbox
     ? sandboxSceneFor(selected)
     : selectedScenes.find((scene) => scene.id === activeSession?.sceneId) ?? selectedScenes[0];
+  const activePlayerName = activeSession?.playerName?.trim() || playerProfile.name.trim();
+  const sessionUsesDefaultPersona = Boolean(
+    !activeSession?.playerName?.trim() && !activeSession?.playerPersona?.trim(),
+  );
   const activeMessageKey = activeSession?.messageKey ?? selected.id;
   const storedContextManifest = contextManifests[activeMessageKey];
   const activeContextManifest = storedContextManifest
@@ -1956,10 +1981,12 @@ export default function DreamboundApp() {
     generationAbortRef.current?.abort();
     generationAbortRef.current = controller;
     const requestSignal = controller.signal;
+    const effectivePlayerName = (activeSession?.playerName?.trim() || playerProfile.name).trim();
+    const effectivePlayerPersona = (activeSession?.playerPersona?.trim() || playerProfile.persona).trim();
     const requestBody = {
         action,
-        playerName: playerProfile.name.trim(),
-        playerPersona: playerProfile.persona.trim(),
+        playerName: effectivePlayerName,
+        playerPersona: effectivePlayerPersona,
         impersonationPrompt: playerDirection,
         provider: storyProvider,
         apiToken,
@@ -2668,7 +2695,7 @@ export default function DreamboundApp() {
       options.showCaption && message.sender !== "narrator"
         ? message.sender === "character"
           ? selected.name
-          : playerProfile.name.trim() || "You"
+          : activePlayerName || "You"
         : "";
     return (
       <article
@@ -2758,7 +2785,7 @@ export default function DreamboundApp() {
     const accentRgba = (alpha: number) => hexToRgba(accent, alpha);
     const cream = "#f2dec2";
     const muted = "#8f8284";
-    const playerName = playerProfile.name.trim() || "You";
+    const playerName = activePlayerName || "You";
 
     await Promise.all(
       [
@@ -4883,6 +4910,19 @@ export default function DreamboundApp() {
                 <output>{storyBackgroundBlur}px</output>
               </label>
             )}
+            {activeSession && (
+              <button
+                className={`persona-button${sessionUsesDefaultPersona ? "" : " active"}`}
+                onClick={() => setShowPersonaModal(true)}
+                title={
+                  sessionUsesDefaultPersona
+                    ? "This chat uses your default persona"
+                    : "This chat has its own persona"
+                }
+              >
+                <span aria-hidden="true">♜</span> Persona
+              </button>
+            )}
             <button
               className="share-button"
               onClick={() => setShowShare(true)}
@@ -5550,6 +5590,74 @@ export default function DreamboundApp() {
                 disabled={shareBusy || activeMessages.length === 0}
               >
                 Download PNG
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {showPersonaModal && activeSession && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setShowPersonaModal(false)}
+        >
+          <section
+            className="modal persona-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="persona-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button className="modal-close" onClick={() => setShowPersonaModal(false)} aria-label="Close">
+              ×
+            </button>
+            <p className="eyebrow">This conversation&apos;s persona</p>
+            <h2 id="persona-title">How do you appear here?</h2>
+            <p className="modal-intro">
+              These fields apply only to this conversation with {selected.name}. Leave them blank to
+              fall back to your default persona, which is used in every other chat.
+            </p>
+            <div className="persona-fields">
+              <label>
+                Player name
+                <input
+                  value={activeSession.playerName ?? ""}
+                  onChange={(event) => updateActiveSessionPersona({ playerName: event.target.value })}
+                  placeholder={
+                    playerProfile.name.trim()
+                      ? `Blank = default (${playerProfile.name.trim()})`
+                      : "Leave blank to stay unnamed in the story"
+                  }
+                  maxLength={100}
+                />
+              </label>
+              <label>
+                Persona
+                <textarea
+                  value={activeSession.playerPersona ?? ""}
+                  onChange={(event) => updateActiveSessionPersona({ playerPersona: event.target.value })}
+                  placeholder={
+                    playerProfile.persona.trim()
+                      ? "Blank = your default persona"
+                      : "Describe how you want to be seen in this story—appearance, nature, history. Leave blank if you prefer to improvise."
+                  }
+                  rows={4}
+                  maxLength={2000}
+                />
+              </label>
+            </div>
+            <p className="persona-default-note">
+              Default persona for all chats: <strong>{playerProfile.name.trim() || "No name"}</strong>
+              {playerProfile.persona.trim() ? " — " + playerProfile.persona.trim() : " — no persona set"}
+            </p>
+            <div className="share-actions">
+              <button
+                className="outline-button"
+                onClick={clearActiveSessionPersona}
+                disabled={sessionUsesDefaultPersona}
+              >
+                Use default persona
               </button>
             </div>
           </section>

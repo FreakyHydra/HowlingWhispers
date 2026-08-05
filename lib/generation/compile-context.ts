@@ -143,26 +143,22 @@ export function compileContext(input: CompileContextInput): CompiledContext {
   const fixedTokens = estimateTokens([...staticParts, canonBlock, loreBlock, personaBlock, stateBlock, "Conversation history:"].join("\n"));
   const historyBudget = Math.max(0, inputBudget - fixedTokens);
   const history = selectRecentMessages(input.messages, historyBudget, input.playerName, input.character.identity.name);
-  const prompt = [
-    ...staticParts,
-    "",
-    "<authoritative-character-canon>",
+  const characterName = input.character.identity.name;
+  const playerLabel = input.playerName.trim() || "You";
+  const shared = {
+    staticParts,
     canonBlock,
-    "</authoritative-character-canon>",
-    "",
-    ...(loreBlock ? ["<relevant-world-lore>", loreBlock, "</relevant-world-lore>", ""] : []),
-    ...(personaBlock ? [personaBlock, ""] : []),
+    loreBlock,
+    personaBlock,
     stateBlock,
-    "",
-    "Conversation history:",
-    history.text || "No conversation yet.",
-    "",
-    input.kind === "autopilot"
-      ? `Continue living as ${input.character.identity.name}, writing the next beat on their own:`
-      : input.kind === "roleplay"
-        ? `Continue directly as ${input.character.identity.name}:`
-        : "The complete player turn begins now:",
-  ].join("\n");
+    history,
+    characterName,
+    playerLabel,
+    kind: input.kind,
+  };
+  const prompt = input.provider === "novelai"
+    ? buildNovelAiPrompt(shared)
+    : buildLegacyPrompt(shared);
 
   return {
     prompt,
@@ -239,6 +235,82 @@ function selectWorldLore(
 
 export function estimateTokens(value: string): number {
   return Math.ceil(value.length / 4);
+}
+
+type PromptParts = {
+  staticParts: string[];
+  canonBlock: string;
+  loreBlock: string;
+  personaBlock: string;
+  stateBlock: string;
+  history: {
+    messages: RoleplayMessage[];
+    count: number;
+    omissionTail: string | null;
+  };
+  characterName: string;
+  playerLabel: string;
+  kind: CompileContextInput["kind"];
+};
+
+function buildLegacyPrompt(parts: PromptParts): string {
+  const historyText = parts.history.messages.length === 0
+    ? "No conversation yet."
+    : [parts.history.omissionTail, ...parts.history.messages.map((message) => renderMessage(message, parts.playerLabel, parts.characterName))]
+        .filter(Boolean)
+        .join("\n");
+  const finalInstruction = parts.kind === "autopilot"
+    ? `Continue living as ${parts.characterName}, writing the next beat on their own:`
+    : parts.kind === "roleplay"
+      ? `Continue directly as ${parts.characterName}:`
+      : "The complete player turn begins now:";
+  return [
+    ...parts.staticParts,
+    "",
+    "<authoritative-character-canon>",
+    parts.canonBlock,
+    "</authoritative-character-canon>",
+    "",
+    ...(parts.loreBlock ? ["<relevant-world-lore>", parts.loreBlock, "</relevant-world-lore>", ""] : []),
+    ...(parts.personaBlock ? [parts.personaBlock, ""] : []),
+    parts.stateBlock,
+    "",
+    "Conversation history:",
+    historyText,
+    "",
+    finalInstruction,
+  ].join("\n");
+}
+
+function buildNovelAiPrompt(parts: PromptParts): string {
+  const lines: string[] = [
+    "<|system|>",
+    [
+      ...parts.staticParts,
+      "",
+      "<authoritative-character-canon>",
+      parts.canonBlock,
+      "</authoritative-character-canon>",
+      ...(parts.loreBlock ? ["", "<relevant-world-lore>", parts.loreBlock, "</relevant-world-lore>"] : []),
+      ...(parts.personaBlock ? ["", parts.personaBlock] : []),
+      parts.stateBlock,
+    ].join("\n"),
+  ];
+  for (const message of parts.history.messages) {
+    if (message.sender === "player") {
+      lines.push("<|user|>", `${parts.playerLabel}: ${message.text}`, "/nothink");
+    } else if (message.sender === "character") {
+      lines.push("<|assistant|>", "<think></think>", `${parts.characterName}: ${message.text}`);
+    } else {
+      lines.push("<|assistant|>", "<think></think>", `Narration: ${message.text}`);
+    }
+  }
+  if (parts.kind === "impersonation") {
+    lines.push("<|user|>", `${parts.playerLabel}:`);
+  } else {
+    lines.push("<|assistant|>", "<think></think>", `${parts.characterName}:`);
+  }
+  return lines.join("\n");
 }
 
 function roleplayInstructions(input: CompileContextInput, safetyBlock: string): string[] {
@@ -395,23 +467,24 @@ function normalizeKey(value: string): string {
 
 function selectRecentMessages(messages: RoleplayMessage[], budget: number, playerName: string, characterName: string) {
   const playerLabel = playerName.trim() || "You";
-  const selected: string[] = [];
+  const selected: RoleplayMessage[] = [];
   let tokens = 0;
+  let omissionTail: string | null = null;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const line = renderMessage(messages[index], playerLabel, characterName);
     const lineTokens = estimateTokens(line);
     if (tokens + lineTokens > budget) {
       if (selected.length === 0 && budget > 16) {
         const retainedCharacters = Math.max(1, budget * 4 - 28);
-        selected.unshift(`[Earlier text omitted] ${line.slice(-retainedCharacters)}`);
-        tokens = estimateTokens(selected[0]);
+        omissionTail = `[Earlier text omitted] ${line.slice(-retainedCharacters)}`;
+        tokens = estimateTokens(omissionTail);
       }
       break;
     }
-    selected.unshift(line);
+    selected.unshift(messages[index]);
     tokens += lineTokens;
   }
-  return { text: selected.join("\n"), count: selected.length };
+  return { messages: selected, count: selected.length, omissionTail };
 }
 
 function renderMessage(message: RoleplayMessage, playerLabel: string, characterName: string): string {
