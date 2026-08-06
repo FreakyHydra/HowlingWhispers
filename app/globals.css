@@ -5633,3 +5633,34 @@ a:focus-visible {
 .persona-session-picker .persona-card {
   grid-template-columns: 44px 1fr auto;
 }
+
+/* Character backups */
+.character-backup-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: -6px 0 16px;
+}
+
+.character-backup-bar .outline-button {
+  font-size: 13px;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.backup-feedback {
+  font-size: 13px;
+}
+
+.backup-feedback.ok {
+  color: #7fb69b;
+}
+
+.backup-feedback.err {
+  color: #e2747b;
+}
+
+.character-edit-actions .text-button {
+  font-size: 13px;
+}

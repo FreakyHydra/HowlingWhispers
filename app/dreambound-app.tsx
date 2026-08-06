@@ -5,6 +5,12 @@ import { FormEvent, useCallback, useMemo, useRef, useState, useEffect, useLayout
 import { createPortal } from "react-dom";
 import packageInfo from "../package.json";
 import { legacyCharacterToCanon, type AgeCategory } from "../lib/characters/canonical";
+import {
+  ensureUniqueCharacterIds,
+  parseCharacterImport,
+  serializeCharacter,
+  serializeCharacterLibrary,
+} from "../lib/characters/import-export";
 import { PersonaLibrary } from "../components/personas/persona-library";
 import { PersonaPicker } from "../components/story/persona-picker";
 import {
@@ -1328,6 +1334,8 @@ export default function DreamboundApp() {
   const [impersonationPrompt, setImpersonationPrompt] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [importError, setImportError] = useState("");
+  const [characterBackupMsg, setCharacterBackupMsg] = useState("");
+  const [characterBackupError, setCharacterBackupError] = useState("");
   const [connectionError, setConnectionError] = useState("");
   const [chatError, setChatError] = useState("");
   const [showShare, setShowShare] = useState(false);
@@ -2910,6 +2918,56 @@ export default function DreamboundApp() {
     }
   }
 
+  function downloadTextFile(filename: string, text: string) {
+    const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportCharacterLibrary() {
+    downloadTextFile(
+      "howling-whispers-character-library.json",
+      serializeCharacterLibrary(characters),
+    );
+    setCharacterBackupMsg("Character library exported.");
+  }
+
+  function exportSingleCharacter(character: Character) {
+    downloadTextFile(
+      `howling-whispers-character-${character.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`,
+      serializeCharacter(character),
+    );
+  }
+
+  function handleCharacterBackupImport(file: File) {
+    setCharacterBackupError("");
+    setCharacterBackupMsg("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = parseCharacterImport(String(reader.result ?? ""));
+      if (!result.ok) {
+        setCharacterBackupError(result.error);
+        return;
+      }
+      const unique = ensureUniqueCharacterIds(
+        result.characters,
+        characters.map((character) => character.id),
+      );
+      const nextCharacters = [...characters, ...unique];
+      setCharacters(nextCharacters);
+      if (unique.length === 1) setSelectedId(unique[0].id);
+      setCharacterBackupMsg(`Imported ${unique.length} ${unique.length === 1 ? "character" : "characters"}.`);
+    };
+    reader.onerror = () => setCharacterBackupError("The character file could not be read.");
+    reader.readAsText(file);
+  }
+
   function updateCharacter(id: string, updates: Partial<Character>) {
     setCharacters((current) => current.map((character) => (
       character.id === id ? { ...character, ...updates } : character
@@ -3890,7 +3948,30 @@ export default function DreamboundApp() {
               <p className="eyebrow">Your characters</p>
               <h2>Begin a new roleplay</h2>
             </div>
-            <span>{characters.length} souls waiting</span>
+            <span className="home-section-count">{characters.length} souls waiting</span>
+          </div>
+
+          <div className="character-backup-bar">
+            <label className="outline-button import-browse">
+              Import characters
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) handleCharacterBackupImport(file);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+            <button
+              className="outline-button"
+              onClick={exportCharacterLibrary}
+            >
+              Export library
+            </button>
+            {characterBackupMsg && <span className="backup-feedback ok">{characterBackupMsg}</span>}
+            {characterBackupError && <span className="backup-feedback err">{characterBackupError}</span>}
           </div>
 
           <div className="character-gallery">
@@ -6268,6 +6349,13 @@ export default function DreamboundApp() {
                   onClick={() => setConfirmDeleteCharacter(editingCharacter)}
                 >
                   Delete character
+                </button>
+                <button
+                  className="text-button"
+                  type="button"
+                  onClick={() => exportSingleCharacter(editingCharacter)}
+                >
+                  Export this character
                 </button>
                 <button className="primary-button" type="submit">
                   Save changes
