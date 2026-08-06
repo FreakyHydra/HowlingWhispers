@@ -77,9 +77,9 @@ const REPLY_LENGTHS = {
 } as const;
 
 const IMPERSONATION_LENGTHS: Record<keyof typeof REPLY_LENGTHS, string> = {
-  quick: "Write 1–2 focused paragraphs totaling 60–130 words. A response under 60 words is incomplete.",
-  immersive: "Write 2–4 developed paragraphs totaling 140–300 words, combining a meaningful reaction, action, and dialogue when appropriate. A response under 140 words is incomplete.",
-  novel: "Write 3–6 substantial paragraphs totaling 300–550 words. A response under 300 words is incomplete.",
+  quick: "Write 1–2 complete paragraphs, usually 90–160 words. Keep it responsive, but still include characterful action and sensory context. A response under 90 words is incomplete.",
+  immersive: "Write 3–5 substantial paragraphs, usually 220–400 words. Develop the moment through physical reactions, sensory environment, emotionally revealing dialogue, and subtext. A response under 220 words is incomplete.",
+  novel: "Write 5–8 substantial paragraphs, usually 400–650 words. Treat the reply like a polished scene from a character-driven novel, with patient pacing, vivid atmosphere, layered emotion, and meaningful dialogue. A response under 400 words is incomplete.",
 };
 
 const AUTOPILOT_BEAT_INSTRUCTION = "Write one self-contained story beat rather than a full reply: a distinct action or development followed by dialogue or narration, usually 80-150 words. It must advance the scene on its own and never hand the turn back to the player. Follow the same output format as before: actions and narration in single asterisks, inner voice in square brackets, spoken dialogue as plain text with no quotation marks.";
@@ -105,15 +105,15 @@ type ProseFormat = "roleplay";
 type StoryProvider = "novelai" | "local" | "device";
 
 const LOCAL_MINIMUM_WORDS: Record<ReplyLength, { character: number; player: number }> = {
-  quick: { character: 90, player: 60 },
-  immersive: { character: 220, player: 140 },
-  novel: { character: 400, player: 300 },
+  quick: { character: 90, player: 90 },
+  immersive: { character: 220, player: 220 },
+  novel: { character: 400, player: 400 },
 };
 
 const LOCAL_MINIMUM_SEGMENTS: Record<ReplyLength, { character: number; player: number }> = {
-  quick: { character: 3, player: 2 },
-  immersive: { character: 6, player: 5 },
-  novel: { character: 10, player: 8 },
+  quick: { character: 3, player: 3 },
+  immersive: { character: 6, player: 6 },
+  novel: { character: 10, player: 10 },
 };
 
 function localRoleplayFormat(minSegments: number) {
@@ -775,10 +775,12 @@ function cleanReply(
   outputKind: "player" | "character", autopilot = false,
 ): string {
   const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const structuralEnd = v.search(/\n\s*<\|(?:user|assistant)\|>|\n\s*\/nothink/i);
+  const preStructured = structuralEnd >= 0 ? v.slice(0, structuralEnd).trim() : v;
   const wrappedReply = outputKind === "player"
-    ? v.match(/<(?:player|user)[^>]*>([\s\S]*?)<\/(?:player|user)>/i)
-    : v.match(/<character_reply[^>]*>([\s\S]*?)<\/character_reply>/i);
-  let candidate = wrappedReply?.[1] ?? v;
+    ? preStructured.match(/<(?:player|user)[^>]*>([\s\S]*?)<\/(?:player|user)>/i)
+    : preStructured.match(/<character_reply[^>]*>([\s\S]*?)<\/character_reply>/i);
+  let candidate = wrappedReply?.[1] ?? preStructured;
   if (outputKind === "character") {
     const labels = [playerName.trim() || "You", "Player", "User", "You"]
       .filter((label) => label && label.trim())
@@ -791,6 +793,8 @@ function cleanReply(
     .split(/<system-reminder\b|\n\s*(?:<\/?(?:player|user|system|scene|character_reply)\b|(?:Player|User|System|Emotion|Mood|Analysis|Thinking|Rule|Rules|Format|Output format|Write only the next roleplay passage|Do not wait for the player|Do not write the player|Never end the beat|a self-contained development followed by dialogue or narration|in the same format as above|end without prompting the player)(?:\s*[:.,-]|\s*$)|[0-9]+\s*[–—,-]\s*[0-9]+\s*words)/i)[0];
   let reply = withoutLeakTail
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<\|(?:user|assistant)\|>/gi, "")
+    .replace(/\n\s*\/nothink\s*/gi, "\n")
     .replace(/<\/?[a-z][^>]*>/gi, "")
     .replace(/^\s*[A-Z][A-Za-z'’. -]*\s*\(as\)\s*:?\s*/i, "")
     .replace(/^(?:(?:Message|Response|Character|Narrator|Scene|Emotion|Mood|Analysis|Thinking)(?:\s*:\s*|\s*\n+))+/i, "")
@@ -807,7 +811,7 @@ function cleanReply(
     reply = reply
       .replace(/[“”"]/g, "")
       .replace(/^\s*(?:\*\s*)+$/gm, "")
-      .replace(/\s*(\*[^*]+\*)\s*/g, "\n\n$1\n\n")
+      .replace(/\s*(?<!\*)(\*[^*]+\*)(?!\*)\s*/g, "\n\n$1\n\n")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
   }
@@ -843,6 +847,7 @@ function roleplayStops(playerName: string): string[] {
     "\nPlayer:", "\nUser:", "\nSystem:", "\nEmotion:", "\nMood:",
     "\nAnalysis:", "\nThinking:", "\nWrite only the next roleplay passage",
     "\n<player>", "\n<user>", "\n<system>",
+    "\n<|user|>", "\n<|assistant|>", "\n/nothink",
   ];
 }
 
@@ -851,6 +856,7 @@ function impersonationStops(characterName: string): string[] {
     `\n${characterName}:`, "\nNarration:", "\nSystem:", "\nEmotion:", "\nMood:",
     "\nAnalysis:", "\nThinking:", "\nWrite the suggested player response",
     "\n<character_reply>", "\n<system>",
+    "\n<|assistant|>", "\n<|user|>", "\n/nothink",
   ];
 }
 

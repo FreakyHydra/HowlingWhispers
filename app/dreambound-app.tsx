@@ -1,9 +1,29 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { FormEvent, useCallback, useMemo, useRef, useState, useEffect, useSyncExternalStore } from "react";
+import { FormEvent, useCallback, useMemo, useRef, useState, useEffect, useLayoutEffect, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import packageInfo from "../package.json";
 import { legacyCharacterToCanon, type AgeCategory } from "../lib/characters/canonical";
+import {
+  ensureUniqueCharacterIds,
+  parseCharacterImport,
+  serializeCharacter,
+  serializeCharacterLibrary,
+} from "../lib/characters/import-export";
+import { PersonaLibrary } from "../components/personas/persona-library";
+import ArchiveView from "../components/archive/archive-view";
+import type { ArchivePublication } from "../lib/archive/client";
+import { PersonaPicker } from "../components/story/persona-picker";
+import {
+  loadPersonas,
+  savePersonas,
+  loadActivePersonaId,
+  saveActivePersonaId,
+  migrateLegacyPlayerProfile,
+} from "../lib/personas/storage";
+import { compilePlayerPersona } from "../lib/personas/compile";
+import type { PlayerPersona } from "../lib/personas/schema";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
 import { isNewerVersion } from "../lib/version.mjs";
 import { legacyCharacterToWorldLore } from "../lib/worlds/schema.ts";
@@ -74,6 +94,9 @@ type StorySession = {
   autopilotPov?: "first" | "third" | "narrator";
   playerRole?: string;
   playerRoleContext?: string;
+  playerName?: string;
+  playerPersona?: string;
+  playerPersonaId?: string;
 };
 
 type StoryEditor = {
@@ -85,6 +108,9 @@ type Message = {
   id: number;
   sender: "character" | "player" | "narrator";
   text: string;
+  direction?: string;
+  pages?: string[];
+  pageIndex?: number;
 };
 
 type TextStyle = {
@@ -109,7 +135,7 @@ type Viewpoint = "user" | "character" | "roving";
 type StoryTense = "present" | "past";
 type TokenStorageMode = "tab" | "computer";
 type UpdateState = "idle" | "checking" | "current" | "available" | "unconfigured" | "error";
-type AppView = "home" | "scenes" | "chat" | "changelog" | "settings";
+type AppView = "home" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas";
 type ProviderState =
   | "disconnected"
   | "ready"
@@ -500,6 +526,11 @@ const initialMessages: Record<string, Message[]> = {
     },
   ],
 };
+
+const curatedCharacterIds = new Set(initialCharacters.map((character) => character.id));
+function isUserOwnedCharacter(character: Character): boolean {
+  return !curatedCharacterIds.has(character.id);
+}
 
 const handcraftedScenes: Record<string, SceneDefinition[]> = {
   Coda: [
@@ -951,6 +982,99 @@ function Portrait({ character, accent }: { character: Character; accent?: string
   );
 }
 
+function InfoTip({ label, children }: { label: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    arrowLeft: number;
+    above: boolean;
+  } | null>(null);
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<number | undefined>(undefined);
+
+  const place = useCallback(() => {
+    const trigger = triggerRef.current;
+    const pop = popRef.current;
+    if (!trigger || !pop) return;
+    const rect = trigger.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const margin = 12;
+    const gap = 10;
+    const width = Math.min(340, viewportWidth - margin * 2);
+    pop.style.width = `${width}px`;
+    const height = pop.offsetHeight;
+    let left = rect.left + rect.width / 2 - width / 2;
+    left = Math.max(margin, Math.min(left, viewportWidth - width - margin));
+    const below = rect.bottom + gap + height <= viewportHeight - margin;
+    let top = below ? rect.bottom + gap : rect.top - gap - height;
+    if (top < margin) top = margin;
+    const arrowLeft = Math.min(Math.max(rect.left + rect.width / 2 - left, 18), width - 18);
+    setPos({ top, left, width, arrowLeft, above: !below });
+  }, []);
+
+  useEffect(() => {
+    if (closeTimer.current !== undefined) window.clearTimeout(closeTimer.current);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    place();
+    const reposition = () => place();
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [open, place]);
+
+  const openPopup = useCallback(() => {
+    if (closeTimer.current !== undefined) window.clearTimeout(closeTimer.current);
+    setOpen(true);
+  }, []);
+
+  const closePopup = useCallback(() => {
+    closeTimer.current = window.setTimeout(() => setOpen(false), 140);
+  }, []);
+
+  return (
+    <span
+      className="info-tip"
+      ref={triggerRef}
+      role="note"
+      tabIndex={0}
+      onMouseEnter={openPopup}
+      onMouseLeave={closePopup}
+      onFocus={openPopup}
+      onBlur={closePopup}
+    >
+      <span className="info-tip-icon" aria-hidden="true">
+        i
+      </span>
+      {open &&
+        createPortal(
+          <div
+            ref={popRef}
+            className={`info-tip-pop help-popover${pos ? " is-visible" : ""}${pos?.above ? " is-above" : ""}`}
+            role="tooltip"
+            style={pos ? { top: pos.top, left: pos.left, width: pos.width } : undefined}
+            onMouseEnter={openPopup}
+            onMouseLeave={closePopup}
+          >
+            <span className="help-popover__arrow" style={{ left: pos?.arrowLeft }} />
+            <h4 className="help-popover__title">{label}</h4>
+            {children}
+          </div>,
+          document.body,
+        )}
+    </span>
+  );
+}
+
 function hexToRgba(hex: string, alpha: number): string {
   const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!match) return `rgba(69, 184, 179, ${alpha})`;
@@ -995,7 +1119,7 @@ function roundRectPath(
   ctx.closePath();
 }
 
-type PaintedRun = { text: string; color: string; italic: boolean };
+type PaintedRun = { text: string; color: string; italic: boolean; bold: boolean };
 type PaintedLine = PaintedRun[];
 type PaintedParagraph = { runs: PaintedRun[]; isLabel: boolean };
 
@@ -1006,7 +1130,7 @@ function buildParagraphs(
   textStyle: TextStyle,
 ): PaintedParagraph[] {
   const formattedText = text
-    .replace(/\s*(\*[^*]+\*)\s*/g, "\n\n$1\n\n")
+    .replace(/\s*(?<!\*)(\*[^*]+\*)(?!\*)\s*/g, "\n\n$1\n\n")
     .replace(
       /(?:^|\s+)([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2})(?:\s*\(as\))?:\s*/g,
       "\n\n$1\n\n",
@@ -1027,27 +1151,29 @@ function buildParagraphs(
       new RegExp(`^(?:${escapedName}|she|he|they)\\b`, "i").test(paragraph);
     const runs: PaintedRun[] = [];
     if (isAction) {
-      runs.push({ text: paragraph, color: textStyle.action, italic: true });
+      runs.push({ text: paragraph, color: textStyle.action, italic: true, bold: false });
     } else {
-      const regex = /(\*[^*]+\*|\[[^\]]+\])/g;
+      const regex = /(\[[^\]]+\]|\*\*[^*]+\*\*|\*[^*]+\*)/g;
       let lastIndex = 0;
       let match: RegExpExecArray | null;
       while ((match = regex.exec(paragraph)) !== null) {
         if (match.index > lastIndex) {
-          runs.push({ text: paragraph.slice(lastIndex, match.index), color: textStyle.dialogue, italic: false });
+          runs.push({ text: paragraph.slice(lastIndex, match.index), color: textStyle.dialogue, italic: false, bold: false });
         }
         const inner = match[0];
-        if (inner.startsWith("*")) {
-          runs.push({ text: inner.slice(1, -1), color: textStyle.action, italic: true });
+        if (inner.startsWith("**")) {
+          runs.push({ text: inner.slice(2, -2), color: textStyle.dialogue, italic: false, bold: true });
+        } else if (inner.startsWith("*")) {
+          runs.push({ text: inner.slice(1, -1), color: textStyle.action, italic: true, bold: false });
         } else {
-          runs.push({ text: inner.slice(1, -1), color: textStyle.narration, italic: false });
+          runs.push({ text: inner.slice(1, -1), color: textStyle.narration, italic: false, bold: false });
         }
         lastIndex = regex.lastIndex;
       }
       if (lastIndex < paragraph.length) {
-        runs.push({ text: paragraph.slice(lastIndex), color: textStyle.dialogue, italic: false });
+        runs.push({ text: paragraph.slice(lastIndex), color: textStyle.dialogue, italic: false, bold: false });
       }
-      if (runs.length === 0) runs.push({ text: paragraph, color: textStyle.dialogue, italic: false });
+      if (runs.length === 0) runs.push({ text: paragraph, color: textStyle.dialogue, italic: false, bold: false });
     }
     return { runs, isLabel };
   });
@@ -1061,14 +1187,30 @@ function isInvalidImpersonationDraft(direction: string, draft: string, character
   const normalizedDirection = normalizeDirection(direction);
   const normalizedDraft = normalizeDirection(draft);
   if (!normalizedDraft) return true;
+  if (normalizedDraft.split(" ").length < 18) return true;
   if (normalizedDirection && (normalizedDraft === normalizedDirection || normalizedDraft.includes(normalizedDirection))) {
     return normalizedDraft.split(" ").length <= normalizedDirection.split(" ").length + 8;
   }
   const escapedName = characterName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(
-    `^(?:she|her|he|him|they|them|${escapedName})\\b|\\b(?:her|his|their)\\s+(?:voice|eyes|hips|body|face|hands|breath|smile|reaction)\\b|\\b(?:she|he|they)\\s+(?:looks|smiles|speaks|says|moves|waits|starts|begins)\\b`,
+  const characterPerspective = new RegExp(
+    [
+      `\\b${escapedName}\\b`,
+      "\\b(?:he|she|they)\\s+(?:just\\s+)?(?:knows|rolls|steps|leans|turns|grins|smirks|nods|shrugs|walks|strides|follows|waits|sighs|glances|watches|sees|feels|thinks|wants|looks|smiles|speaks|says|moves|starts|begins|raises|laughs|chuckles|growls|shifts|pushes|reaches|grabs|crosses|sits|stands|catches|holds|winces|pauses)\\b",
+    ].join("|"),
     "i",
-  ).test(draft.trim());
+  );
+  return characterPerspective.test(normalizedDraft);
+}
+
+function messageVersions(message: Message): { versions: string[]; activeIndex: number } {
+  if (message.pages && message.pages.length > 0) {
+    const activeIndex = Math.min(
+      Math.max(message.pageIndex ?? message.pages.length - 1, 0),
+      message.pages.length - 1,
+    );
+    return { versions: message.pages, activeIndex };
+  }
+  return { versions: [message.text], activeIndex: 0 };
 }
 
 export default function DreamboundApp() {
@@ -1080,6 +1222,30 @@ export default function DreamboundApp() {
   const [currentUser, setCurrentUser] = useState<{ displayName: string } | null>(null);
   const [playerProfile, setPlayerProfile] = useState(() =>
     readSession<{ name: string; persona: string }>("player", { name: "", persona: "" }),
+  );
+  const [personas, setPersonas] = useState<PlayerPersona[]>(() => {
+    const saved = loadPersonas();
+    if (saved !== null) return saved;
+    const migrated = migrateLegacyPlayerProfile();
+    if (migrated) {
+      savePersonas([migrated]);
+      if (!loadActivePersonaId()) saveActivePersonaId(migrated.id);
+      return [migrated];
+    }
+    savePersonas([]);
+    return [];
+  });
+  const [activePersonaId, setActivePersonaId] = useState<string | null>(() =>
+    loadActivePersonaId(),
+  );
+  const activePersona = useMemo(
+    () => personas.find((persona) => persona.id === activePersonaId) ?? null,
+    [personas, activePersonaId],
+  );
+  const resolvedActivePersonaId = activePersona?.id ?? null;
+  const compiledActivePersona = useMemo(
+    () => (activePersona ? compilePlayerPersona(activePersona) : ""),
+    [activePersona],
   );
   const [view, setView] = useState<AppView>(() => readSession<AppView>("view", "home"));
   const [characters, setCharacters] = useState<Character[]>(() => {
@@ -1127,6 +1293,8 @@ export default function DreamboundApp() {
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState("Dialogue");
   const [isCreating, setIsCreating] = useState(false);
+  const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
+  const [confirmDeleteCharacter, setConfirmDeleteCharacter] = useState<Character | null>(null);
   const [apiToken, setApiToken] = useState(readStoredToken);
   const [tokenStorageMode, setTokenStorageMode] =
     useState<TokenStorageMode>(readTokenStorageMode);
@@ -1165,13 +1333,23 @@ export default function DreamboundApp() {
   const [isReplying, setIsReplying] = useState(false);
   const [isImpersonating, setIsImpersonating] = useState(false);
   const generationAbortRef = useRef<AbortController | null>(null);
-  const [showImpersonate, setShowImpersonate] = useState(false);
   const [impersonationPrompt, setImpersonationPrompt] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [importError, setImportError] = useState("");
+  const [characterBackupMsg, setCharacterBackupMsg] = useState("");
+  const [characterBackupError, setCharacterBackupError] = useState("");
   const [connectionError, setConnectionError] = useState("");
   const [chatError, setChatError] = useState("");
   const [showShare, setShowShare] = useState(false);
+  const [showPersonaModal, setShowPersonaModal] = useState(false);
+  type PendingPersonaStart =
+    | { kind: "scene"; characterId: string; scene: SceneDefinition }
+    | { kind: "sandbox"; characterId: string }
+    | { kind: "autopilot"; characterId: string }
+    | { kind: "imported"; characterId: string }
+    | null;
+  const [pendingPersonaStart, setPendingPersonaStart] = useState<PendingPersonaStart>(null);
+  const [autopilotPersona, setAutopilotPersona] = useState<PlayerPersona | null>(null);
   const [shareCount, setShareCount] = useState(() => readSession<number>("shareCount", 5));
   const [shareCaptions, setShareCaptions] = useState(() => readSession<boolean>("shareCaptions", true));
   const [shareHeader, setShareHeader] = useState(() => readSession<boolean>("shareHeader", true));
@@ -1196,6 +1374,8 @@ export default function DreamboundApp() {
   );
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState("");
+  const [copyFeedbackId, setCopyFeedbackId] = useState<number | null>(null);
+  const [directionEditor, setDirectionEditor] = useState<{ id: number; text: string } | null>(null);
   const [pendingDeleteMessage, setPendingDeleteMessage] = useState<Message | null>(null);
   const [updateState, setUpdateState] = useState<UpdateState>("idle");
   const [updateMessage, setUpdateMessage] = useState("Check GitHub for a published application release.");
@@ -1379,6 +1559,14 @@ export default function DreamboundApp() {
   }, [characters]);
 
   useEffect(() => {
+    savePersonas(personas);
+  }, [personas]);
+
+  useEffect(() => {
+    saveActivePersonaId(resolvedActivePersonaId);
+  }, [resolvedActivePersonaId]);
+
+  useEffect(() => {
     writeSession("view", view);
     writeSession("selectedId", selectedId);
     writeSession("model", selectedModel);
@@ -1435,6 +1623,39 @@ export default function DreamboundApp() {
     setCurrentUser((current) => (current ? { ...current, displayName: next.name.trim() } : current));
   }
 
+  function updateActiveSessionPersona(patch: Partial<{ playerName: string; playerPersona: string }>) {
+    if (!activeSession) return;
+    setSessions((current) => current.map((session) =>
+      session.id === activeSession.id
+        ? { ...session, ...patch, updatedAt: Date.now() }
+        : session,
+    ));
+  }
+
+  function clearActiveSessionPersona() {
+    if (!activeSession) return;
+    setSessions((current) => current.map((session) =>
+      session.id === activeSession.id
+        ? { ...session, playerPersonaId: undefined, playerName: "", playerPersona: "", updatedAt: Date.now() }
+        : session,
+    ));
+  }
+
+  function applySessionPersona(persona: PlayerPersona) {
+    if (!activeSession) return;
+    setSessions((current) => current.map((session) =>
+      session.id === activeSession.id
+        ? {
+            ...session,
+            playerPersonaId: persona.id,
+            playerName: persona.name,
+            playerPersona: compilePlayerPersona(persona),
+            updatedAt: Date.now(),
+          }
+        : session,
+    ));
+  }
+
   const selected = useMemo(
     () => characters.find((character) => character.id === selectedId) ?? characters[0],
     [characters, selectedId],
@@ -1447,6 +1668,16 @@ export default function DreamboundApp() {
   const activeScene = activeSession?.sandbox
     ? sandboxSceneFor(selected)
     : selectedScenes.find((scene) => scene.id === activeSession?.sceneId) ?? selectedScenes[0];
+  const activePlayerName = activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name.trim();
+  const sessionUsesDefaultPersona = Boolean(
+    !activeSession?.playerName?.trim() && !activeSession?.playerPersona?.trim(),
+  );
+  const sessionPersonaSnapshot = activeSession?.playerPersona?.trim() || "";
+  const sessionPersonaName =
+    activeSession?.playerName?.trim() ||
+    activePersona?.name.trim() ||
+    playerProfile.name.trim() ||
+    null;
   const activeMessageKey = activeSession?.messageKey ?? selected.id;
   const storedContextManifest = contextManifests[activeMessageKey];
   const activeContextManifest = storedContextManifest
@@ -1570,7 +1801,54 @@ export default function DreamboundApp() {
     setStoryEditor(null);
   }
 
-  function startScene(characterId: string, scene: SceneDefinition) {
+  function personaSnapshot(persona?: PlayerPersona | null) {
+    if (!persona) return {};
+    return {
+      playerPersonaId: persona.id,
+      playerName: persona.name,
+      playerPersona: compilePlayerPersona(persona),
+    };
+  }
+
+  function requestPersonaStart(start: NonNullable<PendingPersonaStart>) {
+    setPendingPersonaStart(start);
+  }
+
+  function commitPersonaStart(persona?: PlayerPersona | null) {
+    const start = pendingPersonaStart;
+    setPendingPersonaStart(null);
+    if (!start) return;
+    if (start.kind === "scene") startScene(start.characterId, start.scene, persona ?? null);
+    else if (start.kind === "sandbox") startSandbox(start.characterId, persona ?? null);
+    else if (start.kind === "autopilot") {
+      setAutopilotPersona(persona ?? null);
+      setShowAutopilotStart(true);
+    }
+    else if (start.kind === "imported") startImported(start.characterId, persona ?? null);
+  }
+
+  function startImported(characterId: string, persona?: PlayerPersona | null) {
+    const character =
+      characters.find((candidate) => candidate.id === characterId) ?? characters[0];
+    const scene = scenesFor(character)[0];
+    const session = { ...createStorySession(character, scene), ...personaSnapshot(persona) };
+    const description = character.profile && !character.credit
+      ? character.profile
+      : "";
+    setMessages((current) => ({
+      ...current,
+      [session.messageKey]: [
+        ...(description ? [{ id: session.createdAt, sender: "narrator" as const, text: description }] : []),
+        { id: session.createdAt + 1, sender: "character" as const, text: character.reply },
+      ],
+    }));
+    setSessions((current) => [session, ...current]);
+    setCurrentSessionId(session.id);
+    setSelectedId(character.id);
+    setView("chat");
+  }
+
+  function startScene(characterId: string, scene: SceneDefinition, persona?: PlayerPersona | null) {
     const character =
       characters.find((candidate) => candidate.id === characterId) ?? characters[0];
     const role = characterId === "coda"
@@ -1583,6 +1861,7 @@ export default function DreamboundApp() {
       playerRoleContext: role?.name === "Custom Role"
         ? customRole || "No external player-role facts are established."
         : role?.context,
+      ...personaSnapshot(persona),
     };
 
     setMessages((current) => ({
@@ -1623,11 +1902,11 @@ export default function DreamboundApp() {
     if (storyEditor?.scene.id === scene.id) setStoryEditor(null);
   }
 
-  function startSandbox(characterId: string) {
+  function startSandbox(characterId: string, persona?: PlayerPersona | null) {
     const character =
       characters.find((candidate) => candidate.id === characterId) ?? characters[0];
     const scene = sandboxSceneFor(character);
-    const session = { ...createStorySession(character, scene), sandbox: true };
+    const session = { ...createStorySession(character, scene), sandbox: true, ...personaSnapshot(persona) };
 
     setMessages((current) => ({ ...current, [session.messageKey]: [] }));
     setSessions((current) => [session, ...current]);
@@ -1638,27 +1917,26 @@ export default function DreamboundApp() {
     setView("chat");
   }
 
-  function openAutopilotStart() {
-    setAutopilotSeed("");
-    setAutopilotError("");
-    setAutopilotPov("third");
-    setShowAutopilotStart(true);
-  }
-
-  function beginAutopilot() {
+  function beginAutopilot(characterId?: string, persona?: PlayerPersona | null) {
     setShowAutopilotStart(false);
     if (!configured) {
-      setChatError("Set up and test a story engine before starting Autopilot.");
+      setChatError("Set up and test a story engine before starting Whisper Mode.");
       setView("settings");
       return;
     }
-    const scene = sandboxSceneFor(selected);
+    const resolvedPersona = persona ?? autopilotPersona ?? null;
+    setAutopilotPersona(null);
+    const target = characterId
+      ? characters.find((candidate) => candidate.id === characterId) ?? selected
+      : selected;
+    const scene = sandboxSceneFor(target);
     const session: StorySession = {
-      ...createStorySession(selected, scene),
+      ...createStorySession(target, scene),
       sandbox: true,
       autopilot: true,
       autopilotPaused: false,
       autopilotPov: autopilotPov,
+      ...personaSnapshot(resolvedPersona),
     };
     const seed = autopilotSeed.trim();
     setMessages((current) => ({
@@ -1669,7 +1947,7 @@ export default function DreamboundApp() {
     }));
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
-    setSelectedId(selected.id);
+    setSelectedId(target.id);
     setAutopilotError("");
     setChatError("");
     setView("chat");
@@ -1956,10 +2234,12 @@ export default function DreamboundApp() {
     generationAbortRef.current?.abort();
     generationAbortRef.current = controller;
     const requestSignal = controller.signal;
+    const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
+    const effectivePlayerPersona = (activeSession?.playerPersona?.trim() || compiledActivePersona || playerProfile.persona).trim();
     const requestBody = {
         action,
-        playerName: playerProfile.name.trim(),
-        playerPersona: playerProfile.persona.trim(),
+        playerName: effectivePlayerName,
+        playerPersona: effectivePlayerPersona,
         impersonationPrompt: playerDirection,
         provider: storyProvider,
         apiToken,
@@ -2121,8 +2401,8 @@ export default function DreamboundApp() {
       setProviderState("error");
       setAutopilotError(
         error instanceof Error && error.message
-          ? `Autopilot: ${error.message}`
-          : "Autopilot could not reach the story engine.",
+          ? `Whisper Mode: ${error.message}`
+          : "Whisper Mode could not reach the story engine.",
       );
     } finally {
       autopilotBusyRef.current = false;
@@ -2133,7 +2413,7 @@ export default function DreamboundApp() {
   function toggleAutopilot() {
     if (!activeSession) return;
     if (!configured) {
-      setChatError("Set up and test a story engine before turning on Autopilot.");
+      setChatError("Set up and test a story engine before turning on Whisper Mode.");
       setView("settings");
       return;
     }
@@ -2278,62 +2558,71 @@ export default function DreamboundApp() {
     }
   }
 
+  async function impersonateTurn(conversation: Message[], playerDirection: string): Promise<string> {
+    let suggestion = await requestStoryReply(conversation, "impersonate", playerDirection);
+    if (isInvalidImpersonationDraft(playerDirection, suggestion, selected.name)) {
+      suggestion = await requestStoryReply(
+        conversation,
+        "impersonate",
+        `${playerDirection}\n\nThe previous draft was written from the character's side and was rejected. Rewrite it strictly from the player's first-person point of view: only the player's own actions and spoken words. Never write ${selected.name}'s actions, dialogue, feelings, or reactions anywhere in the turn, and never call the player by a name ${selected.name} would use. Keep the turn substantial — a concrete action, its physical context, and dialogue.`,
+      );
+    }
+    if (isInvalidImpersonationDraft(playerDirection, suggestion, selected.name)) {
+      throw new Error("Impersonation kept writing the character's side instead of the player's. Try again or use a shorter direction.");
+    }
+    return suggestion;
+  }
+
+  async function commitPlayerTurn(truncatedConversation: Message[], playerMessage: Message): Promise<void> {
+    const conversation = [...truncatedConversation, playerMessage];
+    setMessages((current) => ({
+      ...current,
+      [activeMessageKey]: conversation,
+    }));
+    if (activeSession) {
+      setSessions((current) => current.map((session) =>
+        session.id === activeSession.id ? { ...session, updatedAt: Date.now() } : session,
+      ));
+    }
+    setIsReplying(true);
+    const characterReply = await requestStoryReply(conversation);
+    setMessages((current) => ({
+      ...current,
+      [activeMessageKey]: [
+        ...(current[activeMessageKey] ?? []),
+        { id: Date.now() + 1, sender: "character", text: characterReply },
+      ],
+    }));
+    const newBond = Math.min(100, (selected.bond || 8) + 1);
+    setCharacters((current) => current.map((character) =>
+      character.id === selected.id ? { ...character, bond: newBond } : character,
+    ));
+    setProviderState("connected");
+  }
+
   async function impersonatePlayer() {
     if (isReplying || isImpersonating || activeMessages.length === 0) return;
     if (!configured) {
       setChatError("Set up and test a story engine before generating a player draft.");
-      setShowImpersonate(false);
+      setMode("Dialogue");
       setView("settings");
       return;
     }
 
     const playerDirection = impersonationPrompt.trim();
-    setShowImpersonate(false);
-    setImpersonationPrompt("");
     setIsImpersonating(true);
     setChatError("");
     try {
-      let suggestion = await requestStoryReply(activeMessages, "impersonate", playerDirection);
-      if (isInvalidImpersonationDraft(playerDirection, suggestion, selected.name)) {
-        suggestion = await requestStoryReply(
-          activeMessages,
-          "impersonate",
-          `${playerDirection}\n\nTurn this direction into a new concrete first-person player action or dialogue. Do not repeat the direction, answer it as ${selected.name}, or describe ${selected.name}'s reaction.`,
-        );
-      }
-      if (isInvalidImpersonationDraft(playerDirection, suggestion, selected.name)) {
-        throw new Error("Impersonation could not create a player-side turn. Try a shorter direction.");
-      }
+      const suggestion = await impersonateTurn(activeMessages, playerDirection);
       const playerMessage: Message = {
         id: Date.now(),
         sender: "player",
         text: suggestion,
+        direction: playerDirection || undefined,
       };
-      const conversation = [...activeMessages, playerMessage];
-      setMessages((current) => ({
-        ...current,
-        [activeMessageKey]: conversation,
-      }));
-      if (activeSession) {
-        setSessions((current) => current.map((session) =>
-          session.id === activeSession.id ? { ...session, updatedAt: Date.now() } : session,
-        ));
-      }
-
-      setIsReplying(true);
-      const characterReply = await requestStoryReply(conversation);
-      setMessages((current) => ({
-        ...current,
-        [activeMessageKey]: [
-          ...(current[activeMessageKey] ?? []),
-          { id: Date.now() + 1, sender: "character", text: characterReply },
-        ],
-      }));
-      const newBond = Math.min(100, (selected.bond || 8) + 1);
-      setCharacters((current) => current.map((character) =>
-        character.id === selected.id ? { ...character, bond: newBond } : character,
-      ));
-      setProviderState("connected");
+      await commitPlayerTurn(activeMessages, playerMessage);
+      setImpersonationPrompt("");
+      setMode("Dialogue");
     } catch (error) {
       if (isAbortError(error)) return;
       setProviderState("error");
@@ -2397,12 +2686,32 @@ export default function DreamboundApp() {
     if (!text) return;
     setMessages((current) => ({
       ...current,
-      [activeMessageKey]: (current[activeMessageKey] ?? []).map((m) =>
-        m.id === id ? { ...m, text } : m,
-      ),
+      [activeMessageKey]: (current[activeMessageKey] ?? []).map((m) => {
+        if (m.id !== id) return m;
+        const { versions, activeIndex } = messageVersions(m);
+        const pages = versions.map((page, index) => (index === activeIndex ? text : page));
+        return { ...m, text, pages, pageIndex: activeIndex };
+      }),
     }));
     setEditingId(null);
     setEditDraft("");
+  }
+
+  function setMessageActivePage(id: number, index: number) {
+    setMessages((current) => ({
+      ...current,
+      [activeMessageKey]: (current[activeMessageKey] ?? []).map((m) => {
+        if (m.id !== id) return m;
+        const { versions } = messageVersions(m);
+        const clamped = Math.min(Math.max(index, 0), versions.length - 1);
+        return { ...m, text: versions[clamped], pageIndex: clamped };
+      }),
+    }));
+    if (activeSession) {
+      setSessions((current) => current.map((session) =>
+        session.id === activeSession.id ? { ...session, updatedAt: Date.now() } : session,
+      ));
+    }
   }
 
   function deleteMessage(scope: "single" | "following") {
@@ -2430,14 +2739,51 @@ export default function DreamboundApp() {
     setPendingDeleteMessage(null);
   }
 
+  async function rerunImpersonation(id: number, directionText: string) {
+    if (isReplying || isImpersonating) return;
+    const currentMessages = messages[activeMessageKey] ?? [];
+    const target = currentMessages.find((m) => m.id === id);
+    const truncated = currentMessages.filter((m) => m.id < id);
+    if (!target || truncated.length === 0) return;
+    const nextDirection = directionText.trim();
+    setDirectionEditor(null);
+    setChatError("");
+    setIsImpersonating(true);
+    try {
+      const suggestion = await impersonateTurn(truncated, nextDirection);
+      await commitPlayerTurn(truncated, {
+        id: Date.now(),
+        sender: "player",
+        text: suggestion,
+        direction: nextDirection || undefined,
+      });
+    } catch (error) {
+      if (isAbortError(error)) return;
+      setProviderState("error");
+      setChatError(
+        error instanceof Error ? error.message : "The impersonation could not be re-run.",
+      );
+    } finally {
+      setIsImpersonating(false);
+      setIsReplying(false);
+    }
+  }
+
+  function clearMessageDirection(id: number) {
+    setMessages((current) => ({
+      ...current,
+      [activeMessageKey]: (current[activeMessageKey] ?? []).map((m) => {
+        if (m.id !== id) return m;
+        return { id: m.id, sender: m.sender, text: m.text };
+      }),
+    }));
+    setDirectionEditor(null);
+  }
+
   async function rerollMessage(message: Message) {
     if (isReplying || isImpersonating) return;
     const truncated = (messages[activeMessageKey] ?? []).filter((m) => m.id < message.id);
     if (truncated.length === 0) return;
-    setMessages((current) => ({
-      ...current,
-      [activeMessageKey]: truncated,
-    }));
     setChatError("");
     setIsReplying(true);
 
@@ -2446,10 +2792,11 @@ export default function DreamboundApp() {
 
       setMessages((current) => ({
         ...current,
-        [activeMessageKey]: [
-          ...(current[activeMessageKey] ?? []),
-          { id: Date.now() + 1, sender: "character", text: reply },
-        ],
+        [activeMessageKey]: (current[activeMessageKey] ?? []).map((m) => {
+          if (m.id !== message.id) return m;
+          const pages = m.pages && m.pages.length > 0 ? [...m.pages, reply] : [m.text, reply];
+          return { ...m, text: reply, pages, pageIndex: pages.length - 1 };
+        }),
       }));
       setProviderState("connected");
     } catch (error) {
@@ -2562,38 +2909,167 @@ export default function DreamboundApp() {
           `${name} is an imported character whose personality should stay consistent with their opening message.`,
         accent: "#d78a5e",
       };
-      const scene = scenesFor(importedCharacter)[0];
-      const session: StorySession = {
-        id: `session-${id}`,
-        characterId: id,
-        sceneId: scene.id,
-        title: scene.title,
-        messageKey: id,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-
       setCharacters((current) => [...current, importedCharacter]);
-      setMessages((current) => ({
-        ...current,
-        [id]: [
-          ...(description
-            ? [{ id: Date.now(), sender: "narrator" as const, text: description }]
-            : []),
-          { id: Date.now() + 1, sender: "character", text: opening },
-        ],
-      }));
-      setSessions((current) => [session, ...current]);
-      setCurrentSessionId(session.id);
       setSelectedId(id);
-      setImportError("");
       setIsCreating(false);
-      setView("chat");
+      requestPersonaStart({ kind: "imported", characterId: id });
     } catch (error) {
       setImportError(error instanceof Error ? error.message : "That character card could not be read.");
     } finally {
       event.target.value = "";
     }
+  }
+
+  function importArchiveCharacter(publication: ArchivePublication) {
+    const id = `archive-${publication.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")}-${Date.now()}`;
+    const ageCategory: AgeCategory =
+      publication.age_category === "adult"
+        ? "adult"
+        : publication.age_category === "minor"
+          ? "minor"
+          : "unknown";
+    const memories = publication.profile
+      ? publication.profile
+          .split(/[.\n]/)
+          .map((sentence) => sentence.trim())
+          .filter(Boolean)
+          .slice(0, 3)
+      : [];
+    const importedCharacter: Character = {
+      id,
+      name: publication.name,
+      role: publication.role || "From the Whispering Archive",
+      status: "Ready to meet",
+      image: publication.avatar_url ?? "",
+      sceneImage: publication.scene_image_url ?? "",
+      scene: "A Shared Story",
+      weather: "The world waits for your first choice",
+      bond: 12,
+      memories: memories.length ? memories : ["Their history is waiting to be discovered"],
+      reply: publication.opening_message,
+      profile: publication.profile || `${publication.name} is a character shared through the Whispering Archive.`,
+      accent: "#d78a5e",
+      ageCategory,
+      credit: publication.creator_credit || publication.owner || undefined,
+    };
+    setCharacters((current) =>
+      ensureUniqueCharacterIds(
+        [...current, importedCharacter],
+        current.map((character) => character.id),
+      ),
+    );
+    setSelectedId(id);
+    setView("home");
+    requestPersonaStart({ kind: "imported", characterId: id });
+  }
+
+  function downloadTextFile(filename: string, text: string) {
+    const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportCharacterLibrary() {
+    downloadTextFile(
+      "howling-whispers-character-library.json",
+      serializeCharacterLibrary(characters),
+    );
+    setCharacterBackupMsg("Character library exported.");
+  }
+
+  function exportSingleCharacter(character: Character) {
+    downloadTextFile(
+      `howling-whispers-character-${character.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`,
+      serializeCharacter(character),
+    );
+  }
+
+  function handleCharacterBackupImport(file: File) {
+    setCharacterBackupError("");
+    setCharacterBackupMsg("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = parseCharacterImport(String(reader.result ?? ""));
+      if (!result.ok) {
+        setCharacterBackupError(result.error);
+        return;
+      }
+      const unique = ensureUniqueCharacterIds(
+        result.characters,
+        characters.map((character) => character.id),
+      );
+      const nextCharacters = [...characters, ...unique];
+      setCharacters(nextCharacters);
+      if (unique.length === 1) setSelectedId(unique[0].id);
+      setCharacterBackupMsg(`Imported ${unique.length} ${unique.length === 1 ? "character" : "characters"}.`);
+    };
+    reader.onerror = () => setCharacterBackupError("The character file could not be read.");
+    reader.readAsText(file);
+  }
+
+  function updateCharacter(id: string, updates: Partial<Character>) {
+    setCharacters((current) => current.map((character) => (
+      character.id === id ? { ...character, ...updates } : character
+    )));
+    setEditingCharacter(null);
+  }
+
+  function deleteCharacter(character: Character) {
+    if (!isUserOwnedCharacter(character)) return;
+
+    const removedSessionMessageKeys = new Set(
+      sessions
+        .filter((session) => session.characterId === character.id)
+        .map((session) => session.messageKey),
+    );
+
+    setCharacters((current) => current.filter((candidate) => candidate.id !== character.id));
+    setSessions((current) => current.filter((session) => session.characterId !== character.id));
+
+    setMessages((current) => {
+      const next = { ...current };
+      delete next[character.id];
+      removedSessionMessageKeys.forEach((messageKey) => delete next[messageKey]);
+      return next;
+    });
+
+    setStoryScenes((current) => {
+      const next = { ...current };
+      delete next[character.id];
+      return next;
+    });
+
+    setContextManifests((current) => {
+      const next = { ...current };
+      removedSessionMessageKeys.forEach((messageKey) => delete next[messageKey]);
+      delete next[character.id];
+      return next;
+    });
+
+    setDirectionEditor(null);
+    setStoryEditor(null);
+    setEditingCharacter(null);
+    setConfirmDeleteCharacter(null);
+
+    if (currentSessionId && removedSessionMessageKeys.has(
+      sessions.find((session) => session.id === currentSessionId)?.messageKey ?? "",
+    )) {
+      setCurrentSessionId(null);
+    }
+
+    if (selectedId === character.id) {
+      setSelectedId("coda");
+    }
+    setView("home");
   }
 
   function renderText(text: string, forceAction = false) {
@@ -2602,7 +3078,7 @@ export default function DreamboundApp() {
     }
 
     const parts: React.ReactNode[] = [];
-    const regex = /(\*[^*]+\*|\[[^\]]+\])/g;
+    const regex = /(\[[^\]]+\]|\*\*[^*]+\*\*|\*[^*]+\*)/g;
     let lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
@@ -2610,7 +3086,9 @@ export default function DreamboundApp() {
         parts.push(<span key={lastIndex} style={{ color: textStyle.dialogue }}>{text.slice(lastIndex, match.index)}</span>);
       }
       const inner = match[0];
-      if (inner.startsWith("*")) {
+      if (inner.startsWith("**")) {
+        parts.push(<span key={match.index} style={{ color: textStyle.dialogue, fontWeight: 700 }}>{inner.slice(2, -2)}</span>);
+      } else if (inner.startsWith("*")) {
         parts.push(<span key={match.index} style={{ color: textStyle.action, fontStyle: "italic" }}>{inner.slice(1, -1)}</span>);
       } else {
         parts.push(<span key={match.index} style={{ color: textStyle.narration }}>{inner.slice(1, -1)}</span>);
@@ -2625,7 +3103,7 @@ export default function DreamboundApp() {
 
   function renderMessageText(text: string, sender: Message["sender"]) {
     const formattedText = text
-      .replace(/\s*(\*[^*]+\*)\s*/g, "\n\n$1\n\n")
+      .replace(/\s*(?<!\*)(\*[^*]+\*)(?!\*)\s*/g, "\n\n$1\n\n")
       .replace(
         /(?:^|\s+)([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2})(?:\s*\(as\))?:\s*/g,
         "\n\n$1\n\n",
@@ -2668,8 +3146,11 @@ export default function DreamboundApp() {
       options.showCaption && message.sender !== "narrator"
         ? message.sender === "character"
           ? selected.name
-          : playerProfile.name.trim() || "You"
+          : activePlayerName || "You"
         : "";
+    const { versions: pageVersions, activeIndex: activePage } = messageVersions(message);
+    const showPageControl =
+      message.sender === "character" && isLastCharacter && pageVersions.length > 1;
     return (
       <article
         className={`message ${message.sender}${options.live && !seenMessageIds.has(`${activeMessageKey}:${message.id}`) ? " message-new" : ""}`}
@@ -2681,8 +3162,14 @@ export default function DreamboundApp() {
           {isEditing ? (
             <div className="message-edit">
               <textarea
+                className="message-edit-textarea"
                 value={editDraft}
-                onChange={(event) => setEditDraft(event.target.value)}
+                onChange={(event) => {
+                  setEditDraft(event.target.value);
+                  const el = event.currentTarget;
+                  el.style.height = "auto";
+                  el.style.height = `${el.scrollHeight}px`;
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
@@ -2692,6 +3179,12 @@ export default function DreamboundApp() {
                 }}
                 autoFocus
                 rows={3}
+                ref={(el) => {
+                  if (el) {
+                    el.style.height = "auto";
+                    el.style.height = `${el.scrollHeight}px`;
+                  }
+                }}
               />
               <div className="message-edit-actions">
                 <button onClick={() => saveEditMessage(message.id)}>Save</button>
@@ -2702,31 +3195,80 @@ export default function DreamboundApp() {
             <>
               {renderMessageText(message.text, message.sender)}
               {options.live && (
-                <div className="message-actions">
-                  <button
-                    onClick={() => startEditMessage(message.id, message.text)}
-                    aria-label="Edit message"
-                    title="Edit"
-                  >
-                    ✎
-                  </button>
-                  <button
-                    onClick={() => setPendingDeleteMessage(message)}
-                    aria-label="Delete message"
-                    title="Delete"
-                  >
-                    ✕
-                  </button>
-                  {isLastCharacter && (
+                <div className="message-controls-bar">
+                  <div className="message-controls-left">
+                    {showPageControl && (
+                      <div className="page-control">
+                        <button
+                          onClick={() => setMessageActivePage(message.id, activePage - 1)}
+                          aria-label="Previous version"
+                          title="Previous version"
+                          disabled={isReplying || activePage === 0}
+                        >
+                          ‹
+                        </button>
+                        <span className="page-badge" aria-label={`Version ${activePage + 1} of ${pageVersions.length}`}>
+                          &lt;{activePage + 1}/{pageVersions.length}&gt;
+                        </span>
+                        <button
+                          onClick={() => setMessageActivePage(message.id, activePage + 1)}
+                          aria-label="Next version"
+                          title="Next version"
+                          disabled={isReplying || activePage === pageVersions.length - 1}
+                        >
+                          ›
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="message-actions">
                     <button
-                      onClick={() => rerollMessage(message)}
-                      aria-label="Re-roll reply"
-                      title="Re-roll reply"
-                      disabled={isReplying}
+                      onClick={() => {
+                        if (typeof navigator !== "undefined" && navigator.clipboard) {
+                          navigator.clipboard.writeText(message.text);
+                          setCopyFeedbackId(message.id);
+                          setTimeout(() => setCopyFeedbackId(null), 1500);
+                        }
+                      }}
+                      aria-label="Copy message text"
+                      title={copyFeedbackId === message.id ? "Copied!" : "Copy text"}
                     >
-                      ↻
+                      {copyFeedbackId === message.id ? "✓" : "📋"}
                     </button>
-                  )}
+                    <button
+                      onClick={() => startEditMessage(message.id, message.text)}
+                      aria-label="Edit message"
+                      title="Edit"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      onClick={() => setPendingDeleteMessage(message)}
+                      aria-label="Delete message"
+                      title="Delete"
+                    >
+                      ✕
+                    </button>
+                    {message.direction && (
+                      <button
+                        onClick={() => setDirectionEditor({ id: message.id, text: message.direction ?? "" })}
+                        aria-label="View or edit impersonation direction"
+                        title="Impersonation direction"
+                      >
+                        ◉
+                      </button>
+                    )}
+                    {isLastCharacter && (
+                      <button
+                        onClick={() => rerollMessage(message)}
+                        aria-label="Re-roll reply"
+                        title="Re-roll reply"
+                        disabled={isReplying}
+                      >
+                        ↻
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </>
@@ -2748,8 +3290,8 @@ export default function DreamboundApp() {
 
     const serifFamily = '"Cormorant Garamond", Georgia, serif';
     const sansFamily = '"Inter", system-ui, sans-serif';
-    const serifFont = (size: number, italic = false) =>
-      `${italic ? "italic " : ""}400 ${size}px ${serifFamily}`;
+    const serifFont = (size: number, italic = false, bold = false) =>
+      `${italic ? "italic " : ""}${bold ? "600 " : "400 "}${size}px ${serifFamily}`;
     const sansFont = (size: number, weight = 600) => `${weight} ${size}px ${sansFamily}`;
 
     const baseSize = textStyle.fontSize;
@@ -2758,7 +3300,7 @@ export default function DreamboundApp() {
     const accentRgba = (alpha: number) => hexToRgba(accent, alpha);
     const cream = "#f2dec2";
     const muted = "#8f8284";
-    const playerName = playerProfile.name.trim() || "You";
+    const playerName = activePlayerName || "You";
 
     await Promise.all(
       [
@@ -2792,8 +3334,8 @@ export default function DreamboundApp() {
     if (!ctx) return null;
     ctx.textBaseline = "middle";
 
-    const measureWord = (text: string, fontSize: number, italic: boolean) => {
-      ctx.font = serifFont(fontSize, italic);
+    const measureWord = (text: string, fontSize: number, italic: boolean, bold = false) => {
+      ctx.font = serifFont(fontSize, italic, bold);
       return ctx.measureText(text).width;
     };
 
@@ -2803,13 +3345,13 @@ export default function DreamboundApp() {
       fontSize: number,
       italicAll: boolean,
     ): PaintedLine[] => {
-      const words: Array<{ text: string; color: string; italic: boolean }> = [];
+      const words: Array<{ text: string; color: string; italic: boolean; bold: boolean }> = [];
       for (const run of runs) {
         const segments = run.text.split("\n");
         segments.forEach((segment, index) => {
-          if (index > 0) words.push({ text: "\n", color: run.color, italic: run.italic });
+          if (index > 0) words.push({ text: "\n", color: run.color, italic: run.italic, bold: run.bold });
           for (const word of segment.split(/\s+/).filter(Boolean)) {
-            words.push({ text: word, color: run.color, italic: run.italic });
+            words.push({ text: word, color: run.color, italic: run.italic, bold: run.bold });
           }
         });
       }
@@ -2830,36 +3372,36 @@ export default function DreamboundApp() {
           continue;
         }
         const italic = italicAll || word.italic;
-        const wordWidth = measureWord(word.text, fontSize, italic);
+        const wordWidth = measureWord(word.text, fontSize, italic, word.bold);
         if (wordWidth > maxWidth) {
           flush();
           let chunk = "";
           for (const char of word.text) {
             const candidate = chunk + char;
-            if (chunk && measureWord(candidate, fontSize, italic) > maxWidth) {
-              lines.push([{ text: chunk, color: word.color, italic: word.italic }]);
+            if (chunk && measureWord(candidate, fontSize, italic, word.bold) > maxWidth) {
+              lines.push([{ text: chunk, color: word.color, italic: word.italic, bold: word.bold }]);
               chunk = char;
             } else {
               chunk = candidate;
             }
           }
-          if (chunk) line = [{ text: chunk, color: word.color, italic: word.italic }];
-          lineWidth = chunk ? measureWord(chunk, fontSize, italic) : 0;
+          if (chunk) line = [{ text: chunk, color: word.color, italic: word.italic, bold: word.bold }];
+          lineWidth = chunk ? measureWord(chunk, fontSize, italic, word.bold) : 0;
           continue;
         }
         const separator = line.length ? spaceWidth : 0;
         if (line.length && lineWidth + separator + wordWidth > maxWidth) {
           flush();
-          line = [{ text: word.text, color: word.color, italic: word.italic }];
+          line = [{ text: word.text, color: word.color, italic: word.italic, bold: word.bold }];
           lineWidth = wordWidth;
         } else {
           if (line.length) lineWidth += separator;
-          line.push({ text: word.text, color: word.color, italic: word.italic });
+          line.push({ text: word.text, color: word.color, italic: word.italic, bold: word.bold });
           lineWidth += wordWidth;
         }
       }
       flush();
-      if (lines.length === 0) lines.push([{ text: "", color: dialogue, italic: false }]);
+      if (lines.length === 0) lines.push([{ text: "", color: dialogue, italic: false, bold: false }]);
       return lines;
     };
 
@@ -2869,7 +3411,7 @@ export default function DreamboundApp() {
         let lineWidth = 0;
         line.forEach((run, index) => {
           if (index > 0) lineWidth += measureWord(" ", fontSize, false);
-          lineWidth += measureWord(run.text, fontSize, run.italic);
+          lineWidth += measureWord(run.text, fontSize, run.italic, run.bold);
         });
         max = Math.max(max, lineWidth);
       }
@@ -2900,10 +3442,10 @@ export default function DreamboundApp() {
             for (const run of line) {
               if (!first) cx += measureWord(" ", fontSize, italicAll);
               first = false;
-              ctx.font = serifFont(fontSize, italicAll || run.italic);
+              ctx.font = serifFont(fontSize, italicAll || run.italic, run.bold);
               ctx.fillStyle = run.color;
               ctx.fillText(run.text, cx, y + lineHeight / 2);
-              cx += measureWord(run.text, fontSize, italicAll || run.italic);
+              cx += measureWord(run.text, fontSize, italicAll || run.italic, run.bold);
             }
             y += lineHeight;
           }
@@ -3347,6 +3889,12 @@ export default function DreamboundApp() {
           >
             Characters
           </button>
+            <button
+              className={view === "personas" ? "active" : ""}
+              onClick={() => setView("personas")}
+            >
+              Personas
+            </button>
           <button
             className={`changelog-nav-button ${view === "changelog" ? "active" : ""}`}
             onClick={() => setView("changelog")}
@@ -3359,9 +3907,15 @@ export default function DreamboundApp() {
           >
             Settings
           </button>
+          <button
+            className={view === "archive" ? "active" : ""}
+            onClick={() => setView("archive")}
+          >
+            Archive
+          </button>
         </nav>
         <div className="current-scene">
-          <span aria-hidden="true">{view === "chat" ? "♜" : view === "scenes" ? "◈" : view === "changelog" ? "◇" : view === "settings" ? "⚙" : "✦"}</span>
+          <span aria-hidden="true">{view === "chat" ? "♜" : view === "scenes" ? "◈" : view === "changelog" ? "◇" : view === "settings" ? "⚙" : view === "archive" ? "☍" : view === "personas" ? "👤" : "✦"}</span>
           <span>
             {view === "chat"
               ? activeScene.title
@@ -3369,9 +3923,13 @@ export default function DreamboundApp() {
                 ? `${selected.name} · scenes`
               : view === "changelog"
                 ? "What's new"
-              : view === "settings"
-                ? "User settings"
-                : "Choose a character"}
+                : view === "settings"
+                  ? "User settings"
+                  : view === "archive"
+                    ? "The Whispering Archive"
+                    : view === "personas"
+                      ? "Persona Library"
+                      : "Choose a character"}
           </span>
           <span aria-hidden="true">›</span>
         </div>
@@ -3454,7 +4012,30 @@ export default function DreamboundApp() {
               <p className="eyebrow">Your characters</p>
               <h2>Begin a new roleplay</h2>
             </div>
-            <span>{characters.length} souls waiting</span>
+            <span className="home-section-count">{characters.length} souls waiting</span>
+          </div>
+
+          <div className="character-backup-bar">
+            <label className="outline-button import-browse">
+              Import characters
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) handleCharacterBackupImport(file);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+            <button
+              className="outline-button"
+              onClick={exportCharacterLibrary}
+            >
+              Export library
+            </button>
+            {characterBackupMsg && <span className="backup-feedback ok">{characterBackupMsg}</span>}
+            {characterBackupError && <span className="backup-feedback err">{characterBackupError}</span>}
           </div>
 
           <div className="character-gallery">
@@ -3514,6 +4095,32 @@ export default function DreamboundApp() {
                     }}>
                       Open their stories <span aria-hidden="true">→</span>
                     </button>
+                    {isUserOwnedCharacter(character) && (
+                      <span className="home-character-actions">
+                        <button
+                          className="home-character-edit"
+                          aria-label={`Edit ${character.name}`}
+                          title="Edit character"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setEditingCharacter(character);
+                          }}
+                        >
+                          ✎ Edit
+                        </button>
+                        <button
+                          className="home-character-delete"
+                          aria-label={`Delete ${character.name}`}
+                          title="Delete character"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setConfirmDeleteCharacter(character);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </span>
+                    )}
                   </div>
                 </article>
               );
@@ -3569,6 +4176,23 @@ export default function DreamboundApp() {
               <button className="outline-button" onClick={() => setView("home")}>
                 ← All characters
               </button>
+              {isUserOwnedCharacter(selected) && (
+                <span className="scene-library-actions">
+                  <button
+                    className="outline-button"
+                    aria-label={`Edit ${selected.name}`}
+                    onClick={() => setEditingCharacter(selected)}
+                  >
+                    ✎ Edit</button>
+                  <button
+                    className="outline-button character-delete"
+                    aria-label={`Delete ${selected.name}`}
+                    onClick={() => setConfirmDeleteCharacter(selected)}
+                  >
+                    Delete
+                  </button>
+                </span>
+              )}
               <div>
                 <p className="eyebrow">Stories with {selected.name}</p>
                 <h1>Choose where the story begins.</h1>
@@ -3701,7 +4325,7 @@ export default function DreamboundApp() {
                         rows={7}
                         required
                       />
-                      <small>Use *asterisks* for actions and narration.</small>
+                      <small>Use *asterisks* for actions, [brackets] for inner voice, and **double asterisks** for shouts.</small>
                     </label>
                   </div>
                   <div className="story-editor-footer">
@@ -3730,7 +4354,7 @@ export default function DreamboundApp() {
                     <p>Start with nothing but {selected.name}&apos;s core identity.</p>
                     <small>No preset setting, memories, or opening move. Your first message defines what happens.</small>
                     <div className="scene-preset-actions">
-                      <button onClick={() => startSandbox(selected.id)}>
+                      <button onClick={() => requestPersonaStart({ kind: "sandbox", characterId: selected.id })}>
                         Enter sandbox <span aria-hidden="true">→</span>
                       </button>
                     </div>
@@ -3747,12 +4371,12 @@ export default function DreamboundApp() {
                   <span className="scene-motif">LIVE</span>
                   <div className="scene-preset-copy">
                     <span>Self-driven roleplay</span>
-                    <h3>Autopilot</h3>
+                    <h3>Whisper Mode</h3>
                     <p>Nothing but {selected.name}&apos;s core identity — and they act on their own.</p>
                     <small>No preset opening. {selected.name} writes the first beat and keeps living while you step in whenever you like.</small>
                     <div className="scene-preset-actions">
-                      <button onClick={openAutopilotStart}>
-                        Enter autopilot <span aria-hidden="true">→</span>
+                      <button onClick={() => requestPersonaStart({ kind: "autopilot", characterId: selected.id })}>
+                        Enter Whisper Mode <span aria-hidden="true">→</span>
                       </button>
                     </div>
                   </div>
@@ -3779,7 +4403,7 @@ export default function DreamboundApp() {
                       <p>{scene.subtitle}</p>
                       <small>{scene.weather}</small>
                       <div className="scene-preset-actions">
-                        <button onClick={() => startScene(selected.id, scene)}>
+                        <button onClick={() => requestPersonaStart({ kind: "scene", characterId: selected.id, scene })}>
                           Begin this scene <span aria-hidden="true">→</span>
                         </button>
                         {scene.id.startsWith("custom-") && (
@@ -3882,9 +4506,50 @@ export default function DreamboundApp() {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
+              <div className="changelog-mark">✦</div>
+              <div>
+                <span>Version 0.5.0 · A full life for your characters</span>
+                <h2>From your page to the Whispering Archive</h2>
+                <p>
+                  Your characters are no longer fixed in place. Shape them, play them with a
+                  consistent identity, carry them between devices, and publish them into a
+                  public archive whenever you choose — while what you privately play stays
+                  yours and yours alone.
+                </p>
+                <h3>The Whispering Archive</h3>
+                <ul>
+                  <li>Publish an explicit snapshot of a character; it stays link-only until you make it public.</li>
+                  <li>Browse and search shared characters by name, tag, age, and content rating.</li>
+                  <li>Open a readable share page for anything you have published.</li>
+                  <li>Import any archived character as an independent copy you are free to edit.</li>
+                  <li>Sign in to publish and report; keepers review everything that reaches Browse.</li>
+                </ul>
+                <h3>Player personas</h3>
+                <ul>
+                  <li>Create, edit, duplicate, or delete personas from a single library in Settings.</li>
+                  <li>Choose which persona you play before every scene, sandbox, or Whisper Mode session.</li>
+                  <li>Each conversation records the persona you were, so old stories stay consistent.</li>
+                  <li>Continue without a persona any time you prefer to be simply yourself.</li>
+                </ul>
+                <h3>Characters you own</h3>
+                <ul>
+                  <li>Edit any detail of a character you made or imported, from name to memories to portrait.</li>
+                  <li>Delete a character and everything tied to it in one clean sweep.</li>
+                  <li>The curated cast &mdash; Coda, Heather, Peony, and Senako &mdash; stays locked from editing and deletion.</li>
+                </ul>
+                <h3>Backups</h3>
+                <ul>
+                  <li>Export your whole character library to a file and import it back anywhere.</li>
+                  <li>Back up and restore your persona library the same way in Settings.</li>
+                  <li>Re-imports stay conflict-free, so nothing is ever accidentally replaced or lost.</li>
+                </ul>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
               <div className="changelog-mark">◐</div>
               <div>
-                <span>Version {packageInfo.version} · Anchor the player identity</span>
+                <span>Version 0.4.2.9 · Anchor the player identity</span>
                 <h2>Impersonate knows who is speaking</h2>
                 <p>
                   Even without a display name or persona, the model now receives an explicit
@@ -3952,7 +4617,7 @@ export default function DreamboundApp() {
                 <span>Version 0.4.2.3 · Keep turns contained</span>
                 <h2>Next is one beat, not a marathon</h2>
                 <p>
-                  Manually advancing Autopilot now generates one character beat and pauses instead
+                  Manually advancing Whisper Mode now generates one character beat and pauses instead
                   of leaving the automatic loop running. NovelAI and Ollama errors can be dismissed,
                   and impersonation directions are treated as private control input rather than
                   story text.
@@ -4023,10 +4688,10 @@ export default function DreamboundApp() {
             <article className="changelog-entry featured">
               <div className="changelog-mark">✦</div>
               <div>
-                <span>Version 0.4.0 · Autopilot</span>
+                <span>Version 0.4.0 · Whisper Mode</span>
                 <h2>Read a living story like a book</h2>
                 <p>
-                  Autopilot now writes short self-driven beats in a continuous reading view.
+                  Whisper Mode now writes short self-driven beats in a continuous reading view.
                   Choose first person, third person, or an omniscient narrator when starting,
                   adjust the background blur, and pause or stop without losing the story.
                 </p>
@@ -4567,7 +5232,35 @@ export default function DreamboundApp() {
                   </p>
                   <div className="settings-field-grid">
                     <label>
-                      World initiative
+                      <span className="setting-name-row">
+                        World initiative
+                        <InfoTip label="World initiative">
+                          <p className="help-popover__intro">
+                            How readily characters and events move the story forward.
+                          </p>
+                          <div className="help-popover__options">
+                            <div className="help-popover__option">
+                              <strong className="help-popover__option-name">Reactive</strong>
+                              <p className="help-popover__option-description">
+                                The world mostly waits for your actions before events advance.
+                              </p>
+                            </div>
+                            <div className="help-popover__option">
+                              <strong className="help-popover__option-name">Balanced</strong>
+                              <p className="help-popover__option-description">
+                                You and the world share control of the story&apos;s momentum.
+                              </p>
+                            </div>
+                            <div className="help-popover__option">
+                              <strong className="help-popover__option-name">Proactive</strong>
+                              <p className="help-popover__option-description">
+                                Characters pursue their own goals, and events may progress even
+                                when you remain quiet.
+                              </p>
+                            </div>
+                          </div>
+                        </InfoTip>
+                      </span>
                       <select
                         value={initiative}
                         onChange={(event) => setInitiative(event.target.value as Initiative)}
@@ -4579,7 +5272,34 @@ export default function DreamboundApp() {
                       <small>How readily characters and events move the story forward.</small>
                     </label>
                     <label>
-                      Viewpoint
+                      <span className="setting-name-row">
+                        Viewpoint
+                        <InfoTip label="Viewpoint">
+                          <p className="help-popover__intro">
+                            Whose observable experience frames the narration.
+                          </p>
+                          <div className="help-popover__options">
+                            <div className="help-popover__option">
+                              <strong className="help-popover__option-name">Player limited</strong>
+                              <p className="help-popover__option-description">
+                                The story stays centered on you and what your character can perceive.
+                              </p>
+                            </div>
+                            <div className="help-popover__option">
+                              <strong className="help-popover__option-name">Character limited</strong>
+                              <p className="help-popover__option-description">
+                                The story follows the other character and what they can perceive.
+                              </p>
+                            </div>
+                            <div className="help-popover__option">
+                              <strong className="help-popover__option-name">Roving limited</strong>
+                              <p className="help-popover__option-description">
+                                The narration may move between characters and scenes.
+                              </p>
+                            </div>
+                          </div>
+                        </InfoTip>
+                      </span>
                       <select
                         value={viewpoint}
                         onChange={(event) => setViewpoint(event.target.value as Viewpoint)}
@@ -4591,7 +5311,26 @@ export default function DreamboundApp() {
                       <small>Controls whose observable experience frames narration.</small>
                     </label>
                     <label>
-                      Tense
+                      <span className="setting-name-row">
+                        Tense
+                        <InfoTip label="Tense">
+                          <p className="help-popover__intro">Sets the requested narrative tense.</p>
+                          <div className="help-popover__options">
+                            <div className="help-popover__option">
+                              <strong className="help-popover__option-name">Present</strong>
+                              <p className="help-popover__option-description">
+                                The narration unfolds as events happen: &ldquo;She opens the door.&rdquo;
+                              </p>
+                            </div>
+                            <div className="help-popover__option">
+                              <strong className="help-popover__option-name">Past</strong>
+                              <p className="help-popover__option-description">
+                                The narration recounts events: &ldquo;She opened the door.&rdquo;
+                              </p>
+                            </div>
+                          </div>
+                        </InfoTip>
+                      </span>
                       <select
                         value={storyTense}
                         onChange={(event) => setStoryTense(event.target.value as StoryTense)}
@@ -4658,22 +5397,17 @@ export default function DreamboundApp() {
                   maxLength={100}
                 />
               </label>
-              <label>
-                Persona
-                <textarea
-                  value={playerProfile.persona}
-                  onChange={(event) => updatePlayerProfile({ persona: event.target.value })}
-                  placeholder="Describe how you want to be seen in the story—appearance, nature, history. Leave blank if you prefer to improvise."
-                  rows={4}
-                  maxLength={2000}
-                />
-              </label>
+              <p>
+                This is your local display name. For story identities, create personas
+                in the library — each story can play as its own persona.
+              </p>
               <p>Everything is saved in this browser. Nothing is uploaded.</p>
               <span className="chatgpt-badge">✓ Private local story space</span>
               <button className="outline-button settings-signout" onClick={handleSignOut}>
                 Return to entrance
               </button>
             </section>
+
 
             <section className="settings-panel style-settings">
               <p className="eyebrow">Appearance</p>
@@ -4796,6 +5530,34 @@ export default function DreamboundApp() {
         </section>
       )}
 
+      {view === "personas" && (
+        <section className="settings-page">
+          <PersonaLibrary
+            personas={personas}
+            activePersonaId={resolvedActivePersonaId}
+            onChange={setPersonas}
+            onSelectActive={setActivePersonaId}
+          />
+        </section>
+      )}
+
+      {view === "archive" && (
+        <ArchiveView
+          characters={characters.map((character) => ({
+            id: character.id,
+            name: character.name,
+            role: character.role,
+            profile: character.profile,
+            reply: character.reply,
+            image: character.image,
+            sceneImage: character.sceneImage,
+            ageCategory: character.ageCategory,
+            isMinor: character.isMinor,
+          }))}
+          onImport={importArchiveCharacter}
+        />
+      )}
+
       {view === "chat" && (
       <section
         className={`workspace${showCharacterRail ? "" : " hide-character-rail"}${showContextRail ? "" : " hide-context-rail"}`}
@@ -4868,6 +5630,16 @@ export default function DreamboundApp() {
             >
               Context <span aria-hidden="true">☰</span>
             </button>
+            {activeSession && !activeSession.autopilot && (
+              <button
+                className="autopilot-toolbar-button"
+                onClick={toggleAutopilot}
+                aria-pressed={false}
+                title="Let this character live on their own (Whisper Mode)"
+              >
+                <span className="auto-dot" aria-hidden="true" /> Whisper Mode
+              </button>
+            )}
             {activeSession?.autopilot && (
               <label className="story-blur-control">
                 <span>Blur</span>
@@ -4882,6 +5654,20 @@ export default function DreamboundApp() {
                 />
                 <output>{storyBackgroundBlur}px</output>
               </label>
+            )}
+            {activeSession && (
+              <button
+                className={`persona-button${sessionUsesDefaultPersona ? "" : " active"}`}
+                onClick={() => setShowPersonaModal(true)}
+                title={
+                  sessionPersonaName
+                    ? `Playing as ${sessionPersonaName}`
+                    : "Choose who you play as in this story"
+                }
+              >
+                <span aria-hidden="true">♜</span>
+                {sessionPersonaName ? `Playing as ${sessionPersonaName}` : "Persona"}
+              </button>
             )}
             <button
               className="share-button"
@@ -4898,17 +5684,6 @@ export default function DreamboundApp() {
               <span className="presence-dot" style={{ background: activeTheme.accent }} />
               {activeScene.status} <i>·</i> {activeTheme.motif}
             </p>
-            {activeSession && !activeSession.autopilot && (
-              <button
-                className="autopilot-toggle"
-                onClick={toggleAutopilot}
-                aria-pressed={false}
-                title="Let this character live on their own"
-              >
-                <span className="auto-dot" aria-hidden="true" />
-                Autopilot
-              </button>
-            )}
             {autopilotError && <p className="auto-error">{autopilotError}</p>}
           </div>
 
@@ -4916,7 +5691,7 @@ export default function DreamboundApp() {
             {activeMessages.length === 0 && activeSession?.autopilot && (
               <div className="sandbox-empty-state">
                 <span aria-hidden="true">◉</span>
-                <p className="eyebrow">Autopilot</p>
+                <p className="eyebrow">Whisper Mode</p>
                 <h2>{selected.name} is stirring awake.</h2>
                 <p>
                   Nothing has been written yet. {selected.name} will write the first
@@ -4975,12 +5750,12 @@ export default function DreamboundApp() {
               autopilotControlsCollapsed && activeSession.autopilotPaused ? (
                 <div
                   className="autopilot-controls is-collapsed is-paused"
-                  aria-label="Autopilot controls (minimized)"
+                  aria-label="Whisper Mode controls (minimized)"
                 >
                   <button
                     className="autopilot-collapse-toggle"
                     onClick={() => setAutopilotControlsCollapsed(false)}
-                    aria-label="Expand autopilot controls"
+                    aria-label="Expand whisper mode controls"
                   >
                     <span aria-hidden="true" className="auto-dot is-running" />
                     <span className="autopilot-status">Paused — minimized</span>
@@ -4990,7 +5765,7 @@ export default function DreamboundApp() {
               ) : (
               <div
                 className={`autopilot-controls${activeSession.autopilotPaused ? " is-paused" : ""}`}
-                aria-label="Autopilot controls"
+                aria-label="Whisper Mode controls"
               >
                 <span aria-hidden="true" className="auto-dot is-running" />
                 <p className="autopilot-status">
@@ -5007,7 +5782,7 @@ export default function DreamboundApp() {
                     <button
                       onClick={() => setAutopilotControlsCollapsed(true)}
                       className="autopilot-collapse"
-                      aria-label="Minimize autopilot controls"
+                      aria-label="Minimize whisper mode controls"
                     >
                       Minimize
                     </button>
@@ -5030,72 +5805,144 @@ export default function DreamboundApp() {
             )}
             {(!activeSession?.autopilot || activeSession?.autopilotPaused) && !autopilotControlsCollapsed && (
               <div className="composer">
-              <label htmlFor="story-input" className="sr-only">
-                Message {selected.name}
-              </label>
-              <textarea
-                id="story-input"
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    sendMessage();
-                  }
-                }}
-                placeholder="Speak, act, or shape the scene…"
-                rows={2}
-              />
-              <div className="composer-actions">
-                <select
-                  aria-label="Message mode"
-                  value={mode}
-                  onChange={(event) => setMode(event.target.value)}
-                >
-                  <option>Dialogue</option>
-                  <option>Action</option>
-                  <option>Narration</option>
-                </select>
-                <div className="action-cluster">
-                  <button
-                    className="icon-button"
-                    aria-label="Impersonate player"
-                    title="Impersonate: direct or generate a complete player turn"
-                    onClick={() => setShowImpersonate(true)}
-                    disabled={isReplying || isImpersonating || activeMessages.length === 0}
+                {mode === "Impersonate" ? (
+                  <>
+                    <div className="impersonate-composer-header">
+                      <span className="impersonate-mode-tag" aria-hidden="true">◐</span>
+                      <span className="impersonate-mode-label">
+                        Impersonating {selected.name} — the direction stays private
+                      </span>
+                      <button
+                        className="impersonate-exit"
+                        onClick={() => {
+                          setMode("Dialogue");
+                          setImpersonationPrompt("");
+                        }}
+                        aria-label="Exit impersonation"
+                        title="Exit impersonation"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <textarea
+                      id="story-input"
+                      value={impersonationPrompt}
+                      onChange={(event) => setImpersonationPrompt(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          impersonatePlayer();
+                        }
+                      }}
+                      placeholder={`Private direction for ${selected.name}…`}
+                      rows={2}
+                      autoFocus
+                    />
+                  </>
+                ) : (
+                  <>
+                    <label htmlFor="story-input" className="sr-only">
+                      Message {selected.name}
+                    </label>
+                    <textarea
+                      id="story-input"
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          sendMessage();
+                        }
+                      }}
+                      placeholder="Speak, act, or shape the scene…"
+                      rows={2}
+                    />
+                  </>
+                )}
+                <div className="composer-actions">
+                  <select
+                    aria-label="Message mode"
+                    value={mode}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      if (
+                        next === "Impersonate" &&
+                        (isReplying || isImpersonating || activeMessages.length === 0)
+                      ) {
+                        return;
+                      }
+                      setMode(next);
+                    }}
                   >
-                    {isImpersonating ? "…" : "◐"}
-                  </button>
-                  <button
-                    className="icon-button"
-                    aria-label="Skip turn"
-                    title="Skip turn: let the character continue"
-                    onClick={skipTurn}
-                    disabled={isReplying || isImpersonating || activeMessages.length === 0}
-                  >
-                    »
-                  </button>
-                  {(isReplying || isImpersonating) && (
-                    <button
-                      className="icon-button stop-button"
-                      onClick={stopGeneration}
-                      aria-label="Stop generating"
-                      title="Stop generating"
-                    >
-                      ■
-                    </button>
-                  )}
-                  <button
-                    className="send-button"
-                    onClick={sendMessage}
-                    disabled={!draft.trim() || isReplying || isImpersonating}
-                    aria-label="Send message"
-                  >
-                    ➤
-                  </button>
+                    <option>Dialogue</option>
+                    <option>Action</option>
+                    <option>Narration</option>
+                    <option>Impersonate</option>
+                  </select>
+                  <div className="action-cluster">
+                    {mode === "Impersonate" ? (
+                      <>
+                        <button
+                          className="primary-button impersonate-send"
+                          onClick={impersonatePlayer}
+                          disabled={isReplying || isImpersonating || activeMessages.length === 0}
+                        >
+                          {isImpersonating ? "Generating…" : "Send player turn"}
+                        </button>
+                        {(isReplying || isImpersonating) && (
+                          <button
+                            className="icon-button stop-button"
+                            onClick={stopGeneration}
+                            aria-label="Stop generating"
+                            title="Stop generating"
+                          >
+                            ■
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          className="icon-button"
+                          aria-label="Impersonate player"
+                          title="Impersonate: write the player's turn for you"
+                          onClick={() => setMode("Impersonate")}
+                          disabled={isReplying || isImpersonating || activeMessages.length === 0}
+                        >
+                          ◐
+                        </button>
+                        <button
+                          className="icon-button"
+                          aria-label="Skip turn"
+                          title="Skip turn: let the character continue"
+                          onClick={skipTurn}
+                          disabled={isReplying || isImpersonating || activeMessages.length === 0}
+                        >
+                          »
+                        </button>
+                        {(isReplying || isImpersonating) && (
+                          <button
+                            className="icon-button stop-button"
+                            onClick={stopGeneration}
+                            aria-label="Stop generating"
+                            title="Stop generating"
+                          >
+                            ■
+                          </button>
+                        )}
+                        <button
+                          className="send-button"
+                          onClick={sendMessage}
+                          disabled={!draft.trim() || isReplying || isImpersonating}
+                          aria-label="Send message"
+                        >
+                          ➤
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
             )}
           </div>
         </section>
@@ -5289,62 +6136,67 @@ export default function DreamboundApp() {
         </div>
       )}
 
-      {showImpersonate && (
+      {directionEditor && (
         <div
           className="modal-backdrop"
           role="presentation"
-          onMouseDown={() => setShowImpersonate(false)}
+          onMouseDown={() => setDirectionEditor(null)}
         >
           <section
-            className="modal impersonate-modal"
+            className="modal direction-modal"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="impersonate-title"
+            aria-labelledby="direction-title"
             onMouseDown={(event) => event.stopPropagation()}
           >
             <button
               className="modal-close"
-              onClick={() => setShowImpersonate(false)}
-              aria-label="Close impersonation prompt"
+              onClick={() => setDirectionEditor(null)}
+              aria-label="Close direction editor"
             >
               ×
             </button>
-            <p className="eyebrow">Take the player&apos;s turn</p>
-            <h2 id="impersonate-title">Guide the impersonation</h2>
+            <p className="eyebrow">Player&apos;s turn</p>
+            <h2 id="direction-title">Impersonation direction</h2>
             <p className="modal-intro">
-              Give the story engine a private direction for your next turn. It will use that
-              direction as a road sign, not copy it into the chat. Leave it empty to choose a
-              plausible response from the story so far.
+              The direction remembered for this turn. Edit it and re-run to regenerate the
+              player&apos;s draft from that prompt — or clear it to keep only the text.
             </p>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                impersonatePlayer();
-              }}
-            >
-              <label>
-                Direction <small>Optional</small>
-                <textarea
-                  value={impersonationPrompt}
-                  onChange={(event) => setImpersonationPrompt(event.target.value)}
-                  rows={5}
-                  placeholder={`For example: reassure ${selected.name}, but stay guarded`}
-                  autoFocus
-                />
-              </label>
-              <div className="impersonate-actions">
-                <button
-                  type="button"
-                  className="outline-button"
-                  onClick={() => setShowImpersonate(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="primary-button">
-                  Impersonate &amp; send
-                </button>
-              </div>
-            </form>
+            <textarea
+              className="direction-editor-textarea"
+              value={directionEditor.text}
+              onChange={(event) =>
+                setDirectionEditor((current) =>
+                  current ? { ...current, text: event.target.value } : current,
+                )
+              }
+              rows={5}
+              autoFocus
+              placeholder="The prompt used to guide the impersonation…"
+            />
+            <div className="direction-actions">
+              <button
+                className="outline-button"
+                onClick={() => setDirectionEditor(null)}
+                disabled={isReplying || isImpersonating}
+              >
+                Cancel
+              </button>
+              <button
+                className="outline-button"
+                onClick={() => clearMessageDirection(directionEditor.id)}
+                disabled={isReplying || isImpersonating}
+              >
+                Clear direction
+              </button>
+              <button
+                className="primary-button"
+                onClick={() => rerunImpersonation(directionEditor.id, directionEditor.text)}
+                disabled={isReplying || isImpersonating}
+              >
+                {isImpersonating ? "Generating…" : "Save &amp; re-run"}
+              </button>
+            </div>
           </section>
         </div>
       )}
@@ -5361,7 +6213,7 @@ export default function DreamboundApp() {
             <button className="modal-close" onClick={() => setShowAutopilotStart(false)} aria-label="Close">
               ×
             </button>
-            <p className="eyebrow">Autopilot</p>
+            <p className="eyebrow">Whisper Mode</p>
             <h2 id="autopilot-start-title">Where does the story begin?</h2>
             <p className="modal-intro">
               Set the opening for {selected.name}&apos;s own story — where they are, what is
@@ -5426,7 +6278,7 @@ export default function DreamboundApp() {
                   Cancel
                 </button>
                 <button type="submit" className="primary-button">
-                  Begin autopilot
+                  Begin Whisper Mode
                 </button>
               </div>
             </form>
@@ -5485,6 +6337,212 @@ export default function DreamboundApp() {
             </form>
           </section>
         </div>
+      )}
+
+      {editingCharacter && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setEditingCharacter(null)}
+        >
+          <section
+            className="modal character-edit-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="character-edit-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button className="modal-close" onClick={() => setEditingCharacter(null)} aria-label="Close">
+              ×
+            </button>
+            <p className="eyebrow">Shape them further</p>
+            <h2 id="character-edit-title">Edit {editingCharacter.name}</h2>
+            <p className="modal-intro">
+              Tweak how {editingCharacter.name} appears, speaks, and opens a scene. Changes apply to
+              every future chat with them.
+            </p>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                const form = new FormData(event.currentTarget);
+                updateCharacter(editingCharacter.id, {
+                  name: String(form.get("name") || editingCharacter.name).trim(),
+                  role: String(form.get("role") || editingCharacter.role).trim(),
+                  status: String(form.get("status") || editingCharacter.status).trim(),
+                  scene: String(form.get("scene") || editingCharacter.scene).trim(),
+                  weather: String(form.get("weather") || editingCharacter.weather).trim(),
+                  profile: String(form.get("profile") || editingCharacter.profile).trim(),
+                  reply: String(form.get("reply") || editingCharacter.reply).trim(),
+                  accent: String(form.get("accent") || editingCharacter.accent).trim(),
+                  image: String(form.get("portrait") || "").trim(),
+                  sceneImage: String(form.get("sceneImage") || "").trim(),
+                  portraitFocalPoint: String(form.get("portraitFocalPoint") || "center").trim(),
+                  backgroundFocalPoint: String(form.get("sceneFocalPoint") || "center").trim(),
+                  relationship: String(form.get("relationship") || editingCharacter.relationship || "").trim() || undefined,
+                  ageCategory: (String(form.get("ageCategory") || "") as AgeCategory) || undefined,
+                  memories: String(form.get("memories") || editingCharacter.memories.join("\n"))
+                    .split("\n")
+                    .map((item) => item.trim())
+                    .filter(Boolean),
+                });
+              }}
+            >
+              <label>
+                Name
+                <input name="name" defaultValue={editingCharacter.name} required />
+              </label>
+              <label>
+                Role in your story
+                <input name="role" defaultValue={editingCharacter.role} required />
+              </label>
+              <label>
+                Status
+                <input name="status" defaultValue={editingCharacter.status} placeholder="How they seem right now" />
+              </label>
+              <label>
+                Scene / place
+                <input name="scene" defaultValue={editingCharacter.scene} placeholder="Where their story lives" />
+              </label>
+              <label>
+                Weather / atmosphere
+                <input name="weather" defaultValue={editingCharacter.weather} placeholder="A detail of the air" />
+              </label>
+              <label>
+                Profile &amp; personality
+                <textarea
+                  name="profile"
+                  rows={5}
+                  defaultValue={editingCharacter.profile}
+                  placeholder="Who they are, how they look, what they care about…"
+                />
+              </label>
+              <label>
+                Opening message
+                <textarea
+                  name="reply"
+                  rows={3}
+                  defaultValue={editingCharacter.reply}
+                  placeholder="How they greet you"
+                />
+              </label>
+              <label>
+                Memories (one per line)
+                <textarea
+                  name="memories"
+                  rows={4}
+                  defaultValue={editingCharacter.memories.join("\n")}
+                  placeholder="Shared history, one memory per line"
+                />
+              </label>
+              <label>
+                Accent color
+                <input type="color" name="accent" defaultValue={editingCharacter.accent || "#d78a5e"} />
+              </label>
+              <label>
+                Portrait image URL
+                <input name="portrait" defaultValue={editingCharacter.image} placeholder="https://…/portrait.png" />
+              </label>
+              <label>
+                Portrait focal point
+                <input name="portraitFocalPoint" defaultValue={editingCharacter.portraitFocalPoint ?? "center"} placeholder="e.g. center, 20% 80%" />
+              </label>
+              <label>
+                Scene image URL
+                <input name="sceneImage" defaultValue={editingCharacter.sceneImage} placeholder="https://…/scene.png" />
+              </label>
+              <label>
+                Scene focal point
+                <input name="sceneFocalPoint" defaultValue={editingCharacter.backgroundFocalPoint ?? "center"} placeholder="e.g. center, 70% 30%" />
+              </label>
+              <label>
+                Relationship to you
+                <input name="relationship" defaultValue={editingCharacter.relationship ?? ""} placeholder="Friend, rival, mentor…" />
+              </label>
+              <label>
+                Age category
+                <select
+                  name="ageCategory"
+                  defaultValue={editingCharacter.ageCategory ? String(editingCharacter.ageCategory) : ""}
+                >
+                  <option value="">Unspecified / not relevant to story</option>
+                  <option value="adult">Adult</option>
+                  <option value="minor">Minor</option>
+                </select>
+              </label>
+              <div className="character-edit-actions">
+                <button
+                  className="outline-button character-delete"
+                  type="button"
+                  onClick={() => setConfirmDeleteCharacter(editingCharacter)}
+                >
+                  Delete character
+                </button>
+                <button
+                  className="text-button"
+                  type="button"
+                  onClick={() => exportSingleCharacter(editingCharacter)}
+                >
+                  Export this character
+                </button>
+                <button className="primary-button" type="submit">
+                  Save changes
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {confirmDeleteCharacter && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setConfirmDeleteCharacter(null)}
+        >
+          <section
+            className="modal character-delete-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="character-delete-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              className="modal-close"
+              onClick={() => setConfirmDeleteCharacter(null)}
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <p className="eyebrow">Remove them for good</p>
+            <h2 id="character-delete-title">Delete {confirmDeleteCharacter.name}?</h2>
+            <p className="modal-intro">
+              This removes {confirmDeleteCharacter.name}, their stories, and their saved
+              conversations from this browser. This cannot be undone.
+            </p>
+            <div className="character-edit-actions">
+              <button className="outline-button" type="button" onClick={() => setConfirmDeleteCharacter(null)}>
+                Cancel
+              </button>
+              <button
+                className="primary-button character-delete"
+                type="button"
+                onClick={() => deleteCharacter(confirmDeleteCharacter)}
+              >
+                Delete character
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {pendingPersonaStart && (
+        <PersonaPicker
+          personas={personas}
+          activePersonaId={resolvedActivePersonaId}
+          onAddPersona={(persona) => setPersonas((current) => [...current, persona])}
+          onPick={(persona) => commitPersonaStart(persona)}
+          onCancel={() => setPendingPersonaStart(null)}
+        />
       )}
 
       {showShare && (
@@ -5550,6 +6608,124 @@ export default function DreamboundApp() {
                 disabled={shareBusy || activeMessages.length === 0}
               >
                 Download PNG
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {showPersonaModal && activeSession && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setShowPersonaModal(false)}
+        >
+          <section
+            className="modal persona-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="persona-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button className="modal-close" onClick={() => setShowPersonaModal(false)} aria-label="Close">
+              ×
+            </button>
+            <p className="eyebrow">This conversation&apos;s persona</p>
+            <h2 id="persona-title">How do you appear here?</h2>
+            <p className="modal-intro">
+              These fields apply only to this conversation with {selected.name}. You can pick from
+              your saved personas — this story keeps its own snapshot, so changing the library later
+              will not rewrite who you are here.
+            </p>
+
+            <div className="persona-session-picker">
+              {personas.length === 0 ? (
+                <p className="persona-library-empty">
+                  No saved personas yet. Add some in Settings, or write a custom one below.
+                </p>
+              ) : (
+                <ul className="persona-list">
+                  {personas.map((persona) => {
+                    const inUse = activeSession.playerPersonaId === persona.id;
+                    return (
+                      <li className="persona-card" key={persona.id}>
+                        <span className="persona-avatar" aria-hidden="true">
+                          {persona.name.trim().charAt(0).toUpperCase() || "P"}
+                        </span>
+                        <div className="persona-card-copy">
+                          <strong>{persona.name}</strong>
+                          <small>{persona.pronouns ?? "no pronouns set"}</small>
+                          <p>{persona.description || "No description yet."}</p>
+                        </div>
+                        <div className="persona-card-actions">
+                          <button
+                            className="text-button"
+                            type="button"
+                            onClick={() => applySessionPersona(persona)}
+                          >
+                            {inUse ? "In use" : "Use for this story"}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            {activeSession && (
+              <div className="persona-active-preview">
+                <strong>Snapshot used by this story</strong>
+                <pre>{sessionPersonaSnapshot || "No persona set — using your default."}</pre>
+              </div>
+            )}
+
+            {(!sessionUsesDefaultPersona) && (
+              <p className="persona-change-warning">
+                Changing persona during an existing story may make earlier messages inconsistent.
+              </p>
+            )}
+
+            <div className="persona-fields">
+              <label>
+                Player name
+                <input
+                  value={activeSession.playerName ?? ""}
+                  onChange={(event) => updateActiveSessionPersona({ playerName: event.target.value })}
+                  placeholder={
+                    playerProfile.name.trim()
+                      ? `Blank = default (${playerProfile.name.trim()})`
+                      : "Leave blank to stay unnamed in the story"
+                  }
+                  maxLength={100}
+                />
+              </label>
+              <label>
+                Persona
+                <textarea
+                  value={activeSession.playerPersona ?? ""}
+                  onChange={(event) => updateActiveSessionPersona({ playerPersona: event.target.value })}
+                  placeholder={
+                    playerProfile.persona.trim()
+                      ? "Blank = your default persona"
+                      : "Describe how you want to be seen in this story—appearance, nature, history. Leave blank if you prefer to improvise."
+                  }
+                  rows={4}
+                  maxLength={2000}
+                />
+              </label>
+            </div>
+            <p className="persona-default-note">
+              Default persona for all chats: <strong>{playerProfile.name.trim() || "No name"}</strong>
+              {playerProfile.persona.trim() ? " — " + playerProfile.persona.trim() : " — no persona set"}
+            </p>
+            <div className="share-actions">
+              <button
+                className="outline-button"
+                onClick={clearActiveSessionPersona}
+                disabled={sessionUsesDefaultPersona}
+              >
+                Use default persona
               </button>
             </div>
           </section>
