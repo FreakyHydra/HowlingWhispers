@@ -135,7 +135,7 @@ type Viewpoint = "user" | "character" | "roving";
 type StoryTense = "present" | "past";
 type TokenStorageMode = "tab" | "computer";
 type UpdateState = "idle" | "checking" | "current" | "available" | "unconfigured" | "error";
-type AppView = "home" | "scenes" | "chat" | "changelog" | "settings" | "archive";
+type AppView = "home" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas";
 type ProviderState =
   | "disconnected"
   | "ready"
@@ -3889,13 +3889,19 @@ export default function DreamboundApp() {
           >
             Characters
           </button>
+            <button
+              className={view === "personas" ? "active" : ""}
+              onClick={() => setView("personas")}
+            >
+              Personas
+            </button>
           <button
             className={`changelog-nav-button ${view === "changelog" ? "active" : ""}`}
             onClick={() => setView("changelog")}
           >
             What&apos;s new
           </button>
-<button
+          <button
             className={view === "settings" ? "active" : ""}
             onClick={() => setView("settings")}
           >
@@ -3909,7 +3915,7 @@ export default function DreamboundApp() {
           </button>
         </nav>
         <div className="current-scene">
-          <span aria-hidden="true">{view === "chat" ? "♜" : view === "scenes" ? "◈" : view === "changelog" ? "◇" : view === "settings" ? "⚙" : view === "archive" ? "☍" : "✦"}</span>
+          <span aria-hidden="true">{view === "chat" ? "♜" : view === "scenes" ? "◈" : view === "changelog" ? "◇" : view === "settings" ? "⚙" : view === "archive" ? "☍" : view === "personas" ? "👤" : "✦"}</span>
           <span>
             {view === "chat"
               ? activeScene.title
@@ -3917,11 +3923,13 @@ export default function DreamboundApp() {
                 ? `${selected.name} · scenes`
               : view === "changelog"
                 ? "What's new"
-              : view === "settings"
-                ? "User settings"
-              : view === "archive"
-                ? "The Whispering Archive"
-                : "Choose a character"}
+                : view === "settings"
+                  ? "User settings"
+                  : view === "archive"
+                    ? "The Whispering Archive"
+                    : view === "personas"
+                      ? "Persona Library"
+                      : "Choose a character"}
           </span>
           <span aria-hidden="true">›</span>
         </div>
