@@ -4503,20 +4503,38 @@ export default function DreamboundApp() {
                 <span>Version 0.5.0 · A full life for your characters</span>
                 <h2>From your page to the Whispering Archive</h2>
                 <p>
-                  This is a big one. Characters you create are now yours to shape: edit any
-                  detail or delete them outright, while the curated crew stays locked. A
-                  player persona library lets you carry a consistent identity between stories
-                  — and each session remembers which persona you were playing. Characters and
-                  personas can be backed up to a file and brought back whenever you need.
+                  Your characters are no longer fixed in place. Shape them, play them with a
+                  consistent identity, carry them between devices, and publish them into a
+                  public archive whenever you choose — while what you privately play stays
+                  yours and yours alone.
                 </p>
-                <p>
-                  Then there is the Whispering Archive. Publish an explicit snapshot of a
-                  character for others to find, browse what wanderers have left behind, open a
-                  share page for anything published, and import any of them as an independent
-                  copy you are free to reshape. Accounts keep publishing and reporting in your
-                  name; keepers review what appears in Browse. What you privately play stays
-                  yours — only what you choose to publish leaves this device.
-                </p>
+                <h3>The Whispering Archive</h3>
+                <ul>
+                  <li>Publish an explicit snapshot of a character; it stays link-only until you make it public.</li>
+                  <li>Browse and search shared characters by name, tag, age, and content rating.</li>
+                  <li>Open a readable share page for anything you have published.</li>
+                  <li>Import any archived character as an independent copy you are free to edit.</li>
+                  <li>Sign in to publish and report; keepers review everything that reaches Browse.</li>
+                </ul>
+                <h3>Player personas</h3>
+                <ul>
+                  <li>Create, edit, duplicate, or delete personas from a single library in Settings.</li>
+                  <li>Choose which persona you play before every scene, sandbox, or Whisper Mode session.</li>
+                  <li>Each conversation records the persona you were, so old stories stay consistent.</li>
+                  <li>Continue without a persona any time you prefer to be simply yourself.</li>
+                </ul>
+                <h3>Characters you own</h3>
+                <ul>
+                  <li>Edit any detail of a character you made or imported, from name to memories to portrait.</li>
+                  <li>Delete a character and everything tied to it in one clean sweep.</li>
+                  <li>The curated cast &mdash; Coda, Heather, Peony, and Senako &mdash; stays locked from editing and deletion.</li>
+                </ul>
+                <h3>Backups</h3>
+                <ul>
+                  <li>Export your whole character library to a file and import it back anywhere.</li>
+                  <li>Back up and restore your persona library the same way in Settings.</li>
+                  <li>Re-imports stay conflict-free, so nothing is ever accidentally replaced or lost.</li>
+                </ul>
               </div>
             </article>
 
