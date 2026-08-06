@@ -509,7 +509,7 @@ const initialMessages: Record<string, Message[]> = {
 
 const curatedCharacterIds = new Set(initialCharacters.map((character) => character.id));
 function isUserOwnedCharacter(character: Character): boolean {
-  return !curatedCharacterIds.has(character.id) && !character.credit;
+  return !curatedCharacterIds.has(character.id);
 }
 
 const handcraftedScenes: Record<string, SceneDefinition[]> = {
@@ -1250,6 +1250,7 @@ export default function DreamboundApp() {
   const [mode, setMode] = useState("Dialogue");
   const [isCreating, setIsCreating] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
+  const [confirmDeleteCharacter, setConfirmDeleteCharacter] = useState<Character | null>(null);
   const [apiToken, setApiToken] = useState(readStoredToken);
   const [tokenStorageMode, setTokenStorageMode] =
     useState<TokenStorageMode>(readTokenStorageMode);
@@ -2821,18 +2822,51 @@ export default function DreamboundApp() {
 
   function deleteCharacter(character: Character) {
     if (!isUserOwnedCharacter(character)) return;
+
+    const removedSessionMessageKeys = new Set(
+      sessions
+        .filter((session) => session.characterId === character.id)
+        .map((session) => session.messageKey),
+    );
+
     setCharacters((current) => current.filter((candidate) => candidate.id !== character.id));
     setSessions((current) => current.filter((session) => session.characterId !== character.id));
+
     setMessages((current) => {
+      const next = { ...current };
+      delete next[character.id];
+      removedSessionMessageKeys.forEach((messageKey) => delete next[messageKey]);
+      return next;
+    });
+
+    setStoryScenes((current) => {
       const next = { ...current };
       delete next[character.id];
       return next;
     });
+
+    setContextManifests((current) => {
+      const next = { ...current };
+      removedSessionMessageKeys.forEach((messageKey) => delete next[messageKey]);
+      delete next[character.id];
+      return next;
+    });
+
+    setDirectionEditor(null);
+    setStoryEditor(null);
     setEditingCharacter(null);
-    if (selectedId === character.id) {
-      setSelectedId(characters.find((candidate) => candidate.id !== character.id)?.id ?? "");
-      setView("home");
+    setConfirmDeleteCharacter(null);
+
+    if (currentSessionId && removedSessionMessageKeys.has(
+      sessions.find((session) => session.id === currentSessionId)?.messageKey ?? "",
+    )) {
+      setCurrentSessionId(null);
     }
+
+    if (selectedId === character.id) {
+      setSelectedId("coda");
+    }
+    setView("home");
   }
 
   function renderText(text: string, forceAction = false) {
@@ -3820,15 +3854,30 @@ export default function DreamboundApp() {
                       Open their stories <span aria-hidden="true">→</span>
                     </button>
                     {isUserOwnedCharacter(character) && (
-                      <button
-                        className="home-character-edit"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setEditingCharacter(character);
-                        }}
-                      >
-                        ✎ Edit character
-                      </button>
+                      <span className="home-character-actions">
+                        <button
+                          className="home-character-edit"
+                          aria-label={`Edit ${character.name}`}
+                          title="Edit character"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setEditingCharacter(character);
+                          }}
+                        >
+                          ✎ Edit
+                        </button>
+                        <button
+                          className="home-character-delete"
+                          aria-label={`Delete ${character.name}`}
+                          title="Delete character"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setConfirmDeleteCharacter(character);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </span>
                     )}
                   </div>
                 </article>
@@ -3886,12 +3935,21 @@ export default function DreamboundApp() {
                 ← All characters
               </button>
               {isUserOwnedCharacter(selected) && (
-                <button
-                  className="outline-button"
-                  onClick={() => setEditingCharacter(selected)}
-                >
-                  ✎ Edit character
-                </button>
+                <span className="scene-library-actions">
+                  <button
+                    className="outline-button"
+                    aria-label={`Edit ${selected.name}`}
+                    onClick={() => setEditingCharacter(selected)}
+                  >
+                    ✎ Edit</button>
+                  <button
+                    className="outline-button character-delete"
+                    aria-label={`Delete ${selected.name}`}
+                    onClick={() => setConfirmDeleteCharacter(selected)}
+                  >
+                    Delete
+                  </button>
+                </span>
               )}
               <div>
                 <p className="eyebrow">Stories with {selected.name}</p>
@@ -6008,6 +6066,13 @@ export default function DreamboundApp() {
                   weather: String(form.get("weather") || editingCharacter.weather).trim(),
                   profile: String(form.get("profile") || editingCharacter.profile).trim(),
                   reply: String(form.get("reply") || editingCharacter.reply).trim(),
+                  accent: String(form.get("accent") || editingCharacter.accent).trim(),
+                  image: String(form.get("portrait") || "").trim(),
+                  sceneImage: String(form.get("sceneImage") || "").trim(),
+                  portraitFocalPoint: String(form.get("portraitFocalPoint") || "center").trim(),
+                  backgroundFocalPoint: String(form.get("sceneFocalPoint") || "center").trim(),
+                  relationship: String(form.get("relationship") || editingCharacter.relationship || "").trim() || undefined,
+                  ageCategory: (String(form.get("ageCategory") || "") as AgeCategory) || undefined,
                   memories: String(form.get("memories") || editingCharacter.memories.join("\n"))
                     .split("\n")
                     .map((item) => item.trim())
@@ -6062,8 +6127,47 @@ export default function DreamboundApp() {
                   placeholder="Shared history, one memory per line"
                 />
               </label>
+              <label>
+                Accent color
+                <input type="color" name="accent" defaultValue={editingCharacter.accent || "#d78a5e"} />
+              </label>
+              <label>
+                Portrait image URL
+                <input name="portrait" defaultValue={editingCharacter.image} placeholder="https://…/portrait.png" />
+              </label>
+              <label>
+                Portrait focal point
+                <input name="portraitFocalPoint" defaultValue={editingCharacter.portraitFocalPoint ?? "center"} placeholder="e.g. center, 20% 80%" />
+              </label>
+              <label>
+                Scene image URL
+                <input name="sceneImage" defaultValue={editingCharacter.sceneImage} placeholder="https://…/scene.png" />
+              </label>
+              <label>
+                Scene focal point
+                <input name="sceneFocalPoint" defaultValue={editingCharacter.backgroundFocalPoint ?? "center"} placeholder="e.g. center, 70% 30%" />
+              </label>
+              <label>
+                Relationship to you
+                <input name="relationship" defaultValue={editingCharacter.relationship ?? ""} placeholder="Friend, rival, mentor…" />
+              </label>
+              <label>
+                Age category
+                <select
+                  name="ageCategory"
+                  defaultValue={editingCharacter.ageCategory ? String(editingCharacter.ageCategory) : ""}
+                >
+                  <option value="">Unspecified / not relevant to story</option>
+                  <option value="adult">Adult</option>
+                  <option value="minor">Minor</option>
+                </select>
+              </label>
               <div className="character-edit-actions">
-                <button className="outline-button character-delete" type="button" onClick={() => deleteCharacter(editingCharacter)}>
+                <button
+                  className="outline-button character-delete"
+                  type="button"
+                  onClick={() => setConfirmDeleteCharacter(editingCharacter)}
+                >
                   Delete character
                 </button>
                 <button className="primary-button" type="submit">
@@ -6071,6 +6175,48 @@ export default function DreamboundApp() {
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {confirmDeleteCharacter && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setConfirmDeleteCharacter(null)}
+        >
+          <section
+            className="modal character-delete-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="character-delete-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              className="modal-close"
+              onClick={() => setConfirmDeleteCharacter(null)}
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <p className="eyebrow">Remove them for good</p>
+            <h2 id="character-delete-title">Delete {confirmDeleteCharacter.name}?</h2>
+            <p className="modal-intro">
+              This removes {confirmDeleteCharacter.name}, their stories, and their saved
+              conversations from this browser. This cannot be undone.
+            </p>
+            <div className="character-edit-actions">
+              <button className="outline-button" type="button" onClick={() => setConfirmDeleteCharacter(null)}>
+                Cancel
+              </button>
+              <button
+                className="primary-button character-delete"
+                type="button"
+                onClick={() => deleteCharacter(confirmDeleteCharacter)}
+              >
+                Delete character
+              </button>
+            </div>
           </section>
         </div>
       )}

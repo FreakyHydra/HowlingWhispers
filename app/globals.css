@@ -1583,17 +1583,40 @@ a:focus-visible {
   color: #180e0d;
 }
 
-.home-character .home-character-edit {
+.home-character .home-character-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.home-character .home-character-edit,
+.home-character .home-character-delete {
   background: transparent;
   border-color: transparent;
-  color: var(--copper-bright);
   font-size: 13px;
   min-height: 30px;
+}
+
+.home-character .home-character-edit {
+  color: var(--copper-bright);
+}
+
+.home-character .home-character-delete {
+  color: #e2747b;
 }
 
 .home-character .home-character-edit:hover {
   background: rgba(183, 101, 63, 0.14);
   color: var(--cream);
+}
+
+.home-character .home-character-delete:hover {
+  background: rgba(226, 116, 123, 0.14);
+  color: #ffb3b8;
+}
+
+.scene-library-actions {
+  display: flex;
+  gap: 10px;
 }
 
 .new-character-card {
