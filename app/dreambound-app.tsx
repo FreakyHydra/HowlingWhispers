@@ -4506,6 +4506,26 @@ export default function DreamboundApp() {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
+              <div className="changelog-mark">◐</div>
+              <div>
+                <span>Version 0.5.1 · Personas step into their own space</span>
+                <h2>Your identities now have a page of their own</h2>
+                <p>
+                  The complete Persona Library now lives under the dedicated Personas tab,
+                  directly beside Characters. Your existing personas, active selection,
+                  imports, exports, and story snapshots continue working exactly as before.
+                </p>
+                <h3>What changed</h3>
+                <ul>
+                  <li>Open Personas directly from the main navigation.</li>
+                  <li>Create, edit, duplicate, import, export, and select personas from one focused page.</li>
+                  <li>Settings remains focused on providers, connections, and appearance.</li>
+                  <li>No saved persona data or story identity snapshots were rewritten.</li>
+                </ul>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
               <div className="changelog-mark">✦</div>
               <div>
                 <span>Version 0.5.0 · A full life for your characters</span>

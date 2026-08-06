@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.1 — Personas step into their own space
+
+**◐ The Persona Library now has its own top-level page.** Personas are easier to find and manage without digging through connection and application settings.
+
+### What's new
+- **Dedicated Personas tab** — the complete Persona Library now appears directly beside Characters.
+- **Settings stays focused** — provider, connection, and appearance controls remain in Settings.
+- **Existing persona data is unchanged** — saved personas, active selection, imports, exports, and story snapshots continue using the same underlying system.
+
+### Quality
+- 50/50 tests passed · lint clean · build validated.
+
 ## 0.4.2.8 — Anchor the player identity
 
 **◐ Impersonate now has an explicit fallback player identity.** An empty display name or persona no longer leaves the model guessing who it is supposed to write.
