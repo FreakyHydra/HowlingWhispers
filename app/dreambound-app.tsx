@@ -4498,9 +4498,32 @@ export default function DreamboundApp() {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
+              <div className="changelog-mark">✦</div>
+              <div>
+                <span>Version 0.5.0 · A full life for your characters</span>
+                <h2>From your page to the Whispering Archive</h2>
+                <p>
+                  This is a big one. Characters you create are now yours to shape: edit any
+                  detail or delete them outright, while the curated crew stays locked. A
+                  player persona library lets you carry a consistent identity between stories
+                  — and each session remembers which persona you were playing. Characters and
+                  personas can be backed up to a file and brought back whenever you need.
+                </p>
+                <p>
+                  Then there is the Whispering Archive. Publish an explicit snapshot of a
+                  character for others to find, browse what wanderers have left behind, open a
+                  share page for anything published, and import any of them as an independent
+                  copy you are free to reshape. Accounts keep publishing and reporting in your
+                  name; keepers review what appears in Browse. What you privately play stays
+                  yours — only what you choose to publish leaves this device.
+                </p>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
               <div className="changelog-mark">◐</div>
               <div>
-                <span>Version {packageInfo.version} · Anchor the player identity</span>
+                <span>Version 0.4.2.9 · Anchor the player identity</span>
                 <h2>Impersonate knows who is speaking</h2>
                 <p>
                   Even without a display name or persona, the model now receives an explicit
