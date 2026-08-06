@@ -5408,12 +5408,6 @@ export default function DreamboundApp() {
               </button>
             </section>
 
-            <PersonaLibrary
-              personas={personas}
-              activePersonaId={resolvedActivePersonaId}
-              onChange={setPersonas}
-              onSelectActive={setActivePersonaId}
-            />
 
             <section className="settings-panel style-settings">
               <p className="eyebrow">Appearance</p>
@@ -5533,6 +5527,17 @@ export default function DreamboundApp() {
               </section>
             )}
           </div>
+        </section>
+      )}
+
+      {view === "personas" && (
+        <section className="settings-page">
+          <PersonaLibrary
+            personas={personas}
+            activePersonaId={resolvedActivePersonaId}
+            onChange={setPersonas}
+            onSelectActive={setActivePersonaId}
+          />
         </section>
       )}
 
