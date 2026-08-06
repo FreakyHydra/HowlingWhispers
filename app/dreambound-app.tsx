@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import packageInfo from "../package.json";
 import { legacyCharacterToCanon, type AgeCategory } from "../lib/characters/canonical";
 import { PersonaLibrary } from "../components/personas/persona-library";
+import { PersonaPicker } from "../components/story/persona-picker";
 import {
   loadPersonas,
   savePersonas,
@@ -87,6 +88,7 @@ type StorySession = {
   playerRoleContext?: string;
   playerName?: string;
   playerPersona?: string;
+  playerPersonaId?: string;
 };
 
 type StoryEditor = {
@@ -1330,6 +1332,14 @@ export default function DreamboundApp() {
   const [chatError, setChatError] = useState("");
   const [showShare, setShowShare] = useState(false);
   const [showPersonaModal, setShowPersonaModal] = useState(false);
+  type PendingPersonaStart =
+    | { kind: "scene"; characterId: string; scene: SceneDefinition }
+    | { kind: "sandbox"; characterId: string }
+    | { kind: "autopilot"; characterId: string }
+    | { kind: "imported"; characterId: string }
+    | null;
+  const [pendingPersonaStart, setPendingPersonaStart] = useState<PendingPersonaStart>(null);
+  const [autopilotPersona, setAutopilotPersona] = useState<PlayerPersona | null>(null);
   const [shareCount, setShareCount] = useState(() => readSession<number>("shareCount", 5));
   const [shareCaptions, setShareCaptions] = useState(() => readSession<boolean>("shareCaptions", true));
   const [shareHeader, setShareHeader] = useState(() => readSession<boolean>("shareHeader", true));
@@ -1616,7 +1626,22 @@ export default function DreamboundApp() {
     if (!activeSession) return;
     setSessions((current) => current.map((session) =>
       session.id === activeSession.id
-        ? { ...session, playerName: "", playerPersona: "", updatedAt: Date.now() }
+        ? { ...session, playerPersonaId: undefined, playerName: "", playerPersona: "", updatedAt: Date.now() }
+        : session,
+    ));
+  }
+
+  function applySessionPersona(persona: PlayerPersona) {
+    if (!activeSession) return;
+    setSessions((current) => current.map((session) =>
+      session.id === activeSession.id
+        ? {
+            ...session,
+            playerPersonaId: persona.id,
+            playerName: persona.name,
+            playerPersona: compilePlayerPersona(persona),
+            updatedAt: Date.now(),
+          }
         : session,
     ));
   }
@@ -1633,10 +1658,16 @@ export default function DreamboundApp() {
   const activeScene = activeSession?.sandbox
     ? sandboxSceneFor(selected)
     : selectedScenes.find((scene) => scene.id === activeSession?.sceneId) ?? selectedScenes[0];
-  const activePlayerName = activeSession?.playerName?.trim() || playerProfile.name.trim();
+  const activePlayerName = activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name.trim();
   const sessionUsesDefaultPersona = Boolean(
     !activeSession?.playerName?.trim() && !activeSession?.playerPersona?.trim(),
   );
+  const sessionPersonaSnapshot = activeSession?.playerPersona?.trim() || "";
+  const sessionPersonaName =
+    activeSession?.playerName?.trim() ||
+    activePersona?.name.trim() ||
+    playerProfile.name.trim() ||
+    null;
   const activeMessageKey = activeSession?.messageKey ?? selected.id;
   const storedContextManifest = contextManifests[activeMessageKey];
   const activeContextManifest = storedContextManifest
@@ -1760,7 +1791,54 @@ export default function DreamboundApp() {
     setStoryEditor(null);
   }
 
-  function startScene(characterId: string, scene: SceneDefinition) {
+  function personaSnapshot(persona?: PlayerPersona | null) {
+    if (!persona) return {};
+    return {
+      playerPersonaId: persona.id,
+      playerName: persona.name,
+      playerPersona: compilePlayerPersona(persona),
+    };
+  }
+
+  function requestPersonaStart(start: NonNullable<PendingPersonaStart>) {
+    setPendingPersonaStart(start);
+  }
+
+  function commitPersonaStart(persona?: PlayerPersona | null) {
+    const start = pendingPersonaStart;
+    setPendingPersonaStart(null);
+    if (!start) return;
+    if (start.kind === "scene") startScene(start.characterId, start.scene, persona ?? null);
+    else if (start.kind === "sandbox") startSandbox(start.characterId, persona ?? null);
+    else if (start.kind === "autopilot") {
+      setAutopilotPersona(persona ?? null);
+      setShowAutopilotStart(true);
+    }
+    else if (start.kind === "imported") startImported(start.characterId, persona ?? null);
+  }
+
+  function startImported(characterId: string, persona?: PlayerPersona | null) {
+    const character =
+      characters.find((candidate) => candidate.id === characterId) ?? characters[0];
+    const scene = scenesFor(character)[0];
+    const session = { ...createStorySession(character, scene), ...personaSnapshot(persona) };
+    const description = character.profile && !character.credit
+      ? character.profile
+      : "";
+    setMessages((current) => ({
+      ...current,
+      [session.messageKey]: [
+        ...(description ? [{ id: session.createdAt, sender: "narrator" as const, text: description }] : []),
+        { id: session.createdAt + 1, sender: "character" as const, text: character.reply },
+      ],
+    }));
+    setSessions((current) => [session, ...current]);
+    setCurrentSessionId(session.id);
+    setSelectedId(character.id);
+    setView("chat");
+  }
+
+  function startScene(characterId: string, scene: SceneDefinition, persona?: PlayerPersona | null) {
     const character =
       characters.find((candidate) => candidate.id === characterId) ?? characters[0];
     const role = characterId === "coda"
@@ -1773,6 +1851,7 @@ export default function DreamboundApp() {
       playerRoleContext: role?.name === "Custom Role"
         ? customRole || "No external player-role facts are established."
         : role?.context,
+      ...personaSnapshot(persona),
     };
 
     setMessages((current) => ({
@@ -1813,11 +1892,11 @@ export default function DreamboundApp() {
     if (storyEditor?.scene.id === scene.id) setStoryEditor(null);
   }
 
-  function startSandbox(characterId: string) {
+  function startSandbox(characterId: string, persona?: PlayerPersona | null) {
     const character =
       characters.find((candidate) => candidate.id === characterId) ?? characters[0];
     const scene = sandboxSceneFor(character);
-    const session = { ...createStorySession(character, scene), sandbox: true };
+    const session = { ...createStorySession(character, scene), sandbox: true, ...personaSnapshot(persona) };
 
     setMessages((current) => ({ ...current, [session.messageKey]: [] }));
     setSessions((current) => [session, ...current]);
@@ -1828,27 +1907,26 @@ export default function DreamboundApp() {
     setView("chat");
   }
 
-  function openAutopilotStart() {
-    setAutopilotSeed("");
-    setAutopilotError("");
-    setAutopilotPov("third");
-    setShowAutopilotStart(true);
-  }
-
-  function beginAutopilot() {
+  function beginAutopilot(characterId?: string, persona?: PlayerPersona | null) {
     setShowAutopilotStart(false);
     if (!configured) {
       setChatError("Set up and test a story engine before starting Whisper Mode.");
       setView("settings");
       return;
     }
-    const scene = sandboxSceneFor(selected);
+    const resolvedPersona = persona ?? autopilotPersona ?? null;
+    setAutopilotPersona(null);
+    const target = characterId
+      ? characters.find((candidate) => candidate.id === characterId) ?? selected
+      : selected;
+    const scene = sandboxSceneFor(target);
     const session: StorySession = {
-      ...createStorySession(selected, scene),
+      ...createStorySession(target, scene),
       sandbox: true,
       autopilot: true,
       autopilotPaused: false,
       autopilotPov: autopilotPov,
+      ...personaSnapshot(resolvedPersona),
     };
     const seed = autopilotSeed.trim();
     setMessages((current) => ({
@@ -1859,7 +1937,7 @@ export default function DreamboundApp() {
     }));
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
-    setSelectedId(selected.id);
+    setSelectedId(target.id);
     setAutopilotError("");
     setChatError("");
     setView("chat");
@@ -2821,33 +2899,10 @@ export default function DreamboundApp() {
           `${name} is an imported character whose personality should stay consistent with their opening message.`,
         accent: "#d78a5e",
       };
-      const scene = scenesFor(importedCharacter)[0];
-      const session: StorySession = {
-        id: `session-${id}`,
-        characterId: id,
-        sceneId: scene.id,
-        title: scene.title,
-        messageKey: id,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-
       setCharacters((current) => [...current, importedCharacter]);
-      setMessages((current) => ({
-        ...current,
-        [id]: [
-          ...(description
-            ? [{ id: Date.now(), sender: "narrator" as const, text: description }]
-            : []),
-          { id: Date.now() + 1, sender: "character", text: opening },
-        ],
-      }));
-      setSessions((current) => [session, ...current]);
-      setCurrentSessionId(session.id);
       setSelectedId(id);
-      setImportError("");
       setIsCreating(false);
-      setView("chat");
+      requestPersonaStart({ kind: "imported", characterId: id });
     } catch (error) {
       setImportError(error instanceof Error ? error.message : "That character card could not be read.");
     } finally {
@@ -4154,7 +4209,7 @@ export default function DreamboundApp() {
                     <p>Start with nothing but {selected.name}&apos;s core identity.</p>
                     <small>No preset setting, memories, or opening move. Your first message defines what happens.</small>
                     <div className="scene-preset-actions">
-                      <button onClick={() => startSandbox(selected.id)}>
+                      <button onClick={() => requestPersonaStart({ kind: "sandbox", characterId: selected.id })}>
                         Enter sandbox <span aria-hidden="true">→</span>
                       </button>
                     </div>
@@ -4175,7 +4230,7 @@ export default function DreamboundApp() {
                     <p>Nothing but {selected.name}&apos;s core identity — and they act on their own.</p>
                     <small>No preset opening. {selected.name} writes the first beat and keeps living while you step in whenever you like.</small>
                     <div className="scene-preset-actions">
-                      <button onClick={openAutopilotStart}>
+                      <button onClick={() => requestPersonaStart({ kind: "autopilot", characterId: selected.id })}>
                         Enter Whisper Mode <span aria-hidden="true">→</span>
                       </button>
                     </div>
@@ -4203,7 +4258,7 @@ export default function DreamboundApp() {
                       <p>{scene.subtitle}</p>
                       <small>{scene.weather}</small>
                       <div className="scene-preset-actions">
-                        <button onClick={() => startScene(selected.id, scene)}>
+                        <button onClick={() => requestPersonaStart({ kind: "scene", characterId: selected.id, scene })}>
                           Begin this scene <span aria-hidden="true">→</span>
                         </button>
                         {scene.id.startsWith("custom-") && (
@@ -5397,12 +5452,13 @@ export default function DreamboundApp() {
                 className={`persona-button${sessionUsesDefaultPersona ? "" : " active"}`}
                 onClick={() => setShowPersonaModal(true)}
                 title={
-                  sessionUsesDefaultPersona
-                    ? "This chat uses your default persona"
-                    : "This chat has its own persona"
+                  sessionPersonaName
+                    ? `Playing as ${sessionPersonaName}`
+                    : "Choose who you play as in this story"
                 }
               >
-                <span aria-hidden="true">♜</span> Persona
+                <span aria-hidden="true">♜</span>
+                {sessionPersonaName ? `Playing as ${sessionPersonaName}` : "Persona"}
               </button>
             )}
             <button
@@ -6264,6 +6320,16 @@ export default function DreamboundApp() {
         </div>
       )}
 
+      {pendingPersonaStart && (
+        <PersonaPicker
+          personas={personas}
+          activePersonaId={resolvedActivePersonaId}
+          onAddPersona={(persona) => setPersonas((current) => [...current, persona])}
+          onPick={(persona) => commitPersonaStart(persona)}
+          onCancel={() => setPendingPersonaStart(null)}
+        />
+      )}
+
       {showShare && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setShowShare(false)}>
           <section
@@ -6352,9 +6418,59 @@ export default function DreamboundApp() {
             <p className="eyebrow">This conversation&apos;s persona</p>
             <h2 id="persona-title">How do you appear here?</h2>
             <p className="modal-intro">
-              These fields apply only to this conversation with {selected.name}. Leave them blank to
-              fall back to your default persona, which is used in every other chat.
+              These fields apply only to this conversation with {selected.name}. You can pick from
+              your saved personas — this story keeps its own snapshot, so changing the library later
+              will not rewrite who you are here.
             </p>
+
+            <div className="persona-session-picker">
+              {personas.length === 0 ? (
+                <p className="persona-library-empty">
+                  No saved personas yet. Add some in Settings, or write a custom one below.
+                </p>
+              ) : (
+                <ul className="persona-list">
+                  {personas.map((persona) => {
+                    const inUse = activeSession.playerPersonaId === persona.id;
+                    return (
+                      <li className="persona-card" key={persona.id}>
+                        <span className="persona-avatar" aria-hidden="true">
+                          {persona.name.trim().charAt(0).toUpperCase() || "P"}
+                        </span>
+                        <div className="persona-card-copy">
+                          <strong>{persona.name}</strong>
+                          <small>{persona.pronouns ?? "no pronouns set"}</small>
+                          <p>{persona.description || "No description yet."}</p>
+                        </div>
+                        <div className="persona-card-actions">
+                          <button
+                            className="text-button"
+                            type="button"
+                            onClick={() => applySessionPersona(persona)}
+                          >
+                            {inUse ? "In use" : "Use for this story"}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            {activeSession && (
+              <div className="persona-active-preview">
+                <strong>Snapshot used by this story</strong>
+                <pre>{sessionPersonaSnapshot || "No persona set — using your default."}</pre>
+              </div>
+            )}
+
+            {(!sessionUsesDefaultPersona) && (
+              <p className="persona-change-warning">
+                Changing persona during an existing story may make earlier messages inconsistent.
+              </p>
+            )}
+
             <div className="persona-fields">
               <label>
                 Player name

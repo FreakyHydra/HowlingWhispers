@@ -14,7 +14,7 @@ export type PlayerPersona = {
 export const PERSONA_TEXT_LIMIT = 4000;
 
 export function newPersonaId(seed = Date.now()): string {
-  return `persona-${seed.toString(36)}`;
+  return `persona-${seed.toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 export function createPersona(input: {

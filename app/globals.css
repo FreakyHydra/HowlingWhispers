@@ -5564,3 +5564,72 @@ a:focus-visible {
   padding: 10px 12px;
   white-space: pre-wrap;
 }
+
+/* Persona picker (choose who you play) */
+.persona-picker-list {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.persona-pick-option {
+  background: rgba(183, 101, 63, 0.06);
+  border: 1px solid rgba(183, 101, 63, 0.22);
+  border-radius: 12px;
+  color: inherit;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 40px 1fr;
+  padding: 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.persona-pick-option:hover {
+  border-color: var(--copper);
+}
+
+.persona-pick-copy {
+  min-width: 0;
+}
+
+.persona-pick-copy > strong {
+  color: var(--cream);
+  font-family: var(--serif);
+  font-size: 17px;
+}
+
+.persona-pick-copy > small {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+}
+
+.persona-pick-copy > p {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+.persona-pick-actions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.persona-session-picker {
+  margin-bottom: 12px;
+}
+
+.persona-change-warning {
+  border-left: 3px solid var(--copper);
+  color: var(--copper-bright);
+  font-size: 13px;
+  margin: 12px 0;
+  padding: 6px 10px;
+}
+
+.persona-session-picker .persona-card {
+  grid-template-columns: 44px 1fr auto;
+}
