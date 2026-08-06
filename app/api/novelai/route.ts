@@ -77,9 +77,9 @@ const REPLY_LENGTHS = {
 } as const;
 
 const IMPERSONATION_LENGTHS: Record<keyof typeof REPLY_LENGTHS, string> = {
-  quick: "Write 1–2 complete paragraphs, usually 90–160 words. Keep it responsive, but still include characterful action and sensory context. A response under 90 words is incomplete.",
-  immersive: "Write 3–5 substantial paragraphs, usually 220–400 words. Develop the moment through physical reactions, sensory environment, emotionally revealing dialogue, and subtext. A response under 220 words is incomplete.",
-  novel: "Write 5–8 substantial paragraphs, usually 400–650 words. Treat the reply like a polished scene from a character-driven novel, with patient pacing, vivid atmosphere, layered emotion, and meaningful dialogue. A response under 400 words is incomplete.",
+  quick: "Write one concise player turn, usually 15–60 words. A short but complete action or line of dialogue is valid.",
+  immersive: "Write one developed player turn, usually 40–120 words. Include only details that carry the player's intended action or speech.",
+  novel: "Write one substantial player turn, usually 80–220 words. Do not invent extra decisions merely to reach a length target.",
 };
 
 const AUTOPILOT_BEAT_INSTRUCTION = "Write one self-contained story beat rather than a full reply: a distinct action or development followed by dialogue or narration, usually 80-150 words. It must advance the scene on its own and never hand the turn back to the player. Follow the same output format as before: actions and narration in single asterisks, inner voice in square brackets, spoken dialogue as plain text with no quotation marks.";

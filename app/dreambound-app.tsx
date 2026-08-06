@@ -1179,27 +1179,33 @@ function buildParagraphs(
   });
 }
 
-function normalizeDirection(value: string): string {
-  return value.toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, " ").trim();
-}
+function isInvalidImpersonationDraft(
+  _direction: string,
+  draft: string,
+  characterName: string,
+): boolean {
+  const trimmedDraft = draft.trim();
+  if (!trimmedDraft) return true;
 
-function isInvalidImpersonationDraft(direction: string, draft: string, characterName: string): boolean {
-  const normalizedDirection = normalizeDirection(direction);
-  const normalizedDraft = normalizeDirection(draft);
-  if (!normalizedDraft) return true;
-  if (normalizedDraft.split(" ").length < 18) return true;
-  if (normalizedDirection && (normalizedDraft === normalizedDirection || normalizedDraft.includes(normalizedDirection))) {
-    return normalizedDraft.split(" ").length <= normalizedDirection.split(" ").length + 8;
-  }
-  const escapedName = characterName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const characterPerspective = new RegExp(
-    [
-      `\\b${escapedName}\\b`,
-      "\\b(?:he|she|they)\\s+(?:just\\s+)?(?:knows|rolls|steps|leans|turns|grins|smirks|nods|shrugs|walks|strides|follows|waits|sighs|glances|watches|sees|feels|thinks|wants|looks|smiles|speaks|says|moves|starts|begins|raises|laughs|chuckles|growls|shifts|pushes|reaches|grabs|crosses|sits|stands|catches|holds|winces|pauses)\\b",
-    ].join("|"),
+  const escapedName = characterName.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    "\\$&",
+  );
+
+  const characterSpeakerLabel = new RegExp(
+    `(?:^|\\n)\\s*${escapedName}\\s*:\\s*`,
     "i",
   );
-  return characterPerspective.test(normalizedDraft);
+
+  const markedCharacterAction = new RegExp(
+    `(?:^|\\n)\\s*\\*\\s*(?:${escapedName}|he|she|they)\\b`,
+    "i",
+  );
+
+  return (
+    characterSpeakerLabel.test(trimmedDraft) ||
+    markedCharacterAction.test(trimmedDraft)
+  );
 }
 
 function messageVersions(message: Message): { versions: string[]; activeIndex: number } {
