@@ -5,6 +5,16 @@ import { FormEvent, useCallback, useMemo, useRef, useState, useEffect, useLayout
 import { createPortal } from "react-dom";
 import packageInfo from "../package.json";
 import { legacyCharacterToCanon, type AgeCategory } from "../lib/characters/canonical";
+import { PersonaLibrary } from "../components/personas/persona-library";
+import {
+  loadPersonas,
+  savePersonas,
+  loadActivePersonaId,
+  saveActivePersonaId,
+  migrateLegacyPlayerProfile,
+} from "../lib/personas/storage";
+import { compilePlayerPersona } from "../lib/personas/compile";
+import type { PlayerPersona } from "../lib/personas/schema";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
 import { isNewerVersion } from "../lib/version.mjs";
 import { legacyCharacterToWorldLore } from "../lib/worlds/schema.ts";
@@ -1203,6 +1213,30 @@ export default function DreamboundApp() {
   const [playerProfile, setPlayerProfile] = useState(() =>
     readSession<{ name: string; persona: string }>("player", { name: "", persona: "" }),
   );
+  const [personas, setPersonas] = useState<PlayerPersona[]>(() => {
+    const saved = loadPersonas();
+    if (saved !== null) return saved;
+    const migrated = migrateLegacyPlayerProfile();
+    if (migrated) {
+      savePersonas([migrated]);
+      if (!loadActivePersonaId()) saveActivePersonaId(migrated.id);
+      return [migrated];
+    }
+    savePersonas([]);
+    return [];
+  });
+  const [activePersonaId, setActivePersonaId] = useState<string | null>(() =>
+    loadActivePersonaId(),
+  );
+  const activePersona = useMemo(
+    () => personas.find((persona) => persona.id === activePersonaId) ?? null,
+    [personas, activePersonaId],
+  );
+  const resolvedActivePersonaId = activePersona?.id ?? null;
+  const compiledActivePersona = useMemo(
+    () => (activePersona ? compilePlayerPersona(activePersona) : ""),
+    [activePersona],
+  );
   const [view, setView] = useState<AppView>(() => readSession<AppView>("view", "home"));
   const [characters, setCharacters] = useState<Character[]>(() => {
     const saved = readSession<Character[] | null>("characters", null);
@@ -1503,6 +1537,14 @@ export default function DreamboundApp() {
   useEffect(() => {
     writeSession("characters", characters.slice(0, 40));
   }, [characters]);
+
+  useEffect(() => {
+    savePersonas(personas);
+  }, [personas]);
+
+  useEffect(() => {
+    saveActivePersonaId(resolvedActivePersonaId);
+  }, [resolvedActivePersonaId]);
 
   useEffect(() => {
     writeSession("view", view);
@@ -2104,8 +2146,8 @@ export default function DreamboundApp() {
     generationAbortRef.current?.abort();
     generationAbortRef.current = controller;
     const requestSignal = controller.signal;
-    const effectivePlayerName = (activeSession?.playerName?.trim() || playerProfile.name).trim();
-    const effectivePlayerPersona = (activeSession?.playerPersona?.trim() || playerProfile.persona).trim();
+    const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
+    const effectivePlayerPersona = (activeSession?.playerPersona?.trim() || compiledActivePersona || playerProfile.persona).trim();
     const requestBody = {
         action,
         playerName: effectivePlayerName,
@@ -5114,22 +5156,23 @@ export default function DreamboundApp() {
                   maxLength={100}
                 />
               </label>
-              <label>
-                Persona
-                <textarea
-                  value={playerProfile.persona}
-                  onChange={(event) => updatePlayerProfile({ persona: event.target.value })}
-                  placeholder="Describe how you want to be seen in the story—appearance, nature, history. Leave blank if you prefer to improvise."
-                  rows={4}
-                  maxLength={2000}
-                />
-              </label>
+              <p>
+                This is your local display name. For story identities, create personas
+                in the library — each story can play as its own persona.
+              </p>
               <p>Everything is saved in this browser. Nothing is uploaded.</p>
               <span className="chatgpt-badge">✓ Private local story space</span>
               <button className="outline-button settings-signout" onClick={handleSignOut}>
                 Return to entrance
               </button>
             </section>
+
+            <PersonaLibrary
+              personas={personas}
+              activePersonaId={resolvedActivePersonaId}
+              onChange={setPersonas}
+              onSelectActive={setActivePersonaId}
+            />
 
             <section className="settings-panel style-settings">
               <p className="eyebrow">Appearance</p>
