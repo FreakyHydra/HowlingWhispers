@@ -12,6 +12,8 @@ import {
   serializeCharacterLibrary,
 } from "../lib/characters/import-export";
 import { PersonaLibrary } from "../components/personas/persona-library";
+import ArchiveView from "../components/archive/archive-view";
+import type { ArchivePublication } from "../lib/archive/client";
 import { PersonaPicker } from "../components/story/persona-picker";
 import {
   loadPersonas,
@@ -133,7 +135,7 @@ type Viewpoint = "user" | "character" | "roving";
 type StoryTense = "present" | "past";
 type TokenStorageMode = "tab" | "computer";
 type UpdateState = "idle" | "checking" | "current" | "available" | "unconfigured" | "error";
-type AppView = "home" | "scenes" | "chat" | "changelog" | "settings";
+type AppView = "home" | "scenes" | "chat" | "changelog" | "settings" | "archive";
 type ProviderState =
   | "disconnected"
   | "ready"
@@ -2918,6 +2920,52 @@ export default function DreamboundApp() {
     }
   }
 
+  function importArchiveCharacter(publication: ArchivePublication) {
+    const id = `archive-${publication.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")}-${Date.now()}`;
+    const ageCategory: AgeCategory =
+      publication.age_category === "adult"
+        ? "adult"
+        : publication.age_category === "minor"
+          ? "minor"
+          : "unknown";
+    const memories = publication.profile
+      ? publication.profile
+          .split(/[.\n]/)
+          .map((sentence) => sentence.trim())
+          .filter(Boolean)
+          .slice(0, 3)
+      : [];
+    const importedCharacter: Character = {
+      id,
+      name: publication.name,
+      role: publication.role || "From the Whispering Archive",
+      status: "Ready to meet",
+      image: publication.avatar_url ?? "",
+      sceneImage: publication.scene_image_url ?? "",
+      scene: "A Shared Story",
+      weather: "The world waits for your first choice",
+      bond: 12,
+      memories: memories.length ? memories : ["Their history is waiting to be discovered"],
+      reply: publication.opening_message,
+      profile: publication.profile || `${publication.name} is a character shared through the Whispering Archive.`,
+      accent: "#d78a5e",
+      ageCategory,
+      credit: publication.creator_credit || publication.owner || undefined,
+    };
+    setCharacters((current) =>
+      ensureUniqueCharacterIds(
+        [...current, importedCharacter],
+        current.map((character) => character.id),
+      ),
+    );
+    setSelectedId(id);
+    setView("home");
+    requestPersonaStart({ kind: "imported", characterId: id });
+  }
+
   function downloadTextFile(filename: string, text: string) {
     const blob = new Blob([text], { type: "application/json;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -3847,15 +3895,21 @@ export default function DreamboundApp() {
           >
             What&apos;s new
           </button>
-          <button
+<button
             className={view === "settings" ? "active" : ""}
             onClick={() => setView("settings")}
           >
             Settings
           </button>
+          <button
+            className={view === "archive" ? "active" : ""}
+            onClick={() => setView("archive")}
+          >
+            Archive
+          </button>
         </nav>
         <div className="current-scene">
-          <span aria-hidden="true">{view === "chat" ? "♜" : view === "scenes" ? "◈" : view === "changelog" ? "◇" : view === "settings" ? "⚙" : "✦"}</span>
+          <span aria-hidden="true">{view === "chat" ? "♜" : view === "scenes" ? "◈" : view === "changelog" ? "◇" : view === "settings" ? "⚙" : view === "archive" ? "☍" : "✦"}</span>
           <span>
             {view === "chat"
               ? activeScene.title
@@ -3865,6 +3919,8 @@ export default function DreamboundApp() {
                 ? "What's new"
               : view === "settings"
                 ? "User settings"
+              : view === "archive"
+                ? "The Whispering Archive"
                 : "Choose a character"}
           </span>
           <span aria-hidden="true">›</span>
@@ -5429,6 +5485,23 @@ export default function DreamboundApp() {
             )}
           </div>
         </section>
+      )}
+
+      {view === "archive" && (
+        <ArchiveView
+          characters={characters.map((character) => ({
+            id: character.id,
+            name: character.name,
+            role: character.role,
+            profile: character.profile,
+            reply: character.reply,
+            image: character.image,
+            sceneImage: character.sceneImage,
+            ageCategory: character.ageCategory,
+            isMinor: character.isMinor,
+          }))}
+          onImport={importArchiveCharacter}
+        />
       )}
 
       {view === "chat" && (
