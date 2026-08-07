@@ -14,6 +14,7 @@ import {
   POST as generateStory,
 } from "../app/api/novelai/route.ts";
 import { legacyCharacterToCanon } from "../lib/characters/canonical.ts";
+import { freshRerollSeed } from "../lib/generation/compile-context.ts";
 
 test("normalizes, deduplicates, and sorts Ollama model tags", () => {
   const models = parseOllamaModels({
@@ -207,6 +208,209 @@ test("NovelAI replies drop the leaked player turn", async (context) => {
   assert.ok(payload.reply && payload.reply.includes("I kept your place warm"));
   assert.ok(!/You\s*:/i.test(payload.reply));
   assert.ok(!/\*I step closer\*/i.test(payload.reply));
+});
+
+test("freshRerollSeed returns a non-negative 32-bit integer and varies across calls", () => {
+  for (let index = 0; index < 50; index += 1) {
+    const seed = freshRerollSeed();
+    assert.ok(Number.isInteger(seed));
+    assert.ok(seed >= 0 && seed <= 0xffffffff);
+  }
+  const seen = new Set(Array.from({ length: 20 }, () => freshRerollSeed()));
+  assert.ok(seen.size > 1, "seeds should vary across calls");
+});
+
+test("device impersonation targets only the player and allows short turns", async () => {
+  const response = await generateStory(new Request("http://localhost/api/novelai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider: "device",
+      model: "mistral-nemo:12b",
+      action: "impersonate",
+      playerName: "Kael",
+      replyLength: "quick",
+      character: {
+        id: "coda",
+        name: "Coda",
+        role: "Wolf guardian",
+        profile: "A test wolf guardian.",
+        canonical: legacyCharacterToCanon({
+          id: "coda",
+          name: "Coda",
+          role: "Wolf guardian",
+          profile: "A test wolf guardian.",
+        }),
+      },
+      messages: [{ sender: "character", text: "*Coda looks up.* The rain will pass." }],
+    }),
+  }));
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.finalization.outputKind, "player");
+  assert.equal(payload.finalization.outputName, "Kael");
+  const prompt = payload.ollamaRequest.prompt;
+  assert.match(prompt, /concise for Quick, developed for Immersive, substantial for Novel-like/);
+  assert.doesNotMatch(prompt, /The selected quick length is mandatory/);
+  assert.doesNotMatch(prompt, /at least 3 substantial segments/);
+  assert.match(prompt, /never write the character's dialogue, actions, voice, reactions/);
+  assert.match(prompt, /Never continue, finish, extend, or reword the character's last message/);
+  assert.ok(payload.ollamaRequest.options.stop.some((stop) => stop === "\nCoda:"));
+});
+
+test("device character roleplay targets only the character with a hard length floor", async () => {
+  const response = await generateStory(new Request("http://localhost/api/novelai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider: "device",
+      model: "mistral-nemo:12b",
+      playerName: "Kael",
+      replyLength: "novel",
+      character: {
+        id: "coda",
+        name: "Coda",
+        role: "Wolf guardian",
+        profile: "A test wolf guardian.",
+        canonical: legacyCharacterToCanon({
+          id: "coda",
+          name: "Coda",
+          role: "Wolf guardian",
+          profile: "A test wolf guardian.",
+        }),
+      },
+      messages: [{ sender: "player", text: "Hello, Coda." }],
+    }),
+  }));
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.finalization.outputKind, "character");
+  assert.equal(payload.finalization.outputName, "Coda");
+  const prompt = payload.ollamaRequest.prompt;
+  assert.match(prompt, /The selected novel length is mandatory; a shorter draft is invalid/);
+  assert.match(prompt, /at least 10 substantial segments and at least 400 words total/);
+  assert.match(prompt, /Never assign the player an action, feeling, perception, or decision/);
+  assert.doesNotMatch(prompt, /soft ceiling, not a hard minimum/);
+});
+
+test("NovelAI impersonation extends a short player turn to the immersive floor and keeps the direction", async (context) => {
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const shortTurn = "*I step closer.* I'm done with the excuses.";
+  const longTurn = "*I plant my feet and lower my voice.* I came here to say what I actually mean, and I am not leaving until you have heard it. I kept quiet for too long, and every silence made it worse, so this time I will say it plainly and let the words land where they belong.";
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes("text.novelai.net")) {
+      calls.push({ body: JSON.parse(String(init?.body)) });
+      return Response.json({ choices: [{ text: calls.length === 1 ? shortTurn : longTurn }] });
+    }
+    return Response.json({});
+  };
+
+  const response = await generateStory(new Request("http://localhost/api/novelai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider: "novelai",
+      apiToken: "test-token",
+      model: "xialong-v1",
+      action: "impersonate",
+      playerName: "Arrax",
+      replyLength: "immersive",
+      temperature: 0.8,
+      impersonationPrompt: "Say I am angry about the cubs.",
+      character: {
+        id: "senako-steel",
+        name: "Senako Steel",
+        role: "Fiercely loyal friend",
+        profile: "A test cub.",
+        canonical: legacyCharacterToCanon({
+          id: "senako-steel",
+          name: "Senako Steel",
+          role: "Fiercely loyal friend",
+          profile: "A test cub.",
+          ageCategory: "minor",
+          isMinor: true,
+        }),
+      },
+      messages: [{ sender: "character", text: "*Senako fidgets.* It is not that simple." }],
+    }),
+  }));
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.ok(payload.reply.includes("I step closer"));
+  assert.ok(payload.reply.includes("I came here to say what I actually mean"));
+  assert.ok(payload.reply.trim().split(/\s+/).length >= 70, `expected >=70 words, got ${payload.reply.trim().split(/\s+/).length}`);
+  assert.equal(calls.length, 3);
+  assert.match(calls[0].body.prompt, /PRIVATE DIRECTION \(MANDATORY\)/);
+  assert.match(calls[0].body.prompt, /Say I am angry about the cubs/);
+  assert.match(calls[1].body.prompt, /Continuation task/);
+  assert.match(calls[1].body.prompt, /Say I am angry about the cubs/);
+  assert.match(calls[1].body.prompt, /SAME single player turn/);
+  assert.match(calls[2].body.prompt, /Continuation task/);
+});
+
+test("reroll NovelAI request sends a fresh seed and same history, ordinary reply does not", async (context) => {
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes("text.novelai.net")) {
+      calls.push({ body: JSON.parse(String(init?.body)) });
+      return Response.json({ choices: [{ text: "*A fresh candle lit.*" }] });
+    }
+    return Response.json({});
+  };
+
+  const common = {
+    provider: "novelai",
+    apiToken: "test-token",
+    model: "xialong-v1",
+    playerName: "",
+    temperature: 0.8,
+    replyLength: "quick",
+    proseFormat: "roleplay",
+    character: {
+      id: "coda",
+      name: "Coda",
+      role: "Wolf guardian",
+      profile: "A test wolf guardian.",
+      canonical: legacyCharacterToCanon({
+        id: "coda",
+        name: "Coda",
+        role: "Wolf guardian",
+        profile: "A test wolf guardian.",
+      }),
+    },
+    messages: [
+      { sender: "player", text: "Hello." },
+      { sender: "character", text: "*Coda looks up.* \"You're back.\"" },
+    ],
+  };
+
+  const first = await generateStory(new Request("http://localhost/api/novelai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(common),
+  }));
+  assert.equal(first.status, 200);
+
+  const rerollRequest = { ...common, reroll: true };
+  const second = await generateStory(new Request("http://localhost/api/novelai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(rerollRequest),
+  }));
+  assert.equal(second.status, 200);
+
+  assert.equal(calls.length, 2);
+  const [ordinary, reroll] = calls;
+  assert.equal(ordinary.body.seed, undefined);
+  assert.ok(Number.isInteger(reroll.body.seed) && reroll.body.seed >= 0);
+  assert.equal(ordinary.body.prompt.startsWith("<|system|>"), true);
+  assert.equal(reroll.body.prompt.startsWith("<|system|>"), true);
+  assert.match(reroll.body.prompt, /This turn is a reroll: generate a fresh alternative response/);
+  assert.doesNotMatch(ordinary.body.prompt, /This turn is a reroll: generate a fresh alternative response/);
 });
 
 test("adult server models reject characters that are not confirmed adults", async (context) => {

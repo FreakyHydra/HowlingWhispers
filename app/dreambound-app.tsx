@@ -1179,6 +1179,10 @@ function buildParagraphs(
   });
 }
 
+function escapesRe(name: string): string {
+  return name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function isInvalidImpersonationDraft(
   _direction: string,
   draft: string,
@@ -1187,18 +1191,20 @@ function isInvalidImpersonationDraft(
   const trimmedDraft = draft.trim();
   if (!trimmedDraft) return true;
 
-  const escapedName = characterName.replace(
-    /[.*+?^${}()|[\]\\]/g,
-    "\\$&",
+  const names = new Set<string>(
+    [characterName, characterName.trim().split(/\s+/)[0]].filter(Boolean),
   );
+  const nameAlternates = [...names].sort((a, b) => b.length - a.length)
+    .map(escapesRe)
+    .join("|");
 
   const characterSpeakerLabel = new RegExp(
-    `(?:^|\\n)\\s*${escapedName}\\s*:\\s*`,
+    `(?:^|\\n)\\s*(?:${nameAlternates})\\s*:\\s*`,
     "i",
   );
 
   const markedCharacterAction = new RegExp(
-    `(?:^|\\n)\\s*\\*\\s*(?:${escapedName}|he|she|they)\\b`,
+    `(?:^|\\n)\\s*\\*\\s*(?:${nameAlternates}|he|she|they)\\b`,
     "i",
   );
 
@@ -2235,6 +2241,7 @@ export default function DreamboundApp() {
     conversation: Message[],
     action?: "impersonate" | "autopilot" | "skip",
     playerDirection?: string,
+    reroll = false,
   ): Promise<string> {
     const controller = new AbortController();
     generationAbortRef.current?.abort();
@@ -2247,6 +2254,7 @@ export default function DreamboundApp() {
         playerName: effectivePlayerName,
         playerPersona: effectivePlayerPersona,
         impersonationPrompt: playerDirection,
+        reroll,
         provider: storyProvider,
         apiToken,
         model: activeModel.value,
@@ -2567,11 +2575,10 @@ export default function DreamboundApp() {
   async function impersonateTurn(conversation: Message[], playerDirection: string): Promise<string> {
     let suggestion = await requestStoryReply(conversation, "impersonate", playerDirection);
     if (isInvalidImpersonationDraft(playerDirection, suggestion, selected.name)) {
-      suggestion = await requestStoryReply(
-        conversation,
-        "impersonate",
-        `${playerDirection}\n\nThe previous draft was written from the character's side and was rejected. Rewrite it strictly from the player's first-person point of view: only the player's own actions and spoken words. Never write ${selected.name}'s actions, dialogue, feelings, or reactions anywhere in the turn, and never call the player by a name ${selected.name} would use. Keep the turn substantial — a concrete action, its physical context, and dialogue.`,
-      );
+      const retryGuide = playerDirection
+        ? `The private direction was this, and it must be preserved:\n${playerDirection}\n\nThe previous draft was rejected only because it was written from the character's side: it described ${selected.name}'s actions, dialogue, feelings, or reactions, or used ${selected.name}'s name/persona as the speaker. Retry with the SAME direction — do not replace or expand its intent. Rewrite it strictly from the player's first-person point of view: only the player's own actions and spoken words carry the direction's action and dialogue verbatim. Never write ${selected.name}'s actions, dialogue, feelings, reactions, or inner voice, and never call the player by a name ${selected.name} would use. Keep the player's turn complete but brief.`
+        : `The previous draft was rejected only because it was written from the character's side: it described ${selected.name}'s actions, dialogue, or reactions, or used ${selected.name}'s name as the speaker. The player left the direction empty, so retry with ONE plausible first-person player turn that advances the scene naturally. Write strictly from the player's point of view: only the player's own actions and spoken words. Never write ${selected.name}'s actions, dialogue, feelings, reactions, or inner voice. Never write another character as the speaker or make them act, speak, think, feel, or react. Mentioning or addressing the character by name inside the player's own first-person action or dialogue is valid.`;
+      suggestion = await requestStoryReply(conversation, "impersonate", retryGuide);
     }
     if (isInvalidImpersonationDraft(playerDirection, suggestion, selected.name)) {
       throw new Error("Impersonation kept writing the character's side instead of the player's. Try again or use a shorter direction.");
@@ -2794,7 +2801,7 @@ export default function DreamboundApp() {
     setIsReplying(true);
 
     try {
-      const reply = await requestStoryReply(truncated);
+      const reply = await requestStoryReply(truncated, undefined, undefined, true);
 
       setMessages((current) => ({
         ...current,
@@ -4512,6 +4519,27 @@ export default function DreamboundApp() {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
+              <div className="changelog-mark">◐</div>
+              <div>
+                <span>Version 0.5.1.1 · Each turn has one speaker</span>
+                <h2>Character Response and Impersonate now share one generation pipeline</h2>
+                <p>
+                  Character Response writes only for the selected character, and Impersonate
+                  writes only for your persona. The provider always knows whose turn it is
+                  allowed to write, and Impersonate turns may be as short as a single action
+                  or line instead of being padded into a mini-novel.
+                </p>
+                <h3>What changed</h3>
+                <ul>
+                  <li>Character Response never takes over your persona&apos;s dialogue, actions, thoughts, or decisions.</li>
+                  <li>Impersonate never continues or finishes the AI character&apos;s turn.</li>
+                  <li>Quick, Immersive, and Novel-like lengths now behave correctly for both targets.</li>
+                  <li>Response length, detail, POV, creativity, and roleplay controls feed one shared flow and respect who is being generated.</li>
+                </ul>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
               <div className="changelog-mark">◐</div>
               <div>
                 <span>Version 0.5.1 · Personas step into their own space</span>

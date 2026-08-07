@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.1.1 — Each turn has one speaker
+
+**◐ Character Response and Impersonate now run on a shared generation pipeline with an explicit target speaker.** The provider always knows whose turn it is allowed to write, instead of inferring it from the button that was clicked.
+
+### What's new
+- **Character Response writes only the character** — the character can speak, act, react, think, and move the scene, but never takes control of the player's persona.
+- **Impersonate writes only the player** — a first-person player turn with the player's dialogue, actions, and reactions; it never continues or takes over the AI character.
+- **Impersonate turns can be short** — Quick Impersonate may be a single complete action or line (roughly 15–60 words); length settings no longer force a player turn into a mini-novel.
+- **Same generation controls for both targets** — response length, prose detail, dialogue/action balance, narration, POV, creativity, and roleplay instructions all feed one shared pipeline and respect the selected target.
+
+### Quality
+- 57/57 tests passed · lint clean · build validated.
+
 ## 0.5.1 — Personas step into their own space
 
 **◐ The Persona Library now has its own top-level page.** Personas are easier to find and manage without digging through connection and application settings.

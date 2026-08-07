@@ -193,8 +193,30 @@ test("impersonation receives authoritative character safety", () => {
   assert.match(result.prompt, /Never write the character's turn/);
   assert.match(result.prompt, /PLAYER VOICE RULE/);
   assert.match(result.prompt, /first-person point of view/);
-  assert.match(result.prompt, /out-of-character road sign/);
+  assert.doesNotMatch(result.prompt, /out-of-character road sign/);
   assert.match(result.prompt, /The player is Player/);
+});
+
+test("impersonation prompt drives the private direction as mandatory control input", () => {
+  const result = compile(adultCharacter(), {
+    kind: "impersonation",
+    playerName: "Kael",
+    playerDirection: "Get angry and say exactly: Trust me and let it happen.",
+    messages: [{ sender: "character", text: "The rain will pass." }],
+  });
+  assert.match(result.prompt, /PRIVATE DIRECTION PRIORITY/);
+  assert.match(result.prompt, /private player direction is mandatory control input/);
+  assert.match(result.prompt, /Do not soften, omit, replace, moralize, reinterpret, or summarize/);
+  assert.match(result.prompt, /temporary emotion, tone, or attitude.*not a permanent personality change/);
+  assert.match(result.prompt, /preserve them verbatim except for capitalization, punctuation, and required roleplay formatting/);
+  assert.match(result.prompt, /do not pad the turn or invent additional decisions/);
+  assert.match(result.prompt, /depth of the selected length mode/);
+  assert.match(result.prompt, /Get angry and say exactly: Trust me and let it happen\./);
+  assert.doesNotMatch(result.prompt, /out-of-character road sign/);
+  assert.doesNotMatch(result.prompt, /same depth, pacing, sensory detail, and length/);
+  assert.doesNotMatch(result.prompt, /Never compress the turn to a single line/);
+  assert.doesNotMatch(result.prompt, /normal character reply/);
+  assert.match(result.prompt, /The player is Kael/);
 });
 
 test("autopilot compiles the autonomy law without handover cues", () => {
@@ -295,6 +317,38 @@ test("NovelAI roleplay serializes conversation with ChatML markers", () => {
   assert.doesNotMatch(result.prompt, /Conversation history:/);
   assert.doesNotMatch(result.prompt, /Continue directly as/);
   assert.ok(result.prompt.trimEnd().endsWith("Peony:"));
+});
+
+test("reroll compilation asks for a fresh alternative and keeps canon, safety, and length", () => {
+  const result = compile(adultCharacter(), {
+    kind: "roleplay",
+    reroll: true,
+    lengthInstruction: "Write a substantial response.",
+    messages: [
+      { sender: "character", text: "The storm drove the lanterns out." },
+      { sender: "player", text: "Then we walk in the dark." },
+    ],
+  });
+  assert.match(result.prompt, /This turn is a reroll: generate a fresh alternative response/);
+  assert.match(result.prompt, /meaningfully different combination of wording, dialogue, action, emotional emphasis, pacing, or approach/);
+  assert.match(result.prompt, /Do not paraphrase or lightly rewrite the previous response\./);
+  assert.match(result.prompt, /Preserve established facts, character identity, safety boundaries, relationship state, and scene continuity\./);
+  assert.match(result.prompt, /Write a substantial response\./);
+  assert.match(result.prompt, /Safety policy: This character is confirmed to be an adult/);
+  assert.match(result.prompt, /Peony is observant/);
+});
+
+test("reroll prompt does not contain the replaced response when it is excluded from history", () => {
+  const result = compile(adultCharacter(), {
+    kind: "roleplay",
+    reroll: true,
+    messages: [
+      { sender: "character", text: "The storm arrived." },
+      { sender: "player", text: "Then we hold together." },
+    ],
+  });
+  assert.doesNotMatch(result.prompt, /The old storm reply that must never replay/);
+  assert.match(result.prompt, /Then we hold together\./);
 });
 
 test("NovelAI impersonation targets the player user turn", () => {
