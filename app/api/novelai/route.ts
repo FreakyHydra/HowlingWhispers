@@ -12,6 +12,7 @@ import {
   type RoleplayMessage,
   type StoryPreferences,
 } from "../../../lib/generation/compile-context.ts";
+import { parseStoryMetadata, type StoryMetadata } from "../../../lib/generation/story-metadata.ts";
 import { resolveBuiltinWorldLore } from "../../../lib/worlds/builtins.ts";
 import type { WorldLorebookV1 } from "../../../lib/worlds/schema.ts";
 import { parseWorldLorebook } from "../../../lib/worlds/schema.ts";
@@ -185,12 +186,13 @@ export async function POST(request: Request) {
     const outputKind = body.outputKind === "player" ? "player" : "character";
     const proseFormat: ProseFormat = "roleplay";
     const preparedReply = rawReply;
+    const metadataOut: { metadata?: StoryMetadata | null } = {};
     const reply = cleanReply(
       preparedReply, outputName, limitedString(body.playerName, 100), proseFormat, outputKind,
-      body.autopilot === true,
+      body.autopilot === true, metadataOut,
     );
     return reply
-      ? Response.json({ reply })
+      ? Response.json({ reply, metadata: metadataOut.metadata ?? null })
       : Response.json({ error: "The local model returned an empty reply." }, { status: 502 });
   }
   const playerName = getDisplayName(limitedString(body.playerName, 100));
@@ -571,11 +573,12 @@ ${preparedReply}`);
   }
 
   clearTimeout(timeout);
+  const metadataOut: { metadata?: StoryMetadata | null } = {};
   const reply = isTest
     ? rawReply.trim().slice(0, 200)
       : cleanReply(
        preparedReply,
-       outputName, playerName, proseFormat, outputKind, autopilot,
+       outputName, playerName, proseFormat, outputKind, autopilot, metadataOut,
      );
 
   if (!reply) {
@@ -587,7 +590,11 @@ ${preparedReply}`);
     return Response.json({ error: "The local model returned an unexpected test response." }, { status: 502 });
   }
 
-  return Response.json(isTest ? { ok: true, message: CONNECTION_TEST_RESPONSE } : { reply, context: contextManifest });
+  return Response.json(
+    isTest
+      ? { ok: true, message: CONNECTION_TEST_RESPONSE }
+      : { reply, context: contextManifest, metadata: metadataOut.metadata ?? null },
+  );
 }
 
 function countWords(value: string): number {
@@ -732,8 +739,9 @@ async function nonStreamReply(
 
   let result: unknown = await upstream.json();
   let rawReply = extractReply(result);
+  const metadataOut: { metadata?: StoryMetadata | null } = {};
   let prepared = isTest ? rawReply.trim().slice(0, 200)
-    : cleanReply(rawReply, outputName, playerName, proseFormat, outputKind, autopilot);
+    : cleanReply(rawReply, outputName, playerName, proseFormat, outputKind, autopilot, metadataOut);
 
   const enforcePlayerFloor = !isTest && outputKind === "player" && !autopilot;
   const playerFloor = IMPERSONATION_MIN_WORDS[replyLength];
@@ -743,7 +751,7 @@ async function nonStreamReply(
     if (!upstream.ok) break;
     result = await upstream.json();
     rawReply = extractReply(result);
-    const extra = cleanReply(rawReply, outputName, playerName, proseFormat, outputKind, autopilot);
+    const extra = cleanReply(rawReply, outputName, playerName, proseFormat, outputKind, autopilot, metadataOut);
     if (!extra.trim()) break;
     prepared = `${prepared}\n\n${extra}`;
   }
@@ -761,7 +769,11 @@ async function nonStreamReply(
     }, { status: 502 });
   }
 
-  return Response.json(isTest ? { ok: true, message: CONNECTION_TEST_RESPONSE } : { reply, context: contextManifest });
+  return Response.json(
+    isTest
+      ? { ok: true, message: CONNECTION_TEST_RESPONSE }
+      : { reply, context: contextManifest, metadata: metadataOut.metadata ?? null },
+  );
 }
 
 function isSuccessfulConnectionReply(value: string): boolean {
@@ -836,6 +848,7 @@ function extractReply(v: unknown): string {
 function cleanReply(
   v: string, name: string, playerName: string, proseFormat: ProseFormat,
   outputKind: "player" | "character", autopilot = false,
+  out?: { metadata?: StoryMetadata | null },
 ): string {
   const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const structuralEnd = v.search(/\n\s*<\|(?:user|assistant)\|>|\n\s*\/nothink/i);
@@ -867,7 +880,7 @@ function cleanReply(
       "\n\n$1\n\n",
     )
     .replace(/\n[ \t]+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
+.replace(/\n{3,}/g, "\n\n")
     .trim();
 
   if (proseFormat === "roleplay") {
@@ -879,7 +892,10 @@ function cleanReply(
       .trim();
   }
 
-  return autopilot ? limitAutopilotBeat(reply) : reply.slice(0, 12_000);
+  const final = autopilot ? limitAutopilotBeat(reply) : reply.slice(0, 12_000);
+  const { text: withoutMetadata, metadata } = parseStoryMetadata(final);
+  if (out) out.metadata = metadata;
+  return withoutMetadata;
 }
 
 function limitAutopilotBeat(value: string): string {

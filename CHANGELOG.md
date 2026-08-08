@@ -1,6 +1,41 @@
 # Changelog
 
-## 0.5.1.1 — Each turn has one speaker
+## 0.5.3 — Clean scenes, tidy tags
+
+**◐ AI replies no longer leak their thinking labels into your story.** The local model sometimes
+appends a `[Tags …; Mood …]` or `[scene …]` footnote to a reply. That note is now stripped from
+the visible text and captured as structured story metadata (tags, mood, scene, location, weather,
+time) so later features — chapters, sagas, memory — can use it without it ever cluttering the
+narration.
+
+### What's new
+- **Cleaner replies** — emergent `[Tags …; Mood …]` footnotes from the local provider are removed
+  from what you read, in every mode: Character Response, Impersonate, Skip Turn, Reroll, and
+  Autopilot.
+- **Conservative parsing** — inner voice like `[she hesitates]`, `[I can't]`, or stage directions
+  are never mistaken for metadata; only footer blocks at the end of a reply are interpreted.
+- **Filed for the future** — each message now carries structured metadata in the background,
+  ready to power scenes, moods, sagas, and memory in later releases.
+- **Bookkeeping** — curated and custom scenes keep your canvas clean; no reply is ever truncated
+  or rewritten as part of this fix.
+
+### Quality
+- 76/76 tests passed · lint clean · build validated.
+
+## 0.5.2 — Your story belongs to you
+
+**◐ Private data can now be backed up and restored.** Sign in to your archive for encrypted server-side backups of your characters, personas, messages, and settings, or download everything as a single portable file.
+
+### What's new
+- **Local backup file** — export all private data as a portable `.json` payload and restore it from the same Settings panel.
+- **Server-side backups** — create, list, download, restore, or delete per-account backups from the backup panel.
+- **Encryption at rest** — server backups are AES-256-GCM encrypted with a per-install key before being stored.
+- **Per-account isolation** — a signed-in user can only see, restore, or delete their own backups.
+- **Curated character protection** — backup payloads exclude the four curated characters' proprietary canon; user-created characters and per-character states are preserved.
+- **Local backups stay** — the existing local import/export flow is unchanged and always available offline.
+
+### Quality
+- 65/65 tests passed · lint clean · build validated.
 
 **◐ Character Response and Impersonate now run on a shared generation pipeline with an explicit target speaker.** The provider always knows whose turn it is allowed to write, instead of inferring it from the button that was clicked.
 

@@ -7,6 +7,13 @@ import {
   meHandler,
   registerHandler,
 } from "./auth.ts";
+import {
+  createBackup,
+  deleteBackup,
+  getBackup,
+  listBackups,
+  readBackupJson,
+} from "./backups.ts";
 import { loadConfig, pingDb } from "./db.ts";
 import { error, HttpError, json, readJson } from "./http.ts";
 
@@ -66,6 +73,36 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     }
 
     const user = await currentUser(req);
+
+    // ---------- Private-data server backups ----------------------
+    if (pathname === "/api/archive/backup" && req.method === "POST") {
+      if (!needRate(`backup:${ip}`)) return true;
+      if (!(await guard(req, res, user))) return true;
+      const body = await readBackupJson(req);
+      const created = await createBackup(user!, body);
+      if (!created.ok) return error(res, created.status ?? 400, created.error);
+      return json(res, 201, { backup: created.backup });
+    }
+    if (pathname === "/api/archive/backup" && req.method === "GET") {
+      if (!(await guard(req, res, user))) return true;
+      const backups = await listBackups(user!);
+      return json(res, 200, { backups });
+    }
+    const backupItem = pathname.match(/^\/api\/archive\/backup\/([^/]+)$/);
+    if (backupItem) {
+      if (!(await guard(req, res, user))) return true;
+      const id = backupItem[1];
+      if (req.method === "GET") {
+        const detail = await getBackup(user!, id);
+        if (!detail) return error(res, 404, "Backup not found.");
+        return json(res, 200, { backup: detail });
+      }
+      if (req.method === "DELETE") {
+        const removed = await deleteBackup(user!, id);
+        if (!removed) return error(res, 404, "Backup not found.");
+        return json(res, 200, { ok: true });
+      }
+    }
 
     // --------- Media uploads ---------------------------------------
     if (pathname === "/api/archive/media" && req.method === "POST") {

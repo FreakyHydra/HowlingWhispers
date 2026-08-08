@@ -2568,6 +2568,85 @@ a:focus-visible {
   line-height: 1.5;
 }
 
+/* ---- Account private-data backups ---- */
+.backup-settings .backup-local-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 6px;
+}
+
+.backup-settings .backup-help {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+  margin: 10px 0 0;
+}
+
+.backup-settings .backup-server-heading {
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  margin: 18px 0 6px;
+  padding-top: 16px;
+  text-transform: uppercase;
+}
+
+.backup-server-tools {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0 6px;
+}
+
+.backup-server-account {
+  background: rgba(6, 6, 8, 0.7);
+  border: 1px solid rgba(183, 101, 63, 0.42);
+  border-radius: 4px;
+  color: var(--copper-bright);
+  font-size: 11px;
+  padding: 8px 12px;
+}
+
+.backup-server-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.backup-server-item {
+  border-bottom: 1px solid rgba(183, 101, 63, 0.19);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 11px 0;
+}
+
+.backup-server-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.backup-server-main strong {
+  color: var(--cream);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.backup-server-meta {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.backup-server-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: 300px minmax(490px, 1fr) 330px;

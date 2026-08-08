@@ -11,9 +11,17 @@ import {
   serializeCharacter,
   serializeCharacterLibrary,
 } from "../lib/characters/import-export";
+import {
+  buildBackupPayload,
+  parsePortableBackup,
+  serializeBackupPayload,
+  validatePayload,
+  type BackupPayload,
+} from "../lib/backup/format";
+import { ensureUniquePersonaIds } from "../lib/personas/import-export";
 import { PersonaLibrary } from "../components/personas/persona-library";
 import ArchiveView from "../components/archive/archive-view";
-import type { ArchivePublication } from "../lib/archive/client";
+import { archive, type ArchivePublication, type ArchiveUser } from "../lib/archive/client";
 import { PersonaPicker } from "../components/story/persona-picker";
 import {
   loadPersonas,
@@ -25,6 +33,7 @@ import {
 import { compilePlayerPersona } from "../lib/personas/compile";
 import type { PlayerPersona } from "../lib/personas/schema";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
+import type { StoryMetadata } from "../lib/generation/story-metadata.ts";
 import { isNewerVersion } from "../lib/version.mjs";
 import { legacyCharacterToWorldLore } from "../lib/worlds/schema.ts";
 import {
@@ -111,6 +120,7 @@ type Message = {
   direction?: string;
   pages?: string[];
   pageIndex?: number;
+  meta?: StoryMetadata | null;
 };
 
 type TextStyle = {
@@ -1232,6 +1242,7 @@ export default function DreamboundApp() {
     () => false,
   );
   const [currentUser, setCurrentUser] = useState<{ displayName: string } | null>(null);
+  const [archiveUser, setArchiveUser] = useState<ArchiveUser | null>(null);
   const [playerProfile, setPlayerProfile] = useState(() =>
     readSession<{ name: string; persona: string }>("player", { name: "", persona: "" }),
   );
@@ -1409,6 +1420,61 @@ export default function DreamboundApp() {
     () => readSession<Record<string, ContextManifest>>("contextManifests", {}),
   );
 
+  // ----- Private-data backups ------------------------------------------
+  const [localBackupMsg, setLocalBackupMsg] = useState("");
+  const [localRestoreMsg, setLocalRestoreMsg] = useState("");
+  const [localBackupError, setLocalBackupError] = useState("");
+  const [serverBackupMsg, setServerBackupMsg] = useState("");
+  const [serverBackups, setServerBackups] = useState<
+    | {
+        id: string;
+        created_at: string;
+        size_bytes: number;
+        format: string;
+        version: number;
+        device: string;
+        source: string;
+      }[]
+    | null
+  >(null);
+  const [serverBackupsError, setServerBackupsError] = useState("");
+  const [serverBackupBusy, setServerBackupBusy] = useState(false);
+
+  const refreshServerBackups = useCallback(() => {
+    if (!archiveUser) {
+      setServerBackups(null);
+      return Promise.resolve();
+    }
+    return archive.backups
+      .list()
+      .then((res) => {
+        setServerBackups(res.backups);
+        setServerBackupsError("");
+      })
+      .catch((err) => {
+        setServerBackups([]);
+        setServerBackupsError(err instanceof Error ? err.message : "Server backups could not be listed.");
+      });
+  }, [archiveUser]);
+
+  function handleArchiveUserChange(next: ArchiveUser | null) {
+    setArchiveUser(next);
+    if (!next) {
+      setServerBackups(null);
+      return;
+    }
+    void archive.backups
+      .list()
+      .then((res) => {
+        setServerBackups(res.backups);
+        setServerBackupsError("");
+      })
+      .catch(() => {
+        setServerBackups([]);
+        setServerBackupsError("Server backups could not be listed.");
+      });
+  }
+
   // Let new messages animate once, then mark them as seen before future remounts.
   useEffect(() => {
     const current = messages[animationMessageKey] ?? [];
@@ -1471,6 +1537,35 @@ export default function DreamboundApp() {
     updatePreference();
     media.addEventListener("change", updatePreference);
     return () => media.removeEventListener("change", updatePreference);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    archive
+      .me()
+      .then(({ user }) => {
+        if (active) {
+          setArchiveUser(user);
+          if (user) {
+            void archive.backups
+              .list()
+              .then((res) => {
+                setServerBackups(res.backups);
+                setServerBackupsError("");
+              })
+              .catch(() => {
+                setServerBackups([]);
+                setServerBackupsError("Server backups could not be listed.");
+              });
+          }
+        }
+      })
+      .catch(() => {
+        if (active) setArchiveUser(null);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -2242,7 +2337,7 @@ export default function DreamboundApp() {
     action?: "impersonate" | "autopilot" | "skip",
     playerDirection?: string,
     reroll = false,
-  ): Promise<string> {
+  ): Promise<{ reply: string; metadata: StoryMetadata | null }> {
     const controller = new AbortController();
     generationAbortRef.current?.abort();
     generationAbortRef.current = controller;
@@ -2345,14 +2440,14 @@ export default function DreamboundApp() {
         }),
         signal: requestSignal,
       });
-      const finalized = await finalizedResponse.json() as { reply?: string; error?: string };
+      const finalized = await finalizedResponse.json() as { reply?: string; metadata?: StoryMetadata | null; error?: string };
       if (!finalizedResponse.ok || !finalized.reply) {
         throw new Error(finalized.error || "The local reply could not be formatted.");
       }
       if (prepared.context) {
         setContextManifests((current) => ({ ...current, [activeMessageKey]: prepared.context! }));
       }
-      return finalized.reply;
+      return { reply: finalized.reply, metadata: finalized.metadata ?? null };
     }
     const response = await fetch("/api/novelai", {
       method: "POST",
@@ -2360,14 +2455,14 @@ export default function DreamboundApp() {
       body: JSON.stringify(requestBody),
       signal: requestSignal,
     });
-    const payload = (await response.json()) as { reply?: string; error?: string; context?: ContextManifest };
+    const payload = (await response.json()) as { reply?: string; metadata?: StoryMetadata | null; error?: string; context?: ContextManifest };
     if (!response.ok || !payload.reply) {
       throw new Error(payload.error || `${providerLabel} did not return a reply.`);
     }
     if (payload.context) {
       setContextManifests((current) => ({ ...current, [activeMessageKey]: payload.context! }));
     }
-    return payload.reply;
+    return { reply: payload.reply, metadata: payload.metadata ?? null };
   }
 
   const requestStoryReplyRef = useRef<typeof requestStoryReply | null>(null);
@@ -2396,13 +2491,14 @@ export default function DreamboundApp() {
     setAutopilotError("");
     try {
       const conversation = messagesRef.current[messageKey] ?? [];
-      const replyText = await requestStoryReplyRef.current?.(conversation, "autopilot") ?? "";
+      const result = await requestStoryReplyRef.current?.(conversation, "autopilot") ?? { reply: "", metadata: null };
+      const replyText = result.reply;
       if (replyText) {
         setMessages((current) => ({
           ...current,
           [messageKey]: [
             ...(current[messageKey] ?? []),
-            { id: Date.now() + 1, sender: "character", text: replyText },
+            { id: Date.now() + 1, sender: "character", text: replyText, meta: result.metadata ?? null },
           ],
         }));
         setSessions((current) => current.map((session) =>
@@ -2533,12 +2629,12 @@ export default function DreamboundApp() {
     setChatError("");
 
     try {
-      const replyText = await requestStoryReply(conversation);
+      const result = await requestStoryReply(conversation);
       setMessages((current) => ({
         ...current,
         [activeMessageKey]: [
           ...(current[activeMessageKey] ?? []),
-          { id: Date.now() + 1, sender: "character", text: replyText },
+          { id: Date.now() + 1, sender: "character", text: result.reply, meta: result.metadata ?? null },
         ],
       }));
       const newBond = Math.min(100, (selected.bond || 8) + 1);
@@ -2572,13 +2668,13 @@ export default function DreamboundApp() {
     }
   }
 
-  async function impersonateTurn(conversation: Message[], playerDirection: string): Promise<string> {
-    let suggestion = await requestStoryReply(conversation, "impersonate", playerDirection);
+async function impersonateTurn(conversation: Message[], playerDirection: string): Promise<string> {
+    let suggestion = (await requestStoryReply(conversation, "impersonate", playerDirection)).reply;
     if (isInvalidImpersonationDraft(playerDirection, suggestion, selected.name)) {
       const retryGuide = playerDirection
         ? `The private direction was this, and it must be preserved:\n${playerDirection}\n\nThe previous draft was rejected only because it was written from the character's side: it described ${selected.name}'s actions, dialogue, feelings, or reactions, or used ${selected.name}'s name/persona as the speaker. Retry with the SAME direction — do not replace or expand its intent. Rewrite it strictly from the player's first-person point of view: only the player's own actions and spoken words carry the direction's action and dialogue verbatim. Never write ${selected.name}'s actions, dialogue, feelings, reactions, or inner voice, and never call the player by a name ${selected.name} would use. Keep the player's turn complete but brief.`
-        : `The previous draft was rejected only because it was written from the character's side: it described ${selected.name}'s actions, dialogue, or reactions, or used ${selected.name}'s name as the speaker. The player left the direction empty, so retry with ONE plausible first-person player turn that advances the scene naturally. Write strictly from the player's point of view: only the player's own actions and spoken words. Never write ${selected.name}'s actions, dialogue, feelings, reactions, or inner voice. Never write another character as the speaker or make them act, speak, think, feel, or react. Mentioning or addressing the character by name inside the player's own first-person action or dialogue is valid.`;
-      suggestion = await requestStoryReply(conversation, "impersonate", retryGuide);
+        : `The previous draft was rejected only because it was written from the character's side: it described ${selected.name}'s actions, dialogue, or reactions, or used ${selected.name}'s name as the speaker. The player left the direction empty, so retry with ONE plausible first-person player turn that advances the scene naturally. Write strictly from the player's point of view: only the player's own actions and spoken words. Never write ${selected.name}'s actions, dialogue, feelings, thoughts, or reactions, and never write another speaker. Mentioning or addressing the character by name inside the player's own first-person action or dialogue is valid.`;
+      suggestion = (await requestStoryReply(conversation, "impersonate", retryGuide)).reply;
     }
     if (isInvalidImpersonationDraft(playerDirection, suggestion, selected.name)) {
       throw new Error("Impersonation kept writing the character's side instead of the player's. Try again or use a shorter direction.");
@@ -2598,12 +2694,12 @@ export default function DreamboundApp() {
       ));
     }
     setIsReplying(true);
-    const characterReply = await requestStoryReply(conversation);
+    const result = await requestStoryReply(conversation);
     setMessages((current) => ({
       ...current,
       [activeMessageKey]: [
         ...(current[activeMessageKey] ?? []),
-        { id: Date.now() + 1, sender: "character", text: characterReply },
+        { id: Date.now() + 1, sender: "character", text: result.reply, meta: result.metadata ?? null },
       ],
     }));
     const newBond = Math.min(100, (selected.bond || 8) + 1);
@@ -2659,12 +2755,12 @@ export default function DreamboundApp() {
     setIsReplying(true);
     setChatError("");
     try {
-      const replyText = await requestStoryReply(activeMessages, "skip");
+      const result = await requestStoryReply(activeMessages, "skip");
       setMessages((current) => ({
         ...current,
         [activeMessageKey]: [
           ...(current[activeMessageKey] ?? []),
-          { id: Date.now(), sender: "character", text: replyText },
+          { id: Date.now(), sender: "character", text: result.reply, meta: result.metadata ?? null },
         ],
       }));
       if (activeSession) {
@@ -2801,14 +2897,16 @@ export default function DreamboundApp() {
     setIsReplying(true);
 
     try {
-      const reply = await requestStoryReply(truncated, undefined, undefined, true);
+      const result = await requestStoryReply(truncated, undefined, undefined, true);
+      const reply = result.reply;
+      const meta = result.metadata ?? null;
 
       setMessages((current) => ({
         ...current,
         [activeMessageKey]: (current[activeMessageKey] ?? []).map((m) => {
           if (m.id !== message.id) return m;
           const pages = m.pages && m.pages.length > 0 ? [...m.pages, reply] : [m.text, reply];
-          return { ...m, text: reply, pages, pageIndex: pages.length - 1 };
+          return { ...m, text: reply, pages, pageIndex: pages.length - 1, ...(meta ? { meta } : {}) };
         }),
       }));
       setProviderState("connected");
@@ -2992,14 +3090,21 @@ export default function DreamboundApp() {
   }
 
   function exportCharacterLibrary() {
+    const ownedCharacters = characters.filter((character) => isUserOwnedCharacter(character));
+    if (ownedCharacters.length === 0) {
+      setCharacterBackupMsg("You have no characters of your own to export yet.");
+      return;
+    }
     downloadTextFile(
       "howling-whispers-character-library.json",
-      serializeCharacterLibrary(characters),
+      serializeCharacterLibrary(ownedCharacters),
     );
-    setCharacterBackupMsg("Character library exported.");
+    setCharacterBackupMsg("Your own characters exported.");
   }
 
   function exportSingleCharacter(character: Character) {
+    // The curated cast is never a user export; it is not the user's content to carry.
+    if (isUserOwnedCharacter(character) === false) return;
     downloadTextFile(
       `howling-whispers-character-${character.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`,
       serializeCharacter(character),
@@ -3029,12 +3134,37 @@ export default function DreamboundApp() {
     reader.readAsText(file);
   }
 
-  function updateCharacter(id: string, updates: Partial<Character>) {
-    setCharacters((current) => current.map((character) => (
-      character.id === id ? { ...character, ...updates } : character
-    )));
-    setEditingCharacter(null);
+  function formatBackupSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatBackupDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
   }
+}
+
+function describeBackupDevice(): string {
+  if (typeof navigator === "undefined") return "web";
+  const ua = navigator.userAgent || "";
+  if (/iphone|ipad|ipod/i.test(ua)) return "iOS";
+  if (/android/i.test(ua)) return "Android";
+  if (/windows/i.test(ua)) return "Windows";
+  if (/mac os x|macintosh/i.test(ua)) return "macOS";
+  if (/linux/i.test(ua)) return "Linux";
+  return "web";
+}
+
+function updateCharacter(id: string, updates: Partial<Character>) {
+  setCharacters((current) => current.map((character) => (
+    character.id === id ? { ...character, ...updates } : character
+  )));
+  setEditingCharacter(null);
+}
 
   function deleteCharacter(character: Character) {
     if (!isUserOwnedCharacter(character)) return;
@@ -3083,6 +3213,276 @@ export default function DreamboundApp() {
       setSelectedId("coda");
     }
     setView("home");
+  }
+
+  // ----- Private-data backup & restore ---------------------------------------
+  function buildPortableBackup(): BackupPayload {
+    return buildBackupPayload(
+      {
+        characters,
+        messages,
+        sessions,
+        currentSessionId,
+        storyScenes,
+        personas,
+        activePersonaId: resolvedActivePersonaId,
+        playerName: playerProfile.name,
+        preferences: {
+          storyProvider,
+          model: selectedModel,
+          localModel: selectedLocalModel,
+          deviceModel: deviceModel,
+          creativity,
+          replyLength,
+          initiative,
+          viewpoint,
+          storyTense,
+          textStyle,
+          shareCount,
+          shareCaptions,
+          shareHeader,
+          entranceCodaLocked,
+          showCharacterRail,
+          showContextRail,
+        },
+      },
+      { appVersion: packageInfo.version, device: describeBackupDevice(), source: "web" },
+    );
+  }
+
+  function downloadBackupPayload(payload: BackupPayload) {
+    const date = payload.createdAt ? payload.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10);
+    downloadTextFile(
+      `howling-whispers-backup-${date}.hwb`,
+      serializeBackupPayload(payload),
+    );
+  }
+
+  function applyBackupPayload(payload: BackupPayload) {
+    const data = payload.data;
+
+    // Curated characters: restore only the user's own state onto the shipped
+    // character package. The curated profiles, openers, art, and canon are never
+    // replaced from a backup.
+    setCharacters((current) =>
+      current.map((character) => {
+        const curated = data.curatedState.find((state) => state.id === character.id);
+        if (!curated) return character;
+        return {
+          ...character,
+          bond: curated.bond,
+          relationship: curated.relationship ?? character.relationship,
+          memories: curated.memories.length > 0 ? curated.memories : character.memories,
+        };
+      }),
+    );
+
+    // User-owned characters: add fresh copies (never the curated package).
+    const ownedCharacters = ensureUniqueCharacterIds(
+      data.characters,
+      characters.map((character) => character.id),
+    );
+    if (ownedCharacters.length > 0) {
+      setCharacters((current) => [...current, ...ownedCharacters]);
+    }
+
+    setPersonas((current) => {
+      const merged = ensureUniquePersonaIds(data.personas, current);
+      return merged.length > 0 ? [...current, ...merged] : current;
+    });
+    const personaIdKnown = (id: string) =>
+      personas.some((persona) => persona.id === id) ||
+      data.personas.some((persona) => persona.id === id);
+    if (data.activePersonaId && personaIdKnown(data.activePersonaId)) {
+      setActivePersonaId(data.activePersonaId);
+    }
+
+    if (data.player.name.trim()) {
+      updatePlayerProfile({ name: data.player.name });
+    }
+
+    setMessages((current) => {
+      const next = { ...current };
+      for (const [key, list] of Object.entries(data.messages)) {
+        if (list.length > 0) next[key] = list;
+      }
+      return next;
+    });
+
+    setSessions((current) => {
+      const byId = new Map(current.map((session) => [session.id, session]));
+      for (const session of data.sessions) {
+        if (!byId.has(session.id)) byId.set(session.id, session);
+      }
+      return [...byId.values()];
+    });
+
+    setStoryScenes((current) => {
+      const next = { ...current };
+      for (const [characterId, scenes] of Object.entries(data.storyScenes)) {
+        if (scenes.length > 0) next[characterId] = scenes as SceneDefinition[];
+      }
+      return next;
+    });
+
+    if (
+      data.currentSessionId &&
+      sessions.some((session) => session.id === data.currentSessionId)
+    ) {
+      setCurrentSessionId(data.currentSessionId);
+    }
+
+    applyBackupPreferences(data.preferences);
+  }
+
+  function applyBackupPreferences(preferences: BackupPayload["data"]["preferences"]) {
+    if (!preferences) return;
+    if (
+      preferences.storyProvider === "novelai" ||
+      preferences.storyProvider === "local" ||
+      preferences.storyProvider === "device"
+    ) {
+      setStoryProvider(preferences.storyProvider);
+    }
+    if (preferences.model === "xialong-v1" || preferences.model === "glm-4-6") {
+      setSelectedModel(preferences.model);
+    }
+    if (typeof preferences.localModel === "string") setSelectedLocalModel(preferences.localModel);
+    if (typeof preferences.deviceModel === "string") setDeviceModel(preferences.deviceModel);
+    if (typeof preferences.creativity === "number") setCreativity(preferences.creativity);
+    if (typeof preferences.replyLength === "string") setReplyLength(preferences.replyLength as ReplyLength);
+    if (typeof preferences.initiative === "string") setInitiative(preferences.initiative as Initiative);
+    if (typeof preferences.viewpoint === "string") setViewpoint(preferences.viewpoint as Viewpoint);
+    if (typeof preferences.storyTense === "string") setStoryTense(preferences.storyTense as StoryTense);
+    if (preferences.textStyle) setTextStyle(preferences.textStyle);
+    if (typeof preferences.shareCount === "number") setShareCount(preferences.shareCount);
+    if (typeof preferences.shareCaptions === "boolean") setShareCaptions(preferences.shareCaptions);
+    if (typeof preferences.shareHeader === "boolean") setShareHeader(preferences.shareHeader);
+    if (typeof preferences.entranceCodaLocked === "boolean") setEntranceCodaLocked(preferences.entranceCodaLocked);
+    if (typeof preferences.showCharacterRail === "boolean") setShowCharacterRail(preferences.showCharacterRail);
+    if (typeof preferences.showContextRail === "boolean") setShowContextRail(preferences.showContextRail);
+  }
+
+  function handleLocalBackupImport(file: File) {
+    setLocalBackupError("");
+    setLocalRestoreMsg("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = parsePortableBackup(String(reader.result ?? ""));
+      if (!result.ok) {
+        setLocalBackupError(result.error);
+        return;
+      }
+      applyBackupPayload(result.payload);
+      setLocalRestoreMsg("Backup restored. Characters, conversations, personas, and preferences are back.");
+    };
+    reader.onerror = () => setLocalBackupError("The backup file could not be read.");
+    reader.readAsText(file);
+  }
+
+  async function exportAllPrivateData() {
+    setLocalBackupMsg("");
+    setLocalBackupError("");
+    setServerBackupsError("");
+
+    const payload = buildPortableBackup();
+    try {
+      downloadBackupPayload(payload);
+      setLocalBackupMsg("Private-data backup downloaded.");
+    } catch {
+      setLocalBackupError("The local backup could not be downloaded.");
+    }
+
+    // The server backup runs independently: a failure here must never take the
+    // local file away from the user.
+    if (!archiveUser) return;
+    setServerBackupBusy(true);
+    try {
+      const created = await archive.backups.create({
+        payload,
+        device: payload.device,
+        source: payload.source,
+      });
+      setLocalBackupMsg(
+        `Local backup downloaded and server backup saved (${formatBackupSize(created.backup.size_bytes)}).`,
+      );
+      await refreshServerBackups();
+    } catch (err) {
+      setServerBackupsError(
+        `Server backup failed: ${err instanceof Error ? err.message : "unknown error"}. Your local backup was still downloaded.`,
+      );
+    } finally {
+      setServerBackupBusy(false);
+    }
+  }
+
+  async function createServerBackupNow() {
+    if (!archiveUser) return;
+    setServerBackupBusy(true);
+    setServerBackupsError("");
+    try {
+      const payload = buildPortableBackup();
+      const created = await archive.backups.create({
+        payload,
+        device: payload.device,
+        source: payload.source,
+      });
+      setServerBackupMsg(`Server backup saved (${formatBackupSize(created.backup.size_bytes)}).`);
+    } catch (err) {
+      setServerBackupsError(err instanceof Error ? err.message : "The server backup could not be created.");
+    } finally {
+      setServerBackupBusy(false);
+      void refreshServerBackups();
+    }
+  }
+
+  async function downloadServerBackup(id: string) {
+    if (!archiveUser) return;
+    setServerBackupBusy(true);
+    setServerBackupsError("");
+    try {
+      const { backup } = await archive.backups.get(id);
+      const payload = validatePayload(backup.payload);
+      if (!payload) throw new Error("This server backup is not a valid Howling Whispers backup.");
+      downloadBackupPayload(payload);
+      setLocalBackupMsg("Server backup downloaded as a local file.");
+    } catch (err) {
+      setServerBackupsError(err instanceof Error ? err.message : "The backup could not be downloaded.");
+    } finally {
+      setServerBackupBusy(false);
+    }
+  }
+
+  async function restoreServerBackup(id: string) {
+    if (!archiveUser) return;
+    setServerBackupBusy(true);
+    setServerBackupsError("");
+    try {
+      const { backup } = await archive.backups.get(id);
+      const payload = validatePayload(backup.payload);
+      if (!payload) throw new Error("This server backup is not a valid Howling Whispers backup.");
+      applyBackupPayload(payload);
+      setServerBackupMsg("Backup restored from your account.");
+    } catch (err) {
+      setServerBackupsError(err instanceof Error ? err.message : "The backup could not be restored.");
+    } finally {
+      setServerBackupBusy(false);
+    }
+  }
+
+  async function deleteServerBackup(id: string) {
+    if (!archiveUser) return;
+    setServerBackupBusy(true);
+    setServerBackupsError("");
+    try {
+      await archive.backups.remove(id);
+      setServerBackupMsg("Server backup deleted.");
+    } catch (err) {
+      setServerBackupsError(err instanceof Error ? err.message : "The backup could not be deleted.");
+    } finally {
+      setServerBackupBusy(false);
+      void refreshServerBackups();
+    }
   }
 
   function renderText(text: string, forceAction = false) {
@@ -4045,7 +4445,7 @@ export default function DreamboundApp() {
               className="outline-button"
               onClick={exportCharacterLibrary}
             >
-              Export library
+              Export my characters
             </button>
             {characterBackupMsg && <span className="backup-feedback ok">{characterBackupMsg}</span>}
             {characterBackupError && <span className="backup-feedback err">{characterBackupError}</span>}
@@ -4519,6 +4919,45 @@ export default function DreamboundApp() {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
+              <div className="changelog-mark">◐</div>
+              <div>
+                <span>Version 0.5.3 · Clean scenes, tidy tags</span>
+                <h2>AI replies no longer leak their thinking labels into your story</h2>
+                <p>
+                  When the local model appends a <em>[Tags …; Mood …]</em> footnote to a reply,
+                  that note is now stripped from the visible text and captured as structured
+                  story metadata — ready to power scenes, moods, sagas, and memory later.
+                </p>
+                <h3>What changed</h3>
+                <ul>
+                  <li>Emergent Tags/Mood footnotes are removed in every mode: Character Response, Impersonate, Skip Turn, Reroll, and Autopilot.</li>
+                  <li>Stage directions and inner voice like <em>[she hesitates]</em> stay in the story — only footer blocks at the end of a reply are treated as metadata.</li>
+                  <li>Each message now carries the parsed metadata in the background without ever cluttering the narration.</li>
+                </ul>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
+              <div className="changelog-mark">◐</div>
+              <div>
+                <span>Version 0.5.2 · Your story belongs to you</span>
+                <h2>Private data can now be backed up and restored</h2>
+                <p>
+                  Sign in to your archive to keep a server-side backup of your characters,
+                  personas, messages, and settings — encrypted at rest — or download your
+                  entire private data as a single portable file and restore it later.
+                </p>
+                <h3>What changed</h3>
+                <ul>
+                  <li>Export all private data as a local backup file, and restore it from the same panel.</li>
+                  <li>Create server-side backups with one click; download, restore, or delete any of them.</li>
+                  <li>Server backups are encrypted at rest and visible only to their own signed-in account.</li>
+                  <li>Backups protect your data without bundling the four curated characters&apos; protected canon.</li>
+                </ul>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
               <div className="changelog-mark">◐</div>
               <div>
                 <span>Version 0.5.1.1 · Each turn has one speaker</span>
@@ -5533,6 +5972,141 @@ export default function DreamboundApp() {
               </p>
             </section>
 
+            <section className="settings-panel backup-settings">
+              <p className="eyebrow">Your data</p>
+              <h2>Backup &amp; restore</h2>
+              <p>
+                Your stories live in this browser. Download a portable backup anytime as a
+                single <code>.hwb</code> file, and restore it here on this computer or on a
+                new one. If you&apos;re signed into your account, backups can also be saved on
+                the server so a new device can pull them back in.
+              </p>
+
+              <div className="backup-local-actions">
+                <button
+                  className="primary-button"
+                  onClick={() => void exportAllPrivateData()}
+                  disabled={serverBackupBusy}
+                >
+                  Export all private data
+                </button>
+                <label className="outline-button import-browse">
+                  Restore from backup
+                  <input
+                    type="file"
+                    accept=".hwb,application/json,.json"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) handleLocalBackupImport(file);
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+              {localBackupMsg && <span className="backup-feedback ok">{localBackupMsg}</span>}
+              {localRestoreMsg && <span className="backup-feedback ok">{localRestoreMsg}</span>}
+              {localBackupError && <span className="backup-feedback err">{localBackupError}</span>}
+              <p className="backup-help">
+                &ldquo;Export all private data&rdquo; always downloads a local file. If your
+                server backup cannot be saved, the local download still happens.
+              </p>
+
+              <h3 className="backup-server-heading">Saved to your account</h3>
+              {!archiveUser ? (
+                <p className="backup-help">
+                  Server backups need a signed-in account.{" "}
+                  <button
+                    className="text-button"
+                    onClick={() => setView("archive")}
+                  >
+                    Sign in or create an account
+                  </button>{" "}
+                  to keep rolling snapshots on the server.
+                </p>
+              ) : (
+                <div className="backup-server">
+                  <div className="backup-server-tools">
+                    <span className="backup-server-account">
+                      {archiveUser.username}
+                    </span>
+                    <button
+                      className="outline-button"
+                      onClick={createServerBackupNow}
+                      disabled={serverBackupBusy}
+                    >
+                      {serverBackupBusy ? "Saving…" : "Create backup now"}
+                    </button>
+                    <button
+                      className="text-button"
+                      onClick={() => {
+                        archive.logout().catch(() => undefined);
+                        handleArchiveUserChange(null);
+                      }}
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                  {serverBackupMsg && <span className="backup-feedback ok">{serverBackupMsg}</span>}
+                  {serverBackupsError && <span className="backup-feedback err">{serverBackupsError}</span>}
+                  {serverBackups !== null && serverBackups.length === 0 && (
+                    <p className="backup-help">
+                      No server backups yet. Your newest backup plus several older
+                      snapshots are kept automatically.
+                    </p>
+                  )}
+                  {serverBackups !== null && serverBackups.length > 0 && (
+                    <ul className="backup-server-list">
+                      {serverBackups.map((snapshot) => (
+                        <li key={snapshot.id} className="backup-server-item">
+                          <div className="backup-server-main">
+                            <strong>
+                              {formatBackupDate(snapshot.created_at)}
+                            </strong>
+                            <span className="backup-server-meta">
+                              {formatBackupSize(snapshot.size_bytes)}
+                              {snapshot.device ? ` · ${snapshot.device}` : ""}
+                              {snapshot.source ? ` · ${snapshot.source}` : ""}
+                              {snapshot.format && snapshot.version
+                                ? ` · format v${snapshot.version}`
+                                : ""}
+                            </span>
+                          </div>
+                          <div className="backup-server-actions">
+                            <button
+                              className="link-button"
+                              onClick={() => void downloadServerBackup(snapshot.id)}
+                              disabled={serverBackupBusy}
+                            >
+                              Download
+                            </button>
+                            <button
+                              className="link-button"
+                              onClick={() => void restoreServerBackup(snapshot.id)}
+                              disabled={serverBackupBusy}
+                            >
+                              Restore
+                            </button>
+                            <button
+                              className="link-button archive-danger"
+                              onClick={() => void deleteServerBackup(snapshot.id)}
+                              disabled={serverBackupBusy}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="backup-help">
+                    Server backups are private to your account and only ever include your
+                    own content — never the curated Howling Whispers character packages,
+                    and never passwords, keys, or other credentials.
+                  </p>
+                </div>
+              )}
+            </section>
+
             <section className="settings-panel update-settings">
               <p className="eyebrow">Release channel</p>
               <h2>Application updates</h2>
@@ -5609,6 +6183,8 @@ export default function DreamboundApp() {
             isMinor: character.isMinor,
           }))}
           onImport={importArchiveCharacter}
+          externalUser={archiveUser}
+          onExternalUserChange={handleArchiveUserChange}
         />
       )}
 
