@@ -12,6 +12,26 @@ import {
   serializeCharacterLibrary,
 } from "../lib/characters/import-export";
 import {
+  characterCardV2ToHowling,
+  CHARACTER_CARD_V2_LIMITS,
+  characterCardV2BookToWorldLore,
+  characterCardV2ToCanon,
+  embedCharacterCardV2InPng,
+  extractCharacterCardV2FromPng,
+  howlingCharacterToV2,
+  howlingWorldLoreToCharacterBook,
+  isCharacterCardV2,
+  parseCharacterCardV2Json,
+  serializeCharacterCardV2,
+  type HowlingV2Metadata,
+} from "../lib/characters/character-card-v2";
+import {
+  deleteCharacterPortrait,
+  isStoredPortraitReference,
+  loadCharacterPortrait,
+  persistCharacterPortrait,
+} from "../lib/characters/portrait-storage";
+import {
   buildBackupPayload,
   parsePortableBackup,
   serializeBackupPayload,
@@ -36,6 +56,7 @@ import type { ContextManifest } from "../lib/generation/compile-context.ts";
 import type { StoryMetadata } from "../lib/generation/story-metadata.ts";
 import { isNewerVersion } from "../lib/version.mjs";
 import { legacyCharacterToWorldLore } from "../lib/worlds/schema.ts";
+import { resolveBuiltinWorldLore } from "../lib/worlds/builtins.ts";
 import {
   describeOllamaModel,
   parseOllamaModels,
@@ -65,6 +86,7 @@ type Character = {
   isMinor?: boolean | null;
   allowedRelationshipTypes?: string[];
   disallowedContent?: string[];
+  cardV2?: HowlingV2Metadata;
 };
 
 type VisualTheme = {
@@ -842,7 +864,7 @@ function sandboxSceneFor(character: Character): SceneDefinition {
     subtitle: "No preset scene, memories, or opening move",
     status: "Waiting for your first move",
     weather: "No setting has been established",
-    background: character.image,
+    background: character.cardV2 ? "" : character.image,
     backgroundFocalPoint: character.portraitFocalPoint ?? "center",
     opening: "",
     theme: {
@@ -861,7 +883,7 @@ function scenesFor(character: Character): SceneDefinition[] {
     subtitle: character.role,
     status: character.status,
     weather: character.weather,
-    background: character.sceneImage || character.image,
+    background: character.sceneImage || (character.cardV2 ? "" : character.image),
     backgroundFocalPoint: character.backgroundFocalPoint ?? "center top",
     opening: character.reply,
     theme: { ...fallbackTheme, accent: character.accent },
@@ -975,12 +997,13 @@ function readTokenStorageMode(): TokenStorageMode {
   return readSession<string>("naiToken", "") ? "computer" : "tab";
 }
 
-function Portrait({ character, accent }: { character: Character; accent?: string }) {
+function Portrait({ character, accent, image }: { character: Character; accent?: string; image?: string }) {
+  const portrait = image ?? character.image;
   return (
     <span className="portrait" style={{ "--accent": accent ?? character.accent } as React.CSSProperties}>
-      {character.image && (
+      {portrait && (
         <img
-          src={character.image}
+          src={portrait}
           alt=""
           width={128}
           height={128}
@@ -1318,6 +1341,9 @@ export default function DreamboundApp() {
   const [isCreating, setIsCreating] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
   const [confirmDeleteCharacter, setConfirmDeleteCharacter] = useState<Character | null>(null);
+  const [downloadingCharacter, setDownloadingCharacter] = useState<Character | null>(null);
+  const [characterDownloadError, setCharacterDownloadError] = useState("");
+  const [portraitUrls, setPortraitUrls] = useState<Record<string, string>>({});
   const [apiToken, setApiToken] = useState(readStoredToken);
   const [tokenStorageMode, setTokenStorageMode] =
     useState<TokenStorageMode>(readTokenStorageMode);
@@ -1520,6 +1546,34 @@ export default function DreamboundApp() {
   }, [showCharacterRail, showContextRail]);
 
   useEffect(() => {
+    let active = true;
+    const urls: string[] = [];
+    void Promise.all(characters.map(async (character) => {
+      if (!isStoredPortraitReference(character.image)) return null;
+      const bytes = await loadCharacterPortrait(character.image);
+      if (!bytes) return null;
+      const url = URL.createObjectURL(new Blob([bytes], { type: "image/png" }));
+      urls.push(url);
+      return [character.id, url] as const;
+    })).then((entries) => {
+      if (!active) return;
+      setPortraitUrls(Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => entry !== null)));
+    }).catch(() => {
+      if (active) setPortraitUrls({});
+    });
+    return () => {
+      active = false;
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [characters]);
+
+  function portraitUrl(character: Character): string {
+    return isStoredPortraitReference(character.image)
+      ? portraitUrls[character.id] ?? ""
+      : character.image;
+  }
+
+  useEffect(() => {
     writeSession("shareCount", shareCount);
   }, [shareCount]);
 
@@ -1662,7 +1716,7 @@ export default function DreamboundApp() {
 
   // Persist session state so remounts don't reset the app
   useEffect(() => {
-    writeSession("characters", characters.slice(0, 40));
+    writeSession("characters", characters.slice(0, 60));
   }, [characters]);
 
   useEffect(() => {
@@ -1853,7 +1907,7 @@ export default function DreamboundApp() {
         subtitle: "",
         status: "A new story is waiting",
         weather: "The world holds its breath",
-        background: selected.sceneImage || selected.image,
+        background: selected.sceneImage || (selected.cardV2 ? "" : selected.image),
         backgroundFocalPoint: selected.backgroundFocalPoint ?? "center top",
         opening: "",
         theme: {
@@ -2365,7 +2419,7 @@ export default function DreamboundApp() {
           name: selected.name,
           role: selected.role,
           profile: selected.profile,
-          canonical: legacyCharacterToCanon({
+          canonical: characterCardV2ToCanon(selected, `v2-${packageInfo.version}`) ?? legacyCharacterToCanon({
             id: selected.id,
             revision: `builtin-${packageInfo.version}`,
             name: selected.name,
@@ -2379,7 +2433,10 @@ export default function DreamboundApp() {
           scene: activeSession?.sandbox ? "" : activeScene.title,
           sceneId: activeSession?.sandbox ? "" : activeScene.id,
           worldId: activeSession?.sandbox ? "" : selected.id,
-          worldLore: activeSession?.sandbox ? null : legacyCharacterToWorldLore({
+          worldLore: activeSession?.sandbox ? null : characterCardV2BookToWorldLore(
+            selected.id,
+            selected.cardV2?.characterBook,
+          ) ?? legacyCharacterToWorldLore({
             worldId: selected.id,
             revision: `runtime-${packageInfo.version}`,
             scene: activeScene.title,
@@ -2976,59 +3033,85 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
     setView("chat");
   }
 
-  async function importCharacterCard(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
+  async function handleCharacterImport(file: File) {
+    setImportError("");
+    setCharacterBackupError("");
+    setCharacterBackupMsg("");
     try {
-      const parsed = JSON.parse(await file.text());
-      const data = parsed?.data ?? parsed;
-      const name = String(data?.name || "").trim();
-      if (!name) throw new Error("This card does not contain a character name.");
+      if (file.name.toLowerCase().endsWith(".png") || file.type === "image/png") {
+        if (file.size > CHARACTER_CARD_V2_LIMITS.pngBytes) {
+          throw new Error("This PNG is too large to import safely.");
+        }
+        const png = new Uint8Array(await file.arrayBuffer());
+        const result = extractCharacterCardV2FromPng(png);
+        if (!result.ok) throw new Error(result.error);
+        const imported = characterCardV2ToHowling(result.card);
+        const [unique] = ensureUniqueCharacterIds(
+          [imported],
+          characters.map((character) => character.id),
+        );
+        unique.image = await persistCharacterPortrait(unique.id, png);
+        setCharacters((current) => [...current, unique]);
+        setSelectedId(unique.id);
+        setIsCreating(false);
+        setCharacterBackupMsg(`Imported ${unique.name} from a Character Card V2 PNG.`);
+        return;
+      }
 
-      const id = `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
-      const tags = Array.isArray(data.tags) ? data.tags.slice(0, 2).join(" · ") : "";
-      const description = String(data.description || "").trim();
-      const personality = String(data.personality || "").trim();
-      const scenario = String(data.scenario || "").trim();
-      const opening = String(data.first_mes || "I was wondering when you would arrive.")
-        .replaceAll("*", "")
-        .trim();
-      const backstory = String(data?.extensions?.backstory || "");
-      const importedMemories = backstory
-        .split(".")
-        .map((item: string) => item.trim())
-        .filter(Boolean)
-        .slice(0, 2);
+      if (file.size > CHARACTER_CARD_V2_LIMITS.jsonBytes) {
+        throw new Error("This character JSON is too large to import safely.");
+      }
+      const json = await file.text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(json);
+      } catch {
+        throw new Error("This JSON is malformed and could not be read.");
+      }
 
-      const importedCharacter: Character = {
-        id,
-        name,
-        role: tags || "Imported character",
-        status: "Ready to meet",
-        image: "",
-        sceneImage: "",
-        scene: "An Imported Story",
-        weather: "The world waits for your first choice",
-        bond: 12,
-        memories: importedMemories.length
-          ? importedMemories
-          : ["Their history is waiting to be discovered"],
-        reply: opening,
-        profile:
-          [description, personality, scenario].filter(Boolean).join("\n\n") ||
-          `${name} is an imported character whose personality should stay consistent with their opening message.`,
-        accent: "#d78a5e",
-      };
-      setCharacters((current) => [...current, importedCharacter]);
-      setSelectedId(id);
+      if (isCharacterCardV2(parsed) || (parsed && typeof parsed === "object" && "spec" in parsed)) {
+        const result = parseCharacterCardV2Json(json);
+        if (!result.ok) throw new Error(result.error);
+        const [unique] = ensureUniqueCharacterIds(
+          [characterCardV2ToHowling(result.card)],
+          characters.map((character) => character.id),
+        );
+        setCharacters((current) => [...current, unique]);
+        setSelectedId(unique.id);
+        setIsCreating(false);
+        setCharacterBackupMsg(`Imported ${unique.name} from Character Card V2 JSON.`);
+        return;
+      }
+
+      const native = parseCharacterImport(json);
+      if (!native.ok) {
+        const format = parsed && typeof parsed === "object" && "format" in parsed
+          ? String((parsed as { format?: unknown }).format ?? "")
+          : "";
+        if (!format.startsWith("howling-whispers-character")) {
+          throw new Error("This JSON is not a supported character format.");
+        }
+        throw new Error(native.error);
+      }
+      const unique = ensureUniqueCharacterIds(
+        native.characters,
+        characters.map((character) => character.id),
+      );
+      setCharacters((current) => [...current, ...unique]);
+      if (unique.length === 1) setSelectedId(unique[0].id);
       setIsCreating(false);
-      requestPersonaStart({ kind: "imported", characterId: id });
+      setCharacterBackupMsg(`Imported ${unique.length} ${unique.length === 1 ? "character" : "characters"}.`);
     } catch (error) {
-      setImportError(error instanceof Error ? error.message : "That character card could not be read.");
-    } finally {
-      event.target.value = "";
+      const message = error instanceof Error ? error.message : "That character file could not be read.";
+      setImportError(message);
+      setCharacterBackupError(message);
     }
+  }
+
+  function importCharacterFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) void handleCharacterImport(file);
+    event.target.value = "";
   }
 
   function importArchiveCharacter(publication: ArchivePublication) {
@@ -3089,6 +3172,18 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
     URL.revokeObjectURL(url);
   }
 
+  function downloadBinaryFile(filename: string, bytes: Uint8Array, type: string) {
+    const blob = new Blob([bytes], { type });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   function exportCharacterLibrary() {
     const ownedCharacters = characters.filter((character) => isUserOwnedCharacter(character));
     if (ownedCharacters.length === 0) {
@@ -3102,36 +3197,74 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
     setCharacterBackupMsg("Your own characters exported.");
   }
 
-  function exportSingleCharacter(character: Character) {
-    // The curated cast is never a user export; it is not the user's content to carry.
-    if (isUserOwnedCharacter(character) === false) return;
+  function exportNativeCharacter(character: Character) {
+    if (!isUserOwnedCharacter(character)) return;
     downloadTextFile(
       `howling-whispers-character-${character.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`,
       serializeCharacter(character),
     );
+    setDownloadingCharacter(null);
   }
 
-  function handleCharacterBackupImport(file: File) {
-    setCharacterBackupError("");
-    setCharacterBackupMsg("");
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = parseCharacterImport(String(reader.result ?? ""));
-      if (!result.ok) {
-        setCharacterBackupError(result.error);
-        return;
-      }
-      const unique = ensureUniqueCharacterIds(
-        result.characters,
-        characters.map((character) => character.id),
-      );
-      const nextCharacters = [...characters, ...unique];
-      setCharacters(nextCharacters);
-      if (unique.length === 1) setSelectedId(unique[0].id);
-      setCharacterBackupMsg(`Imported ${unique.length} ${unique.length === 1 ? "character" : "characters"}.`);
+  function exportV2Json(character: Character) {
+    downloadTextFile(
+      `${fileSlug(character.name)}.v2.json`,
+      serializeCharacterCardV2(portableExportSource(character)),
+    );
+    setDownloadingCharacter(null);
+  }
+
+  async function exportV2Png(character: Character) {
+    setCharacterDownloadError("");
+    try {
+      const portrait = await portraitPngBytes(character);
+      const png = embedCharacterCardV2InPng(portrait, howlingCharacterToV2(portableExportSource(character)));
+      downloadBinaryFile(`${fileSlug(character.name)}.card.png`, png, "image/png");
+      setDownloadingCharacter(null);
+    } catch (error) {
+      setCharacterDownloadError(error instanceof Error ? error.message : "The V2 card could not be created.");
+    }
+  }
+
+  async function portraitPngBytes(character: Character): Promise<Uint8Array> {
+    if (isStoredPortraitReference(character.image)) {
+      const bytes = await loadCharacterPortrait(character.image);
+      if (!bytes) throw new Error("The stored portrait is unavailable. Assign artwork before downloading a V2 PNG.");
+      return bytes;
+    }
+    if (!character.image) throw new Error("This character has no portrait. Use V2 JSON or assign artwork first.");
+    const response = await fetch(character.image);
+    if (!response.ok) throw new Error("The character portrait could not be loaded for export.");
+    const blob = await response.blob();
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71) return bytes;
+    const bitmap = await createImageBitmap(blob);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("The portrait could not be converted to PNG.");
+      context.drawImage(bitmap, 0, 0);
+      const pngBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!pngBlob) throw new Error("The portrait could not be converted to PNG.");
+      return new Uint8Array(await pngBlob.arrayBuffer());
+    } finally {
+      bitmap.close();
+    }
+  }
+
+  function fileSlug(name: string): string {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "character";
+  }
+
+  function portableExportSource(character: Character) {
+    return {
+      ...character,
+      portableCharacterBook: character.cardV2?.characterBook
+        ? undefined
+        : howlingWorldLoreToCharacterBook(resolveBuiltinWorldLore(character.id)),
     };
-    reader.onerror = () => setCharacterBackupError("The character file could not be read.");
-    reader.readAsText(file);
   }
 
   function formatBackupSize(bytes: number): string {
@@ -3160,6 +3293,11 @@ function describeBackupDevice(): string {
 }
 
 function updateCharacter(id: string, updates: Partial<Character>) {
+  const previousImage = characters.find((character) => character.id === id)?.image;
+  if (updates.image !== undefined && previousImage && updates.image !== previousImage
+    && isStoredPortraitReference(previousImage)) {
+    void deleteCharacterPortrait(previousImage);
+  }
   setCharacters((current) => current.map((character) => (
     character.id === id ? { ...character, ...updates } : character
   )));
@@ -3168,6 +3306,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
 
   function deleteCharacter(character: Character) {
     if (!isUserOwnedCharacter(character)) return;
+    if (isStoredPortraitReference(character.image)) void deleteCharacterPortrait(character.image);
 
     const removedSessionMessageKeys = new Set(
       sessions
@@ -3569,7 +3708,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
         className={`message ${message.sender}${options.live && !seenMessageIds.has(`${activeMessageKey}:${message.id}`) ? " message-new" : ""}`}
         key={message.id}
       >
-        {message.sender === "character" && <Portrait character={selected} accent={activeTheme.accent} />}
+        {message.sender === "character" && <Portrait character={selected} accent={activeTheme.accent} image={portraitUrl(selected)} />}
         <div className="message-body">
           {caption && <span className="message-name">{caption}</span>}
           {isEditing ? (
@@ -3729,10 +3868,10 @@ function updateCharacter(id: string, updates: Partial<Character>) {
     await document.fonts.ready;
 
     let portraitImage: HTMLImageElement | null = null;
-    if (selected.image) {
+    if (portraitUrl(selected)) {
       portraitImage = new Image();
       portraitImage.crossOrigin = "anonymous";
-      portraitImage.src = selected.image;
+      portraitImage.src = portraitUrl(selected);
       try {
         await portraitImage.decode();
       } catch {
@@ -4433,19 +4572,15 @@ function updateCharacter(id: string, updates: Partial<Character>) {
               Import characters
               <input
                 type="file"
-                accept=".json,application/json"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) handleCharacterBackupImport(file);
-                  event.target.value = "";
-                }}
+                accept=".png,.json,image/png,application/json"
+                onChange={importCharacterFile}
               />
             </label>
             <button
               className="outline-button"
               onClick={exportCharacterLibrary}
             >
-              Export my characters
+              Howling library backup
             </button>
             {characterBackupMsg && <span className="backup-feedback ok">{characterBackupMsg}</span>}
             {characterBackupError && <span className="backup-feedback err">{characterBackupError}</span>}
@@ -4469,8 +4604,8 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                   tabIndex={0}
                   style={
                     {
-                      "--card-image": character.image
-                        ? `url("${character.image}")`
+                      "--card-image": portraitUrl(character)
+                        ? `url("${portraitUrl(character)}")`
                         : "linear-gradient(145deg, #2b1c1e, #0c0c0e)",
                       "--character-accent": characterTheme.accent,
                       "--card-position": character.portraitFocalPoint ?? "center",
@@ -4508,8 +4643,20 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                     }}>
                       Open their stories <span aria-hidden="true">→</span>
                     </button>
-                    {isUserOwnedCharacter(character) && (
-                      <span className="home-character-actions">
+                    <span className="home-character-actions">
+                        <button
+                          className="home-character-edit"
+                          aria-label={`Download ${character.name}`}
+                          title="Download character"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setCharacterDownloadError("");
+                            setDownloadingCharacter(character);
+                          }}
+                        >
+                          Download
+                        </button>
+                    {isUserOwnedCharacter(character) && (<>
                         <button
                           className="home-character-edit"
                           aria-label={`Edit ${character.name}`}
@@ -4532,8 +4679,8 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                         >
                           Delete
                         </button>
+                    </>)}
                       </span>
-                    )}
                   </div>
                 </article>
               );
@@ -4567,7 +4714,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             <button className="new-character-card" onClick={() => setIsCreating(true)}>
               <span aria-hidden="true">＋</span>
               <strong>Awaken someone new</strong>
-              <small>Create a character or import a character-card JSON.</small>
+              <small>Create a character or import a V2 PNG/JSON card.</small>
             </button>
           </div>
         </section>
@@ -4578,8 +4725,8 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           <div
             className="scene-library-backdrop"
             style={{
-              "--scene-library-image": selected.image
-                ? `url("${selected.image}")`
+              "--scene-library-image": portraitUrl(selected)
+                ? `url("${portraitUrl(selected)}")`
                 : "linear-gradient(145deg, #211416, #09090b)",
               "--scene-library-position": selected.portraitFocalPoint ?? "center",
             } as React.CSSProperties}
@@ -4611,7 +4758,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                 <h1>Choose where the story begins.</h1>
                 <p>{selected.role} · {selected.status}</p>
               </div>
-              <Portrait character={selected} />
+              <Portrait character={selected} image={portraitUrl(selected)} />
             </header>
 
             {selected.id === "coda" && (
@@ -4919,6 +5066,27 @@ function updateCharacter(id: string, updates: Partial<Character>) {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
+              <div className="changelog-mark">◐</div>
+              <div>
+                <span>Version 0.5.4 · Characters without borders</span>
+                <h2>Character Card V2 is now the standard portable character format</h2>
+                <p>
+                  Import V2 PNG or JSON cards from BotBooru and other compatible platforms, or
+                  download Howling Whispers characters as portable V2 cards with their structured
+                  definitions intact.
+                </p>
+                <h3>What changed</h3>
+                <ul>
+                  <li>One import control detects V2 PNG, V2 JSON, and existing Howling Whispers character or library backups.</li>
+                  <li>Imported PNG artwork persists as the character card and chat portrait without becoming scene background art.</li>
+                  <li>V2 description, personality, scenario, greetings, examples, creator metadata, extensions, and character-book lore survive round trips.</li>
+                  <li>Imported prompt-like fields remain untrusted character content beneath application safety and provider rules.</li>
+                  <li>V2 PNG is the primary download; V2 JSON and full-fidelity Howling backups remain available.</li>
+                </ul>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
               <div className="changelog-mark">◐</div>
               <div>
                 <span>Version 0.5.3 · Clean scenes, tidy tags</span>
@@ -6177,7 +6345,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             role: character.role,
             profile: character.profile,
             reply: character.reply,
-            image: character.image,
+            image: portraitUrl(character),
             sceneImage: character.sceneImage,
             ageCategory: character.ageCategory,
             isMinor: character.isMinor,
@@ -6207,7 +6375,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                 onClick={() => openSceneLibrary(character.id)}
                 aria-pressed={selected.id === character.id}
               >
-                <Portrait character={character} />
+                <Portrait character={character} image={portraitUrl(character)} />
                 <span className="character-copy">
                   <strong>{character.name}</strong>
                   <small>{character.role}</small>
@@ -6348,7 +6516,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             })}
             {isReplying && (
               <article className="message character typing" aria-label={`${selected.name} is replying`}>
-                <Portrait character={selected} />
+                <Portrait character={selected} image={portraitUrl(selected)} />
                 <p>
                   <span />
                   <span />
@@ -6936,9 +7104,9 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             <label className="import-card">
               <span>
                 Already have a character?
-                <small>Import a NovelAI or V2 character-card JSON.</small>
+                <small>Import a Character Card V2 PNG or JSON, or a Howling Whispers backup.</small>
               </span>
-              <input type="file" accept=".json,application/json" onChange={importCharacterCard} />
+              <input type="file" accept=".png,.json,image/png,application/json" onChange={importCharacterFile} />
             </label>
             {importError && <p className="form-error">{importError}</p>}
             <div className="modal-divider">
@@ -7004,7 +7172,8 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                   profile: String(form.get("profile") || editingCharacter.profile).trim(),
                   reply: String(form.get("reply") || editingCharacter.reply).trim(),
                   accent: String(form.get("accent") || editingCharacter.accent).trim(),
-                  image: String(form.get("portrait") || "").trim(),
+                  image: String(form.get("portrait") || "").trim()
+                    || (isStoredPortraitReference(editingCharacter.image) ? editingCharacter.image : ""),
                   sceneImage: String(form.get("sceneImage") || "").trim(),
                   portraitFocalPoint: String(form.get("portraitFocalPoint") || "center").trim(),
                   backgroundFocalPoint: String(form.get("sceneFocalPoint") || "center").trim(),
@@ -7070,7 +7239,11 @@ function updateCharacter(id: string, updates: Partial<Character>) {
               </label>
               <label>
                 Portrait image URL
-                <input name="portrait" defaultValue={editingCharacter.image} placeholder="https://…/portrait.png" />
+                <input
+                  name="portrait"
+                  defaultValue={isStoredPortraitReference(editingCharacter.image) ? "" : editingCharacter.image}
+                  placeholder={isStoredPortraitReference(editingCharacter.image) ? "Imported card artwork is stored" : "https://…/portrait.png"}
+                />
               </label>
               <label>
                 Portrait focal point
@@ -7110,15 +7283,62 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                 <button
                   className="text-button"
                   type="button"
-                  onClick={() => exportSingleCharacter(editingCharacter)}
+                  onClick={() => {
+                    setCharacterDownloadError("");
+                    setDownloadingCharacter(editingCharacter);
+                  }}
                 >
-                  Export this character
+                  Download character
                 </button>
                 <button className="primary-button" type="submit">
                   Save changes
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {downloadingCharacter && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setDownloadingCharacter(null)}>
+          <section
+            className="modal character-download-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="character-download-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button className="modal-close" onClick={() => setDownloadingCharacter(null)} aria-label="Close">
+              ×
+            </button>
+            <p className="eyebrow">Portable character</p>
+            <h2 id="character-download-title">Download {downloadingCharacter.name}</h2>
+            <p className="modal-intro">
+              Character Card V2 is the standard portable format. Howling Whispers backups retain
+              app-specific data that V2 does not represent.
+            </p>
+            <button
+              className="primary-button"
+              type="button"
+              disabled={!portraitUrl(downloadingCharacter)}
+              onClick={() => void exportV2Png(downloadingCharacter)}
+            >
+              Download V2 Card
+            </button>
+            <div className="character-download-options">
+              <button className="outline-button" type="button" onClick={() => exportV2Json(downloadingCharacter)}>
+                V2 JSON
+              </button>
+              {isUserOwnedCharacter(downloadingCharacter) && (
+                <button className="outline-button" type="button" onClick={() => exportNativeCharacter(downloadingCharacter)}>
+                  Howling Whispers Backup
+                </button>
+              )}
+            </div>
+            {!portraitUrl(downloadingCharacter) && (
+              <small>V2 PNG needs portrait artwork. V2 JSON remains available without an image.</small>
+            )}
+            {characterDownloadError && <p className="form-error">{characterDownloadError}</p>}
           </section>
         </div>
       )}

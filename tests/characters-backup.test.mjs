@@ -53,6 +53,15 @@ test("character library round-trips", () => {
   assert.equal(result.characters.length, 2);
 });
 
+test("unsupported native character backup versions are rejected", () => {
+  const single = JSON.parse(serializeCharacter(sample));
+  single.version = 2;
+  assert.equal(parseCharacterImport(JSON.stringify(single)).ok, false);
+  const library = JSON.parse(serializeCharacterLibrary([sample]));
+  library.version = 2;
+  assert.equal(parseCharacterImport(JSON.stringify(library)).ok, false);
+});
+
 test("malformed and foreign character files are rejected", () => {
   assert.equal(parseCharacterImport("garbage").ok, false);
   assert.equal(parseCharacterImport("{}").ok, false);

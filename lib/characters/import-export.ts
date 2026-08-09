@@ -31,6 +31,10 @@ export type BackupCharacter = {
   portraitFocalPoint?: string;
   backgroundFocalPoint?: string;
   ageCategory?: "adult" | "minor" | "unknown";
+  isMinor?: boolean | null;
+  allowedRelationshipTypes?: string[];
+  disallowedContent?: string[];
+  cardV2?: HowlingV2Metadata;
 };
 
 function clamp(
@@ -67,6 +71,7 @@ function sanitizeCharacter(value: unknown): BackupCharacter | null {
   const ageCategory = AGE_CATEGORIES.has(src.ageCategory as string)
     ? (src.ageCategory as "adult" | "minor" | "unknown")
     : undefined;
+  const cardV2 = sanitizeV2Metadata(src.cardV2);
 
   return {
     id: clamp(src.id, "").trim() || `imported-${Date.now().toString(36)}`,
@@ -96,6 +101,40 @@ function sanitizeCharacter(value: unknown): BackupCharacter | null {
     portraitFocalPoint: clamp(src.portraitFocalPoint, "center").trim(),
     backgroundFocalPoint: clamp(src.backgroundFocalPoint, "center").trim(),
     ageCategory,
+    isMinor: typeof src.isMinor === "boolean" ? src.isMinor : src.isMinor === null ? null : undefined,
+    allowedRelationshipTypes: sanitizeStringList(src.allowedRelationshipTypes, 24, 160),
+    disallowedContent: sanitizeStringList(src.disallowedContent, 32, 240),
+    cardV2,
+  };
+}
+
+function sanitizeStringList(value: unknown, maxItems: number, maxLength: number): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value
+    .slice(0, maxItems)
+    .map((item) => typeof item === "string" ? item.slice(0, maxLength).trim() : "")
+    .filter(Boolean);
+}
+
+function sanitizeV2Metadata(value: unknown): HowlingV2Metadata | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const src = value as Record<string, unknown>;
+  const original = parseCharacterCardV2(src.original);
+  if (!original.ok) return undefined;
+  const data = original.card.data;
+  return {
+    description: data.description,
+    personality: data.personality,
+    scenario: data.scenario,
+    mesExample: data.mes_example,
+    alternateGreetings: [...data.alternate_greetings],
+    creatorNotes: data.creator_notes,
+    characterVersion: data.character_version,
+    tags: [...data.tags],
+    importedSystemPrompt: data.system_prompt,
+    importedPostHistoryInstructions: data.post_history_instructions,
+    characterBook: data.character_book,
+    original: original.card,
   };
 }
 
@@ -137,12 +176,18 @@ export function parseCharacterImport(json: string): BackupResult {
   const obj = data as Record<string, unknown>;
 
   if (obj.format === CHARACTER_FORMAT) {
+    if (obj.version !== CHARACTER_FORMAT_VERSION) {
+      return { ok: false, error: "This Howling Whispers character backup version is not supported." };
+    }
     const character = sanitizeCharacter(obj.character);
     if (!character) return { ok: false, error: "The character in this file has no name." };
     return { ok: true, characters: [character] };
   }
 
   if (obj.format === CHARACTER_LIBRARY_FORMAT) {
+    if (obj.version !== CHARACTER_FORMAT_VERSION) {
+      return { ok: false, error: "This Howling Whispers character-library backup version is not supported." };
+    }
     if (!Array.isArray(obj.characters)) {
       return { ok: false, error: "The character library file has no characters list." };
     }

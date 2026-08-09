@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.5.4 — Characters without borders
+
+**◐ Character Card V2 is now Howling Whispers' standard portable character format.** Import V2
+PNG cards from BotBooru and other compatible platforms with their artwork and structured character
+definition intact, or download Howling Whispers characters as interoperable V2 PNG or JSON cards.
+
+### What's new
+- **V2 PNG by default** — each character's main download creates a standard Character Card V2 PNG
+  using the character portrait as the visible card artwork.
+- **Automatic format detection** — one Import Characters control accepts V2 PNG, V2 JSON, native
+  character backups, and native character-library backups with format-specific errors.
+- **Durable imported artwork** — a V2 PNG becomes the character card and chat portrait, persists
+  across reloads in browser storage, and never becomes scene or world background art.
+- **Structured round trips** — description, personality, scenario, opening message, examples,
+  alternate greetings, creator details, tags, prompt-like fields, extensions, and character-book
+  lore are retained separately and restored on V2 export.
+- **Untrusted by design** — imported prompt fields and lore remain subordinate character content;
+  they cannot replace application safety, provider rules, or generation contracts.
+- **Native backups remain** — V2 handles portability while Howling Whispers backups continue to
+  preserve app-specific character data.
+
+### Quality
+- Character Card parsing and PNG metadata use strict size, count, text, chunk-boundary, and CRC
+  checks, with round-trip and native-backup regression coverage.
+
 ## 0.5.3 — Clean scenes, tidy tags
 
 **◐ AI replies no longer leak their thinking labels into your story.** The local model sometimes
