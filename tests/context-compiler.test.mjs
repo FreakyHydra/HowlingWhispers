@@ -385,3 +385,44 @@ test("NovelAI autopilot with no history still opens the assistant turn", () => {
   assert.ok(result.prompt.trimEnd().endsWith("Peony:"));
   assert.match(result.prompt, /AUTOPILOT LAW/);
 });
+
+test("a living cast renders a compact ACTIVE CAST and PENDING INTERACTION block", () => {
+  const result = compile(adultCharacter(), {
+    provider: "local",
+    cast: [
+      { id: "peony", name: "Peony", origin: "permanent", presence: "active", primary: true, addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+      { id: "melody", name: "Melody", origin: "temporary", presence: "active", addedAt: 1, updatedAt: 1, notes: ["the player arrived with Melody"], relationships: [] },
+    ],
+    messages: [
+      { sender: "character", text: "Melody, what do you think of the greenhouse?" },
+      { sender: "player", text: "*I wait.*" },
+    ],
+  });
+  assert.match(result.prompt, /<living-cast>\n\[ACTIVE CAST\]/);
+  assert.match(result.prompt, /- Peony — Permanent — Active — Primary/);
+  assert.match(result.prompt, /- Melody — Temporary — Active — the player arrived with Melody/);
+  assert.match(result.prompt, /\[PENDING INTERACTION\]\nPeony asked Melody a question\. Melody has not responded\./);
+  assert.match(result.prompt, /Continue directly as Peony:$/);
+});
+
+test("a cast speaker writes the turn as that member and labels prior side messages", () => {
+  const result = compile(adultCharacter(), {
+    provider: "novelai",
+    model: "glm-4-6",
+    cast: [
+      { id: "peony", name: "Peony", origin: "permanent", presence: "active", primary: true, addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+      { id: "melody", name: "Melody", origin: "temporary", presence: "active", addedAt: 1, updatedAt: 1, notes: ["short answers"], relationships: [] },
+    ],
+    speaker: "Melody",
+    messages: [
+      { sender: "character", text: "*Melody shrugs.* Maybe the rain is enough.", speaker: "Melody" },
+      { sender: "character", text: "Melody, what do you think?" },
+      { sender: "player", text: "*I wait.*" },
+    ],
+  });
+  assert.match(result.prompt, /This turn you speak as Melody/);
+  assert.match(result.prompt, /<\|assistant\|>\n<think><\/think>\nMelody: \*Melody shrugs\.\*/);
+  assert.match(result.prompt, /<\|assistant\|>\n<think><\/think>\nPeony: Melody, what do you think\?/);
+  assert.match(result.prompt, /<\|assistant\|>\n<think><\/think>\nMelody:$/);
+  assert.doesNotMatch(result.prompt, /\[PENDING INTERACTION\].*\nMelody has not responded\./);
+});

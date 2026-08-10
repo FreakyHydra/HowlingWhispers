@@ -10,6 +10,8 @@
 //
 // Credentials (NovelAI tokens, passwords, etc.) must never be included.
 
+import { sanitizeCast, type LivingCastEntry } from "../generation/living-cast.ts";
+
 export const PORTABLE_BACKUP_FORMAT = "howling-whispers-backup";
 export const PORTABLE_BACKUP_VERSION = 1;
 export const BACKUP_FILE_EXTENSION = "hwb";
@@ -34,6 +36,7 @@ export type BackupMessage = {
   id: number;
   sender: "character" | "player" | "narrator";
   text: string;
+  speaker?: string;
   direction?: string;
   pages?: string[];
   pageIndex?: number;
@@ -57,6 +60,7 @@ export type BackupStorySession = {
   playerName?: string;
   playerPersona?: string;
   playerPersonaId?: string;
+  livingCast?: LivingCastEntry[];
 };
 
 export type BackupStoryScene = {
@@ -321,6 +325,7 @@ function sanitizeMessages(value: unknown): BackupData["messages"] {
         id: typeof m.id === "number" ? m.id : messages.length + 1,
         sender: m.sender === "player" || m.sender === "narrator" ? (m.sender as BackupMessage["sender"]) : "character",
         text: m.text.slice(0, 100000),
+        speaker: typeof m.speaker === "string" && m.sender === "character" ? m.speaker.slice(0, 120) : undefined,
         direction: typeof m.direction === "string" ? m.direction.slice(0, 10000) : undefined,
         pages: Array.isArray(m.pages)
           ? (m.pages as unknown[]).filter((p) => typeof p === "string").map((p) => (p as string).slice(0, 100000))
@@ -355,6 +360,7 @@ function sanitizeSessions(value: unknown): BackupStorySession[] {
       playerName: typeof s.playerName === "string" ? s.playerName : undefined,
       playerPersona: typeof s.playerPersona === "string" ? s.playerPersona : undefined,
       playerPersonaId: typeof s.playerPersonaId === "string" ? s.playerPersonaId : undefined,
+      livingCast: sanitizeCast(s.livingCast),
     }))
     .filter((s) => s.id && s.characterId);
 }

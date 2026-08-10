@@ -54,6 +54,13 @@ import { compilePlayerPersona } from "../lib/personas/compile";
 import type { PlayerPersona } from "../lib/personas/schema";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
 import type { StoryMetadata } from "../lib/generation/story-metadata.ts";
+import {
+  createCast,
+  detectLivingCast,
+  detectPendingInteraction,
+  matchesName,
+  type LivingCastEntry,
+} from "../lib/generation/living-cast.ts";
 import { isNewerVersion } from "../lib/version.mjs";
 import { legacyCharacterToWorldLore } from "../lib/worlds/schema.ts";
 import { resolveBuiltinWorldLore } from "../lib/worlds/builtins.ts";
@@ -128,6 +135,7 @@ type StorySession = {
   playerName?: string;
   playerPersona?: string;
   playerPersonaId?: string;
+  livingCast?: LivingCastEntry[];
 };
 
 type StoryEditor = {
@@ -139,6 +147,7 @@ type Message = {
   id: number;
   sender: "character" | "player" | "narrator";
   text: string;
+  speaker?: string;
   direction?: string;
   pages?: string[];
   pageIndex?: number;
@@ -901,6 +910,7 @@ function createStorySession(character: Character, scene: SceneDefinition): Story
     messageKey: id,
     createdAt: now,
     updatedAt: now,
+    livingCast: createCast({ id: character.id, name: character.name }),
   };
 }
 
@@ -1319,6 +1329,7 @@ export default function DreamboundApp() {
         messageKey: characterId,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        livingCast: createCast({ id: character.id, name: character.name }),
       }];
     });
   });
@@ -1376,6 +1387,9 @@ export default function DreamboundApp() {
   );
   const [storyTense, setStoryTense] = useState<StoryTense>(
     () => readSession<StoryTense>("storyTense", "present"),
+  );
+  const [autoNpcReplies, setAutoNpcReplies] = useState<boolean>(
+    () => readSession("autoNpcReplies", true),
   );
   const [providerState, setProviderState] =
     useState<ProviderState>(() => readSession<ProviderState>("provider", "disconnected"));
@@ -1743,6 +1757,10 @@ export default function DreamboundApp() {
     view, selectedId, apiToken, selectedModel, selectedLocalModel, deviceModel, storyProvider, creativity, replyLength,
     initiative, viewpoint, storyTense,
   ]);
+
+  useEffect(() => {
+    writeSession("autoNpcReplies", autoNpcReplies);
+  }, [autoNpcReplies]);
 
   useEffect(() => {
     writeSession("sessions", sessions);
@@ -2391,6 +2409,7 @@ export default function DreamboundApp() {
     action?: "impersonate" | "autopilot" | "skip",
     playerDirection?: string,
     reroll = false,
+    respondAs?: string,
   ): Promise<{ reply: string; metadata: StoryMetadata | null }> {
     const controller = new AbortController();
     generationAbortRef.current?.abort();
@@ -2398,6 +2417,9 @@ export default function DreamboundApp() {
     const requestSignal = controller.signal;
     const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
     const effectivePlayerPersona = (activeSession?.playerPersona?.trim() || compiledActivePersona || playerProfile.persona).trim();
+    const sessionCast = activeSession?.livingCast?.length
+      ? activeSession.livingCast
+      : createCast({ id: selected.id, name: selected.name }, effectivePlayerName);
     const requestBody = {
         action,
         playerName: effectivePlayerName,
@@ -2414,6 +2436,8 @@ export default function DreamboundApp() {
         tense: storyTense,
         proseFormat: "roleplay",
         autopilotPov: activeSession?.autopilot ? (activeSession.autopilotPov ?? "third") : undefined,
+        livingCast: sessionCast,
+        respondAs,
         character: {
           id: selected.id,
           name: selected.name,
@@ -2454,7 +2478,7 @@ export default function DreamboundApp() {
           contextMode: "balanced",
           matureContentRequested: storyProvider === "local" && activeModel.adult === true,
         },
-        messages: conversation.slice(-30).map(({ sender, text }) => ({ sender, text })),
+        messages: conversation.slice(-30).map(({ sender, text, speaker }) => ({ sender, text, speaker })),
     };
     if (storyProvider === "device") {
       const preparedResponse = await fetch("/api/novelai", {
@@ -2671,6 +2695,20 @@ export default function DreamboundApp() {
             : text,
     };
     const conversation = [...activeMessages, playerMessage];
+    const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
+    const baselineCast = activeSession?.livingCast?.length
+      ? activeSession.livingCast
+      : createCast({ id: selected.id, name: selected.name }, effectivePlayerName);
+    const detection = detectLivingCast({
+      messages: conversation,
+      cast: baselineCast,
+      primary: { id: selected.id, name: selected.name },
+      playerName: effectivePlayerName,
+    });
+    const castSpeaker = autoNpcReplies && mode !== "Impersonate" && detection.autoSpeakerName
+      ? detection.cast.find((entry) => entry.id === detection.autoSpeakerId)
+      : null;
+    const respondAs = castSpeaker?.name;
 
     setMessages((current) => ({
       ...current,
@@ -2678,7 +2716,9 @@ export default function DreamboundApp() {
     }));
     if (activeSession) {
       setSessions((current) => current.map((session) =>
-        session.id === activeSession.id ? { ...session, updatedAt: Date.now() } : session,
+        session.id === activeSession.id
+          ? { ...session, updatedAt: Date.now(), livingCast: detection.cast }
+          : session,
       ));
     }
     setDraft("");
@@ -2686,14 +2726,35 @@ export default function DreamboundApp() {
     setChatError("");
 
     try {
-      const result = await requestStoryReply(conversation);
+      const result = await requestStoryReply(conversation, undefined, undefined, false, respondAs);
+      const replyMessage: Message = {
+        id: Date.now() + 1,
+        sender: "character",
+        text: result.reply,
+        ...(respondAs ? { speaker: respondAs } : {}),
+        meta: result.metadata ?? null,
+      };
       setMessages((current) => ({
         ...current,
         [activeMessageKey]: [
           ...(current[activeMessageKey] ?? []),
-          { id: Date.now() + 1, sender: "character", text: result.reply, meta: result.metadata ?? null },
+          replyMessage,
         ],
       }));
+      const updatedConversation = [...conversation, replyMessage].slice(-30);
+      const finalDetection = detectLivingCast({
+        messages: updatedConversation,
+        cast: detection.cast,
+        primary: { id: selected.id, name: selected.name },
+        playerName: effectivePlayerName,
+      });
+      if (activeSession) {
+        setSessions((current) => current.map((session) =>
+          session.id === activeSession.id
+            ? { ...session, updatedAt: Date.now(), livingCast: finalDetection.cast }
+            : session,
+        ));
+      }
       const newBond = Math.min(100, (selected.bond || 8) + 1);
       setCharacters((current) => current.map((character) =>
         character.id === selected.id ? { ...character, bond: newBond } : character,
@@ -2954,7 +3015,13 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
     setIsReplying(true);
 
     try {
-      const result = await requestStoryReply(truncated, undefined, undefined, true);
+      const result = await requestStoryReply(
+        truncated,
+        undefined,
+        undefined,
+        true,
+        message.speaker && !matchesName(message.speaker, selected.name) ? message.speaker : undefined,
+      );
       const reply = result.reply;
       const meta = result.metadata ?? null;
 
@@ -3013,6 +3080,7 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
       messageKey: id,
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      livingCast: createCast({ id, name }),
     };
     setCharacters((current) => [...current, newCharacter]);
     setMessages((current) => ({
@@ -3653,7 +3721,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
     return parts.length > 0 ? parts : <span style={{ color: textStyle.dialogue }}>{text}</span>;
   }
 
-  function renderMessageText(text: string, sender: Message["sender"]) {
+  function renderMessageText(text: string, sender: Message["sender"], speakerName?: string) {
     const formattedText = text
       .replace(/\s*(?<!\*)(\*[^*]+\*)(?!\*)\s*/g, "\n\n$1\n\n")
       .replace(
@@ -3671,7 +3739,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
       <div className="message-copy-text">
         {(paragraphs.length > 0 ? paragraphs : [formattedText]).map((paragraph, index) => {
           const isSpeakerLabel = /^[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2}(?:\s*\(as\))?:$/.test(paragraph);
-          const escapedName = selected.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const escapedName = (speakerName ?? selected.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           const isUnmarkedAction = sender === "character"
             && !paragraph.startsWith("*")
             && new RegExp(`^(?:${escapedName}|she|he|they)\\b`, "i").test(paragraph);
@@ -3697,7 +3765,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
     const caption =
       options.showCaption && message.sender !== "narrator"
         ? message.sender === "character"
-          ? selected.name
+          ? message.speaker ?? selected.name
           : activePlayerName || "You"
         : "";
     const { versions: pageVersions, activeIndex: activePage } = messageVersions(message);
@@ -3708,7 +3776,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
         className={`message ${message.sender}${options.live && !seenMessageIds.has(`${activeMessageKey}:${message.id}`) ? " message-new" : ""}`}
         key={message.id}
       >
-        {message.sender === "character" && <Portrait character={selected} accent={activeTheme.accent} image={portraitUrl(selected)} />}
+        {message.sender === "character" && !message.speaker && <Portrait character={selected} accent={activeTheme.accent} image={portraitUrl(selected)} />}
         <div className="message-body">
           {caption && <span className="message-name">{caption}</span>}
           {isEditing ? (
@@ -3745,7 +3813,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             </div>
           ) : (
             <>
-              {renderMessageText(message.text, message.sender)}
+              {renderMessageText(message.text, message.sender, message.sender === "character" ? message.speaker : undefined)}
               {options.live && (
                 <div className="message-controls-bar">
                   <div className="message-controls-left">
@@ -4095,7 +4163,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
       const caption =
         shareCaptions && sender !== "narrator"
           ? sender === "character"
-            ? selected.name
+            ? message.speaker ?? selected.name
             : playerName
           : "";
       const paragraphs = buildParagraphs(message.text, sender, selected.name, textStyle);
@@ -5068,6 +5136,28 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             <article className="changelog-entry featured latest">
               <div className="changelog-mark">◐</div>
               <div>
+                <span>Version 0.6.0 · Side characters speak for themselves</span>
+                <h2>The Living Cast keeps track of who is in the room</h2>
+                <p>
+                  The story now watches each turn for the characters that are present, and named
+                  side characters answer for themselves when the main character asks them a
+                  direct question.
+                </p>
+                <h3>What changed</h3>
+                <ul>
+                  <li>Living Cast detection builds and persists a per-conversation cast from the characters the story introduces or lets leave.</li>
+                  <li>Automatic side-character replies answer as the named side character with no extra AI call — using the conversation&apos;s own cast.</li>
+                  <li>Replies carry the speaking side character&apos;s name across Character Response, Impersonate, and Reroll.</li>
+                  <li>The Living Cast panel in the chat context rail shows who is present and who is waiting to answer.</li>
+                  <li>Each cast survives reloads and backup/restore round trips with its conversation.</li>
+                  <li>Turn automatic side-character replies off in Settings if you prefer to steer every side character yourself.</li>
+                </ul>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
+              <div className="changelog-mark">◐</div>
+              <div>
                 <span>Version 0.5.4 · Characters without borders</span>
                 <h2>Character Card V2 is now the standard portable character format</h2>
                 <p>
@@ -6004,6 +6094,41 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                   </div>
                 </fieldset>
 
+                <fieldset className="story-control-fieldset">
+                  <legend>Living Cast</legend>
+                  <p>
+                    Track who is present in each conversation and let named side
+                    characters answer when they are directly asked, instead of
+                    making you impersonate them.
+                  </p>
+                  <label className="toggle-row">
+                    <span>
+                      <span className="setting-name-row">
+                        Automatic side-character replies
+                        <InfoTip label="Automatic side-character replies">
+                          <p className="help-popover__intro">
+                            When a scene introduces other characters (for example
+                            Melody entering with you), and the main character asks
+                            one of them a direct question, the system answers as
+                            that character automatically. Turn this off if you
+                            prefer to control every side character yourself.
+                          </p>
+                        </InfoTip>
+                      </span>
+                      <small>
+                        Uses the conversation&apos;s Living Cast, not an extra AI call.
+                        The Living Cast panel in the chat context rail shows who is
+                        present and what is pending.
+                      </small>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={autoNpcReplies}
+                      onChange={(event) => setAutoNpcReplies(event.target.checked)}
+                    />
+                  </label>
+                </fieldset>
+
                 <div className="settings-actions">
                   {storyProvider === "novelai" && <button
                     className="outline-button"
@@ -6789,6 +6914,54 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                 ))}
               </ul>
             )}
+          </section>
+
+          <section className="context-card living-cast-card">
+            <div className="card-title">
+              <p className="eyebrow">Living Cast</p>
+              <span aria-hidden="true">◈</span>
+            </div>
+            {(() => {
+              const castMembers = activeSession?.livingCast?.length
+                ? activeSession.livingCast
+                : createCast({ id: selected.id, name: selected.name });
+              const pending = activeMessages.length > 0
+                ? detectPendingInteraction(activeMessages, castMembers, selected.name, activePlayerName)
+                : null;
+              return (
+                <details open={castMembers.length > 1}>
+                  <summary>
+                    <span>{castMembers.length} {castMembers.length === 1 ? "member" : "members"} in the scene</span>
+                    {pending?.kind === "cast" && pending.targetName
+                      ? <small>Pending: {pending.targetName} was asked</small>
+                      : <small>No open direct question</small>}
+                  </summary>
+                  <ul className="living-cast-list">
+                    {castMembers.map((member) => (
+                      <li key={member.id} className={`cast-entry cast-${member.presence}`}>
+                        <div className="cast-entry-line">
+                          <span className="cast-name">{member.name}</span>
+                          <span className="cast-tags">
+                            {member.primary && <span className="cast-tag cast-tag-primary">Primary</span>}
+                            <span className="cast-tag">{member.origin}</span>
+                            <span className="cast-tag cast-tag-presence">{member.presence}</span>
+                          </span>
+                        </div>
+                        {member.notes.slice(0, 2).map((note, noteIndex) => (
+                          <p className="cast-note" key={noteIndex}>{note}</p>
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
+                  {pending?.kind === "cast" && pending.targetName && (
+                    <p className="cast-pending-note">
+                      {pending.asker} asked {pending.targetName} a question. {pending.targetName} has not responded yet.
+                      {autoNpcReplies ? " Automatic side-character reply is on." : " Automatic side-character replies are off."}
+                    </p>
+                  )}
+                </details>
+              );
+            })()}
           </section>
 
           <section className="context-card context-inspector-card">

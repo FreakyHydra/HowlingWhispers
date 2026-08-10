@@ -13,6 +13,11 @@ import {
   type StoryPreferences,
 } from "../../../lib/generation/compile-context.ts";
 import { parseStoryMetadata, type StoryMetadata } from "../../../lib/generation/story-metadata.ts";
+import {
+  findCastEntryByName,
+  matchesName,
+  sanitizeCast,
+} from "../../../lib/generation/living-cast.ts";
 import { resolveBuiltinWorldLore } from "../../../lib/worlds/builtins.ts";
 import type { WorldLorebookV1 } from "../../../lib/worlds/schema.ts";
 import { parseWorldLorebook } from "../../../lib/worlds/schema.ts";
@@ -223,6 +228,16 @@ export async function POST(request: Request) {
   const doStream = body.stream === true;
   const character = isConnectionTest ? null : parseCharacter(body.character);
   const messages = isConnectionTest ? [] : parseMessages(body.messages);
+  const livingCast = isConnectionTest ? [] : sanitizeCast(body.livingCast);
+  const requestedSpeaker = limitedString(body.respondAs, 120);
+  const castSpeaker = !isConnectionTest && !isImpersonation && !isAutonomousBeat && requestedSpeaker
+    ? (() => {
+      const entry = findCastEntryByName(livingCast, requestedSpeaker);
+      if (!entry || entry.origin === "player" || entry.primary) return null;
+      if (matchesName(entry.name, character?.name ?? "")) return null;
+      return entry;
+    })()
+    : null;
 
   if (provider === "novelai" && !apiToken) {
     return Response.json({ error: "A NovelAI access token is required." }, { status: 400 });
@@ -289,6 +304,8 @@ export async function POST(request: Request) {
             : REPLY_LENGTHS[replyLength].instruction,
       playerDirection: impersonationPrompt,
       reroll: isReroll,
+      cast: livingCast,
+      speaker: castSpeaker?.name,
     });
   const prompt = isConnectionTest
     ? `Reply with exactly this text and nothing else: ${CONNECTION_TEST_RESPONSE}`
@@ -299,7 +316,9 @@ export async function POST(request: Request) {
   const stopSequences = isImpersonation
     ? impersonationStops(character?.name ?? "")
     : roleplayStops(playerName);
-  const outputName = targetSpeaker === "player" ? playerName : character?.name ?? "";
+  const outputName = targetSpeaker === "player"
+    ? playerName
+    : (castSpeaker?.name || character?.name || "");
   const outputKind = targetSpeaker;
   if (provider === "device") {
     const structuredRoleplay = preferences.proseFormat === "roleplay";
@@ -555,19 +574,33 @@ async function localReply(
 
   for (let attempt = 0; structuredRoleplay && countWords(preparedReply) < minimumWords && attempt < 3; attempt += 1) {
     const remainingWords = minimumWords - countWords(preparedReply);
-    upstream = await generate(`${prompt}
+    const continuationPrompt = outputKind === "player"
+      ? `${prompt}
+
+<player-continuation-control>
+Continue after the existing player-turn prefix with at least ${remainingWords} new words. Return only a JSON object containing additional player-only segments. Never reproduce the prefix or this instruction, and never write the AI character or another speaker.
+</player-continuation-control>
+
+<existing-player-prefix>
+${preparedReply}
+</existing-player-prefix>`
+      : `${prompt}
 
 Continuation task: The response draft below is incomplete and still needs at least ${remainingWords} additional words. Continue directly after its final beat with new, developed action, dialogue, and sensory or emotional detail. Do not repeat, restart, summarize, conclude early, or contradict the draft. Return only a JSON object containing the additional segments, using the same dialogue/action/narration schema and no markup characters.
 
 Incomplete response draft:
-${preparedReply}`);
+${preparedReply}`;
+    upstream = await generate(continuationPrompt);
     if (!upstream.ok) {
       clearTimeout(timeout);
       return Response.json({ error: `Ollama continuation returned HTTP ${upstream.status}.` }, { status: 502 });
     }
     result = await upstream.json();
     rawReply = isRecord(result) && typeof result.response === "string" ? result.response : "";
-    const continuation = formatLocalRoleplayReply(rawReply, outputKind, outputName);
+    const formattedContinuation = formatLocalRoleplayReply(rawReply, outputKind, outputName);
+    const continuation = outputKind === "player"
+      ? cleanPlayerContinuationDelta(preparedReply, formattedContinuation)
+      : formattedContinuation;
     if (!continuation.trim()) break;
     preparedReply = `${preparedReply}\n\n${continuation}`;
   }
@@ -607,12 +640,48 @@ function playerContinuationPrompt(
   const direction = playerDirection
     ? `\nPRIVATE DIRECTION (MANDATORY):\n${playerDirection}\nPreserve this intent and any supplied words verbatim; do not replace, soften, or summarize it.`
     : "";
-  return `${basePrompt}
+  const instruction = `Continue the existing first-person player turn with about ${remainingWords} new words of the player's own action, reaction, dialogue, body language, or interior voice. Return only text that comes after the supplied prefix. Never repeat or quote the prefix, these instructions, or the private direction. Do not start a new turn, add a second speaker, or write the AI character's actions, dialogue, feelings, or reactions.${direction}`;
+  const finalPlayerTurn = basePrompt.lastIndexOf("\n<|user|>\n");
+  if (finalPlayerTurn < 0) {
+    return `${basePrompt}\n\n<player-continuation-control>\n${instruction}\n</player-continuation-control>\n\n<existing-player-prefix>\n${draft}\n</existing-player-prefix>`;
+  }
+  return `${basePrompt.slice(0, finalPlayerTurn)}\n<|system|>\n${instruction}${basePrompt.slice(finalPlayerTurn)}${draft}`;
+}
 
-Continuation task: The first-person player turn below is incomplete and still needs about ${remainingWords} additional words of the player's own continued action, reaction, dialogue, body language, and interior voice. Continue directly after its final beat and finish the SAME single player turn, then stop. Do not start a new turn, do not add a second speaker, never write the AI character's actions, dialogue, feelings, or reactions, and use no labels, markup, or metadata.${direction}
+const PLAYER_CONTINUATION_LEAKS = [
+  /^Continue this SAME turn from the player's side,\s*preserving and expanding on the current intent without concluding or ending the turn yet\.\s*Do not stop or wrap up\.\s*Keep the player's perspective flowing forward into the next natural beat\.\s*/i,
+  /^Continuation task:\s*The first-person player turn below is incomplete[\s\S]*?use no labels, markup, or metadata\.\s*/i,
+  /^Continue the existing first-person player turn with about \d+ new words[\s\S]*?write the AI character's actions, dialogue, feelings, or reactions\.(?:\s*PRIVATE DIRECTION \(MANDATORY\):[\s\S]*?do not replace, soften, or summarize it\.)?\s*/i,
+  /^Continue after the existing player-turn prefix with at least \d+ new words\.\s*Return only a JSON object containing additional player-only segments\.\s*Never reproduce the prefix or this instruction, and never write the AI character or another speaker\.\s*/i,
+];
 
-Player turn so far:
-${draft}`;
+function wordSpans(value: string): Array<{ word: string; end: number }> {
+  return [...value.matchAll(/[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*/g)]
+    .map((match) => ({ word: match[0].toLocaleLowerCase("en-US"), end: match.index! + match[0].length }));
+}
+
+export function cleanPlayerContinuationDelta(draft: string, value: string): string {
+  let delta = value
+    .replace(/<\/?(?:player-continuation-control|existing-player-prefix)>/gi, "")
+    .replace(/^<\|system\|>\s*/i, "")
+    .trim();
+  for (const leak of PLAYER_CONTINUATION_LEAKS) delta = delta.replace(leak, "").trimStart();
+  delta = delta.replace(/^(?:Player turn so far|Existing player(?:-turn)? prefix):\s*/i, "");
+
+  const draftWords = wordSpans(draft);
+  const deltaWords = wordSpans(delta);
+  let repeatedWords = 0;
+  for (let count = Math.min(draftWords.length, deltaWords.length); count >= 4; count -= 1) {
+    const draftOffset = draftWords.length - count;
+    if (deltaWords.slice(0, count).every(({ word }, index) => word === draftWords[draftOffset + index].word)) {
+      repeatedWords = count;
+      break;
+    }
+  }
+  if (repeatedWords > 0) {
+    delta = delta.slice(deltaWords[repeatedWords - 1].end).replace(/^[\s.,!?;:—-]+/, "");
+  }
+  return delta.trim();
 }
 
 function formatLocalRoleplayReply(
@@ -751,7 +820,8 @@ async function nonStreamReply(
     if (!upstream.ok) break;
     result = await upstream.json();
     rawReply = extractReply(result);
-    const extra = cleanReply(rawReply, outputName, playerName, proseFormat, outputKind, autopilot, metadataOut);
+    const cleanedExtra = cleanReply(rawReply, outputName, playerName, proseFormat, outputKind, autopilot, metadataOut);
+    const extra = cleanPlayerContinuationDelta(prepared, cleanedExtra);
     if (!extra.trim()) break;
     prepared = `${prepared}\n\n${extra}`;
   }
@@ -832,7 +902,8 @@ function parseMessages(v: unknown): RoleplayMessage[] {
     const sender = limitedString(m.sender, 24);
     const text = limitedString(m.text, 4000);
     if (!ALLOWED_SENDERS.has(sender) || !text) return null;
-    return { sender: sender as RoleplayMessage["sender"], text };
+    const speaker = m.speaker ? limitedString(m.speaker, 120) : undefined;
+    return { sender: sender as RoleplayMessage["sender"], text, speaker: speaker || undefined };
   }).filter((m): m is RoleplayMessage => m !== null);
 }
 

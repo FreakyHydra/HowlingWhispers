@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.6.0 — Side characters speak for themselves
+
+**◐ The Living Cast keeps track of who is in the room, and named side characters now answer
+for themselves when they are asked directly.** The story keeps a running cast of present
+characters, so you no longer have to impersonate everyone the plot introduces.
+
+### What's new
+- **Living Cast detection** — the story watches each turn for newly introduced or departed
+  characters and keeps a persistent cast per conversation.
+- **Automatic side-character replies** — when the main character asks a present side character
+  a direct question, the system answers as that character with no extra AI call, using the
+  conversation's own cast.
+- **Cast-aware speaker wiring** — replies are labeled with the speaking side character instead
+  of only the selected main character, across Character Response, Impersonate, and Reroll.
+- **Living Cast panel** — the chat context rail shows who is present and who is waiting to
+  answer.
+- **Per-conversation cast persistence** — the cast survives reloads and backup/restore rounds
+  trips with each session.
+- **Settings control** — automatic side-character replies can be turned off if you prefer to
+  steer every side character yourself.
+
+### Quality
+- Living Cast detection, ordering (primary → player → arrival time), and side-speaker labels
+  are covered by new unit tests alongside the existing context and version guarantees.
+
 ## 0.5.4 — Characters without borders
 
 **◐ Character Card V2 is now Howling Whispers' standard portable character format.** Import V2

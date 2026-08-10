@@ -8,6 +8,7 @@ import {
 } from "../lib/ollama.ts";
 import { GET as listServerModels } from "../app/api/ollama/models/route.ts";
 import {
+  cleanPlayerContinuationDelta,
   parseConnectionTestTimeoutMs,
   parseGenerationTimeoutMs,
   parseMaxConcurrentGenerations,
@@ -298,7 +299,7 @@ test("NovelAI impersonation extends a short player turn to the immersive floor a
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });
   const shortTurn = "*I step closer.* I'm done with the excuses.";
-  const longTurn = "*I plant my feet and lower my voice.* I came here to say what I actually mean, and I am not leaving until you have heard it. I kept quiet for too long, and every silence made it worse, so this time I will say it plainly and let the words land where they belong.";
+  const longTurn = "*I plant my feet and lower my voice.* I came here to say what I actually mean, and I am not leaving until you have heard it. I kept quiet for too long, and every silence made it worse, so this time I will say it plainly and let the words land where they belong. *I hold my ground instead of looking away, keeping my hands open at my sides.* Whatever follows, it will not be another excuse or another retreat into silence.";
   globalThis.fetch = async (url, init) => {
     if (String(url).includes("text.novelai.net")) {
       calls.push({ body: JSON.parse(String(init?.body)) });
@@ -341,13 +342,28 @@ test("NovelAI impersonation extends a short player turn to the immersive floor a
   assert.ok(payload.reply.includes("I step closer"));
   assert.ok(payload.reply.includes("I came here to say what I actually mean"));
   assert.ok(payload.reply.trim().split(/\s+/).length >= 70, `expected >=70 words, got ${payload.reply.trim().split(/\s+/).length}`);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 2);
   assert.match(calls[0].body.prompt, /PRIVATE DIRECTION \(MANDATORY\)/);
   assert.match(calls[0].body.prompt, /Say I am angry about the cubs/);
-  assert.match(calls[1].body.prompt, /Continuation task/);
+  assert.match(calls[1].body.prompt, /<\|system\|>\nContinue the existing first-person player turn/);
   assert.match(calls[1].body.prompt, /Say I am angry about the cubs/);
-  assert.match(calls[1].body.prompt, /SAME single player turn/);
-  assert.match(calls[2].body.prompt, /Continuation task/);
+  assert.match(calls[1].body.prompt, /<\|user\|>\nArrax:\*I step closer\.\*\n\nI'm done with the excuses\.$/);
+});
+
+test("player continuation removes leaked directives and repeated prefix from the delta", () => {
+  const existing = "You are still a kid in my eyes. Only you can change that for yourself though. There are eighteen-year-old cubs out there who behave like six-year-olds. There are six-year-olds who have seen things that no one should have to see, and yet they go on.";
+  const continuation = "*I let the silence hold for a moment before meeting her gaze again.* What matters is what you choose to do next.";
+  const leaked = `Continue this SAME turn from the player's side, preserving and expanding on the current intent without concluding or ending the turn yet. Do not stop or wrap up. Keep the player's perspective flowing forward into the next natural beat.\n\n${existing}\n\n${continuation}`;
+
+  const delta = cleanPlayerContinuationDelta(existing, leaked);
+
+  assert.equal(delta, continuation);
+  assert.doesNotMatch(delta, /Continue this SAME turn/);
+  assert.doesNotMatch(delta, /yet they go on/i);
+  assert.equal(
+    cleanPlayerContinuationDelta(existing, "I continue watching the player across the room."),
+    "I continue watching the player across the room.",
+  );
 });
 
 test("reroll NovelAI request sends a fresh seed and same history, ordinary reply does not", async (context) => {
