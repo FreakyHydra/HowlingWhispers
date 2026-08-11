@@ -85,14 +85,17 @@ ship user-visible features with a stale version or changelog.
 
 ## Content / formatting rules (must be enforced)
 
-- Message/reply format: actions & observable narration in `*single asterisks*`, inner
-  voice in `[square brackets]`, **spoken dialogue as plain text with NO quotation marks**,
-  blank lines between beats. Strips speaker labels.
-- The message renderer (`renderMessageText` ~line 2422) splits on `*…*` blocks; keep the
-  format uniform.
-- Character profiles sent to the model should end with a speech-style paragraph stating
-  the formatting rules. `{{char}}`/`{{user}}` are NOT templated in-app — replace them with
-  the character name / "you" when authoring content.
+- Message/reply format:
+  - Spoken dialogue → `"double quotes"`
+  - Actions / observable narration → `*single asterisks*`
+  - Inner voice → `[square brackets]`
+- Action/dialogue/action changes stay inline within the same paragraph; do not automatically insert blank lines when formatting type changes.
+- Preserve natural/input paragraph boundaries.
+- Adjacent spans of the same type may merge.
+- Ambiguous first-person text defaults to dialogue unless there is strong physical/narrative action evidence.
+- Already-correct mixed RP remains idempotent.
+- The message renderer (`renderMessageText` ~line 3765, `buildParagraphs` ~line 1172) must not split on `*…*` or `"…"` into separate block-level elements; only actual paragraph breaks (blank lines) create vertical spacing. Keep inline spans inside the same paragraph/container.
+- Character profiles sent to the model should end with a speech-style paragraph stating the formatting rules. `{{char}}`/`{{user}}` are NOT templated in-app — replace them with the character name / "you" when authoring content.
 
 ## Known issues / constraints (do not silently "fix" without asking)
 

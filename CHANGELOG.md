@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0.3 — Inline roleplay formatting contract
+
+Updated player-turn formatting contract to preserve paragraph structure and keep action beats and dialogue inline within paragraphs.
+
+### What changed
+- **Deterministic inline player roleplay** — player turns now preserve input paragraph boundaries and flow actions and spoken dialogue inline within paragraphs (e.g. `*I look over at her.* "I don't know, maybe we should leave." *I reach for the door.*`) instead of forcing blank-line breaks after every beat.
+- **Evidence-driven action detection** — physical action recognition is driven by verb evidence, while ambiguous first-person statements default to dialogue.
+- **Adjacent span merging** — consecutive same-type spans within a paragraph are merged cleanly.
+
 ## 0.6.0.2 — Story pipeline hotfix
 
 A small set of fixes to the story-generation pipeline, shipped under the same 0.6.0.2 version.

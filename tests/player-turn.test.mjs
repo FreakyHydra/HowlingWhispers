@@ -61,14 +61,12 @@ test("keeps marked action and narration and quotes spoken dialogue", () => {
   assert.match(result, /^\[The rain keeps falling\.\]$/m);
 });
 
-test("normalizes action beats to blank-line separated roleplay style", () => {
+test("merges action beats and quotable speech into inline roleplay markup on one paragraph", () => {
   const result = formatPlayerTurn(
     "player user message:\n*I walk over.* She stays quiet. *I reach for the door.*",
   );
   assert.doesNotMatch(result, /player user message/i);
-  const actionBlocks = result.match(/^\*[^*]+\*$/gm) ?? [];
-  assert.equal(actionBlocks.length, 3);
-  assert.ok(result.includes("*I walk over.*\n\n*She stays quiet.*\n\n*I reach for the door.*"), "action beats separated by blank lines");
+  assert.equal(result, "*I walk over.* \"She stays quiet.\" *I reach for the door.*");
 });
 
 test("removes standalone wrapper marker tags", () => {
@@ -85,7 +83,7 @@ test("wraps bare first-person prose into the deterministic roleplay form", () =>
   );
   assert.equal(
     result,
-    "*I look over at her.*\n\n\"I don't know, maybe we should leave.\"\n\n*I reach for the door.*",
+    "*I look over at her.* \"I don't know, maybe we should leave.\" *I reach for the door.*",
   );
 });
 
@@ -100,9 +98,10 @@ test("splits an action clause with an embedded speech frame into its parts", () 
   const result = formatPlayerTurn(
     "I set my pack down by the door and say, Trust me and let it happen. I keep my eyes on Peony the whole time.",
   );
-  assert.match(result, /^\*I set my pack down by the door\*$/m);
-  assert.match(result, /^"Trust me and let it happen\."$/m);
-  assert.match(result, /^\*I keep my eyes on Peony the whole time\.\*$/m);
+  assert.equal(
+    result,
+    "*I set my pack down by the door* \"Trust me and let it happen.\" *I keep my eyes on Peony the whole time.*",
+  );
 });
 
 test("quotes reported speech and purpose-clause dialogue instead of calling them actions", () => {

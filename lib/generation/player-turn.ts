@@ -4,19 +4,21 @@
 // NovelAI/Ollama sometimes echo a chat-style wrapper or control header in front
 // of the generated player turn (e.g. "player user message:", "Player:", "<|user|>")
 // or a `<label>` prefix, or return bare first-person prose with no roleplay
-// markup at all. This module turns any of that output into a uniform roleplay
-// player turn WITHOUT relying on prompt compliance:
+// markup at all. This module turns that output into uniform roleplay markup:
 //
-// - Spoken dialogue is wrapped in double quotes: "I don't know, maybe we should leave."
-// - Physical actions / narration are wrapped in single asterisks: *I reach for the door.*
-// - Mixed turns become separate, blank-line separated paragraphs.
-// - Generation wrappers (chat labels, <|user|>, /nothink, control tags) are stripped.
-// - Already-correct markup is preserved (idempotent): existing *action*, "dialogue"
-//   and [inner voice] units are kept verbatim, never double-wrapped.
+// - Spoken / conversational dialogue → "…" (double quotes)
+// - Player physical/narrative action → *…* (single asterisks)
+// - Generation wrappers (chat labels, <|user|>, /nothink, control tags) are stripped
+// - Paragraph structure from the input is preserved; type changes stay inline
+// - Already-correct markup is preserved verbatim (idempotent)
 //
-// This is applied to every impersonation path (blank-start, normal, rerun, and
-// server-side continuation) so the stored player turn is normalized regardless
-// of how the model phrases it.
+// Classification principle (deliberate, not a phrase list):
+//   First-person grammar ("I", "I'm", "I'll", "we", …) is NOT an action signal.
+//   A span is action/narration only when it contains strong physical/narrative
+//   evidence (a body-movement verb, a gaze, a player-state narration). Everything
+//   else — statements, questions, commands, opinions, reported speech — defaults
+//   to dialogue, because falsely italicizing speech damages the roleplay more than
+//   leaving an occasional action unwrapped.
 
 export const PLAYER_TURN_HEADER_LABELS = [
   "player user message",
@@ -27,11 +29,11 @@ export const PLAYER_TURN_HEADER_LABELS = [
   "user",
 ] as const;
 
-type PlayerPartKind = "action" | "dialogue" | "narration" | "raw";
+type SpanType = "action" | "dialogue" | "narration";
 
-interface PlayerUnit {
-  type: PlayerPartKind;
-  inner: string;
+interface Span {
+  type: SpanType;
+  text: string;
 }
 
 function escapeRegExp(value: string): string {
@@ -88,6 +90,86 @@ function stripControlResidue(value: string, playerName = ""): string {
   return text;
 }
 
+/**
+ * Strong physical/narrative action verbs (with s/ed/ing forms and the common
+ * irregular pasts). Deliberately excludes verbs that are usually conversational
+ * or mental (know, think, want, try, came, wonder, believe, guess, hope…).
+ */
+const PHYSICAL_ACTION_VERBS = [
+  "stand", "step", "walk", "run", "reach", "pull", "push", "open", "close", "grab",
+  "grip", "take", "hold", "sit", "kneel", "lean", "turn", "rise", "move", "lift",
+  "set", "place", "drop", "point", "gesture", "nod", "shake", "smile", "frown",
+  "glance", "stare", "peer", "draw", "touch", "press", "slide", "climb", "slip",
+  "tuck", "fold", "cross", "raise", "lower", "head", "follow", "shrug", "settle",
+  "toss", "scoop", "pick", "brush", "freeze", "pause", "crouch", "bend", "stretch",
+  "stop", "wave", "grasp", "clench", "flex", "swallow", "breathe", "inhale",
+  "exhale", "sigh", "watch", "gaze", "wander", "stride", "amble", "linger", "drift",
+  "stoop", "pivot", "twist", "snatch", "seize", "haul", "carry", "steady", "plant",
+  "hop", "tread", "march", "pace", "edge", "creep", "sprint", "jog", "stomp",
+  "slump", "straighten", "loosen", "tilt", "angle", "curl", "fidget", "stiffen",
+  "wince", "shrug", "shove", "gather", "collect", "grip",
+];
+
+const IRREGULAR_ACTION_PASTS: Record<string, string> = {
+  stand: "stood",
+  sit: "sat",
+  run: "ran",
+  take: "took",
+  hold: "held",
+  shake: "shook",
+  draw: "drew",
+  bend: "bent",
+  freeze: "froze",
+  rise: "rose",
+  slide: "slid",
+  kneel: "knelt",
+  lean: "leant|leaned",
+  catch: "caught",
+  swing: "swung",
+  creep: "crept",
+  sling: "slung",
+  flee: "fled",
+  spring: "sprang",
+};
+
+function buildActionVerbPattern(): string {
+  const forms: string[] = [];
+  for (const verb of PHYSICAL_ACTION_VERBS) {
+    forms.push(verb, `${verb}s`, `${verb}ed`, `${verb}ing`);
+    const irregular = IRREGULAR_ACTION_PASTS[verb];
+    if (irregular) {
+      for (const form of irregular.split("|")) forms.push(form);
+    }
+  }
+  return forms.join("|");
+}
+
+/**
+ * Conversational idioms that happen to use action verbs but are spoken, not
+ * physical behavior. A small overrides set, not a phrase-based classifier.
+ */
+const CONVERSATIONAL_IDIOM_RE = /\b(?:i|we)\s+(?:stand corrected|take it|take that|point out|hold that|shake on|draw a line|breathe a word)\b/i;
+
+const ACTION_VERB_PATTERN = buildActionVerbPattern();
+
+const PHYSICAL_ACTION_RE = new RegExp(
+  `\\b(?:i|we)\\s+(?:\\w+\\s+){0,2}(?:${ACTION_VERB_PATTERN})\\b|` +
+    `\\b(?:i|we)\\s+(?:\\w+\\s+){0,2}look(?:s|ed|ing)?\\s+(?:at|over|up|down|around|away|toward|towards)\\b|` +
+    `\\bkeep(?:s|ing)?\\s+(?:my|your)\\s+eyes\\b|` +
+    `\\bmy\\s+(?:tone|voice|hands|fingers|heart|stomach|chest|shoulders|breath|grip|eyes|jaw|smile|body|head|arms|legs|skin|back|throat|chin|brow|foot|knee)\\s+(?:is|are|was|were|feels?|sounds?|looks?|shakes?|trembles?|tightens?|pounds?|steadies?|wavers?|drops?|rises?|quickens?|softens?|hardens?|falters?)\\b`,
+  "i",
+);
+
+function isPhysicalAction(sentence: string): boolean {
+  if (/\?\s*$/.test(sentence)) return false;
+  if (CONVERSATIONAL_IDIOM_RE.test(sentence)) return false;
+  return PHYSICAL_ACTION_RE.test(sentence);
+}
+
+function classifySentence(sentence: string): SpanType {
+  return isPhysicalAction(sentence) ? "action" : "dialogue";
+}
+
 const SPEECH_VERBS =
   "said|say|says|ask|asked|asks|reply|replied|replies|whisper|whispered|whispers|" +
   "called|call|calls|told|tell|tells|mutter|muttered|murmur|murmured|shout|shouted|" +
@@ -102,25 +184,6 @@ const SPEECH_VERBS =
 const SPEECH_FRAME_RE = new RegExp(
   `(?:^|[\\s,;:—–])+(?:i|we|you)?\\s*(?:${SPEECH_VERBS})\\s*(?:,|:)\\s*[\“‘"”…]*`,
   "gi",
-);
-
-/** First-person physical action / narration verbs. */
-const ACTION_CUE_RE = /^(?:i|my)\s+(?:look|watch|study|gaze|glance|stare|turn|lean|step|walk|reach|grabb?|grip|take|hold|pull|push|open|close|plant|fold|cross|raise|lower|shake|nod|move|stand|sit|sat|rise|kneel|settle|shift|breathe|sigh|exhale|inhale|blink|swallow|point|pick|set|drop|draw|touch|brush|head|follow|pause|caught|catch|slip|inch|edge|climb|peer|scan|press|nudge|lift|trace|tuck|clench|flex|flinch|hesitate|guide|steady|stoop|pivot|twist|bend|crouch|scoop|creep|amble|stride|saunter|wade|sink|block|shield|gather|collect|tug|haul|carry|cradle|angle|wait|stop|freeze|stiffen|grab|hug|unclasp|linger|hover|drift)\b/i;
-
-/** Spoken-dialogue cues: second-person address, imperatives, reported questions. */
-const DIALOGUE_CUE_RE = new RegExp(
-  "\\b(?:maybe we should|we should|we could|we have to|let'?s|let us|how about|what if|" +
-    "why don'?t|do you|don'?t you|can you|will you|would you|could you|are you|did you|" +
-    "you know|you hear|you see|you said|you asked|you promised|trust me|believe me|" +
-    "listen to me|look at me|please|i want you|i need you|i'm|i'll|you're|you are|" +
-    "you've|you'll|you'd|i think|i thought|i believe|i hope|i wish|i know|" +
-    "i don'?t know|i don'?t think|right\\?)\\b|" +
-    "^(?:trust|wait|listen|stop|come|go|stay|watch|please|let|don'?t|yes|no|never|" +
-    "maybe|perhaps|sure|fine|hey|look at me)\\b|" +
-    "^(?:i\\s+(?:said|told))\\b|" +
-    "^(?:i\\s+came\\s+(?:here|in|over|back)?\\s+to\\s+(?:say|tell|ask|apologize|thank|warn|insist))\\b|" +
-    "\\?\\s*$",
-  "i",
 );
 
 /** Split a sentence at embedded speech frames, marking the spoken parts. */
@@ -148,12 +211,6 @@ function decomposeSpeech(sentence: string): Array<{ text: string; dialogue: bool
   return parts.length > 0 ? parts : [{ text: sentence, dialogue: false }];
 }
 
-function classifySentence(sentence: string): "action" | "dialogue" {
-  if (ACTION_CUE_RE.test(sentence)) return "action";
-  if (DIALOGUE_CUE_RE.test(sentence)) return "dialogue";
-  return "action";
-}
-
 function splitSentences(value: string): string[] {
   return value
     .split(/(?<=[.!?])\s+(?=[“"*([…A-Z0-9])/)
@@ -169,68 +226,84 @@ function normalizeInner(value: string): string {
     .trim();
 }
 
-function renderUnit(unit: PlayerUnit, parts: string[]): void {
-  switch (unit.type) {
-    case "action": {
-      const inner = normalizeInner(unit.inner);
-      if (inner) parts.push(`*${inner}*`);
-      return;
+/**
+ * Tokenize one paragraph into classified spans, then merge adjacent spans of
+ * the same type so consecutive action or dialogue sentences stay in one unit.
+ */
+function classifyParagraph(paragraph: string): Span[] {
+  const unitRe = /\*([^*\n]+)\*|([“"])([^“”"\n]+?)\2|\[([^\]\n]+)\]|[^*“”"\[\]\n]+/g;
+
+  const spans: Span[] = [];
+  for (const match of paragraph.matchAll(unitRe)) {
+    if (match[1] !== undefined) {
+      const text = normalizeInner(match[1]);
+      if (text) spans.push({ type: "action", text });
+    } else if (match[2] !== undefined) {
+      const text = normalizeInner(match[3]);
+      if (text) spans.push({ type: "dialogue", text });
+    } else if (match[4] !== undefined) {
+      const text = normalizeInner(match[4]);
+      if (text) spans.push({ type: "narration", text });
+    } else {
+      const raw = match[0].trim();
+      if (!raw) continue;
+      for (const sentence of splitSentences(raw)) {
+        for (const part of decomposeSpeech(sentence)) {
+          const text = normalizeInner(part.text);
+          if (!text) continue;
+          spans.push({ type: part.dialogue ? "dialogue" : classifySentence(text), text });
+        }
+      }
     }
-    case "dialogue": {
-      const inner = normalizeInner(unit.inner);
-      if (inner) parts.push(`"${inner}"`);
-      return;
-    }
-    case "narration": {
-      const inner = normalizeInner(unit.inner);
-      if (inner) parts.push(`[${inner}]`);
-      return;
-    }
-    case "raw":
-      break;
   }
 
-  for (const sentence of splitSentences(unit.inner)) {
-    for (const part of decomposeSpeech(sentence)) {
-      const inner = normalizeInner(part.text);
-      if (!inner) continue;
-      const kind = part.dialogue ? "dialogue" : classifySentence(inner);
-      parts.push(kind === "dialogue" ? `"${inner}"` : `*${inner}*`);
+  const merged: Span[] = [];
+  for (const span of spans) {
+    const last = merged[merged.length - 1];
+    if (last && last.type === span.type) {
+      last.text = `${last.text} ${span.text}`;
+    } else {
+      merged.push({ ...span });
     }
   }
+  return merged;
+}
+
+function renderSpans(spans: Span[]): string {
+  return spans
+    .map((span) => {
+      if (span.type === "action") return `*${span.text}*`;
+      if (span.type === "dialogue") return `"${span.text}"`;
+      return `[${span.text}]`;
+    })
+    .join(" ");
 }
 
 /**
- * Deterministically normalize a model-generated player turn to roleplay markup:
+ * Deterministically normalize a model-generated player turn:
  *
- * - spoken dialogue → "…" (double quotes)
- * - player action / narration → *…* (single asterisks)
- * - each beat on its own paragraph (blank-line separated)
- * - generation wrappers stripped, already-correct markup preserved verbatim
+ * - preserve the paragraph structure of the input (each input line / blank-line
+ *   group stays its own paragraph)
+ * - within a paragraph, wrap dialogue in "…", action/narration in *…*, merging
+ *   adjacent spans of the same type, and keep type changes inline
+ * - strip generation wrappers; leave already-correct markup untouched
  */
 export function formatPlayerTurn(value: string, playerName = ""): string {
   const text = stripControlResidue(value, playerName);
   if (!text) return text;
 
-  const unitRe = /\*([^*\n]+)\*|([“"])([^“”"\n]+?)\2|\[([^\]\n]+)\]|[^*“”"\[\]\n]+/g;
+  const paragraphs = text.split(/\r?\n+/).map((part) => part.trim()).filter(Boolean);
+  if (paragraphs.length === 0) return text;
 
-  const parts: string[] = [];
-  for (const match of text.matchAll(unitRe)) {
-    if (match[0].length === 0) continue;
-    if (match[1] !== undefined) {
-      renderUnit({ type: "action", inner: match[1] }, parts);
-    } else if (match[2] !== undefined) {
-      renderUnit({ type: "dialogue", inner: match[3] }, parts);
-    } else if (match[4] !== undefined) {
-      renderUnit({ type: "narration", inner: match[4] }, parts);
-    } else {
-      const raw = match[0].trim();
-      if (raw) renderUnit({ type: "raw", inner: raw }, parts);
-    }
+  const rendered: string[] = [];
+  for (const paragraph of paragraphs) {
+    const spans = classifyParagraph(paragraph);
+    if (spans.length === 0) continue;
+    rendered.push(renderSpans(spans));
   }
 
-  if (parts.length === 0) return text;
-  return parts.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (rendered.length === 0) return text;
+  return rendered.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /**

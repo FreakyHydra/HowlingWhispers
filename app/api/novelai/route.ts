@@ -1030,9 +1030,14 @@ function cleanReply(
     reply = reply
       .replace(/[“”"]/g, "")
       .replace(/^\s*(?:\*\s*)+$/gm, "")
-      .replace(/\s*(?<!\*)(\*[^*]+\*)(?!\*)\s*/g, "\n\n$1\n\n")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
+    if (outputKind !== "player") {
+      reply = reply
+        .replace(/\s*(?<!\*)(\*[^*]+\*)(?!\*)\s*/g, "\n\n$1\n\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    }
   }
 
   if (outputKind === "player" && proseFormat === "roleplay") {

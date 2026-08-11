@@ -1176,11 +1176,6 @@ function buildParagraphs(
   textStyle: TextStyle,
 ): PaintedParagraph[] {
   const formattedText = text
-    .replace(/\s*(?<!\*)(\*[^*]+\*)(?!\*)\s*/g, "\n\n$1\n\n")
-    .replace(
-      /(?:^|\s+)([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2})(?:\s*\(as\))?:\s*/g,
-      "\n\n$1\n\n",
-    )
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   const raw = formattedText
@@ -3764,11 +3759,6 @@ function updateCharacter(id: string, updates: Partial<Character>) {
 
   function renderMessageText(text: string, sender: Message["sender"], speakerName?: string) {
     const formattedText = text
-      .replace(/\s*(?<!\*)(\*[^*]+\*)(?!\*)\s*/g, "\n\n$1\n\n")
-      .replace(
-        /(?:^|\s+)([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2})(?:\s*\(as\))?:\s*/g,
-        "\n\n$1\n\n",
-      )
       .replace(/\n{3,}/g, "\n\n")
       .trim();
     const paragraphs = formattedText
@@ -5175,6 +5165,21 @@ function updateCharacter(id: string, updates: Partial<Character>) {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest hotfix-card">
+              <div className="changelog-mark">◐</div>
+              <div>
+                <span>Version 0.6.0.3 · Inline roleplay formatting</span>
+                <h2>Inline player roleplay formatting contract</h2>
+                <p>
+                  Player turns now preserve input paragraph boundaries and flow actions and spoken dialogue inline within paragraphs instead of forcing blank-line breaks after every beat.
+                </p>
+                <ul>
+                  <li>Actions and dialogue flow naturally inline (e.g. <em>*I look over at her.* &quot;I don&apos;t know...&quot; *I reach for the door.*</em>)</li>
+                  <li>Evidence-driven action detection isolates physical verbs while ambiguous statements default to dialogue</li>
+                  <li>Adjacent same-type spans within a paragraph are cleanly merged</li>
+                </ul>
+              </div>
+            </article>
+            <article className="changelog-entry featured">
               <div className="changelog-mark">◐</div>
               <div>
                 <span>Version 0.6.0.2 · Story pipeline hotfix</span>
