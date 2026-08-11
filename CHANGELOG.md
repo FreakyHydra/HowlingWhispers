@@ -17,9 +17,14 @@ A small set of fixes to the story-generation pipeline, shipped under the same 0.
   typed in the normal composer (kept private as the direction), clears the composer like a normal
   sent message, and then continues the conversation from the character side. A blank composer still
   generates a plausible player turn.
+- **Impersonated turns are cleaned like normal player messages** — generated player drafts (new
+  and rerun alike) have leaked generation wrappers such as `player user message:` / `Player:` /
+  `<|user|>` stripped and are normalized to the same roleplay formatting as a manually written
+  player message, with action, dialogue, and narration markers preserved.
 
 ### Quality
-- Regression coverage for blank-start impersonation prompt compilation (147 tests).
+- Regression coverage for blank-start impersonation prompt compilation and cleaned player-turn
+  formatting, plus end-to-end story-route tests (160 tests).
 
 ## 0.6.0.2 — Drives that remember
 

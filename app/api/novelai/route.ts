@@ -1066,6 +1066,7 @@ function roleplayStops(playerName: string): string[] {
   return [
     `\n${label}:`,
     "\nPlayer:", "\nUser:", "\nSystem:", "\nEmotion:", "\nMood:",
+    "\nplayer user message:", "\nplayer message:", "\nuser message:",
     "\nAnalysis:", "\nThinking:", "\nWrite only the next roleplay passage",
     "\n<player>", "\n<user>", "\n<system>",
     "\n<|user|>", "\n<|assistant|>", "\n/nothink",
@@ -1076,6 +1077,7 @@ function impersonationStops(characterName: string): string[] {
   return [
     `\n${characterName}:`, "\nNarration:", "\nSystem:", "\nEmotion:", "\nMood:",
     "\nAnalysis:", "\nThinking:", "\nWrite the suggested player response",
+    "\nplayer user message:", "\nplayer message:", "\nuser message:",
     "\n<character_reply>", "\n<system>",
     "\n<|assistant|>", "\n<|user|>", "\n/nothink",
   ];
