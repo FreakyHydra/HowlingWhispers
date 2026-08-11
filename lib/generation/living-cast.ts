@@ -133,9 +133,17 @@ const SPEECH_ATTRIBUTION_PATTERN =
   /\b(?:said|says|asked|asks|replied|replies|answered|answers|whispered|whispers|shouted|shouts|called|call|murmured|murmurs|began|started|continued|added|laugh(?:ed)?|sighed)\b/i;
 
 /** Would a name "$token" be rejected merely for being a common word? */
-function isCommonNameShapedToken(token: string): boolean {
+export function isCommonNameShapedToken(token: string): boolean {
   const lower = token.toLocaleLowerCase("en-US");
   return STOPWORDS.has(lower);
+}
+
+/** Would a cast identity fail the ownership gate for autonomous state? */
+export function isRejectedAutonomyIdentity(entry: { id?: string; name?: string }): boolean {
+  const name = (entry.name ?? "").trim();
+  if (!name) return true;
+  const singleToken = !/\s/.test(name);
+  return singleToken && isCommonNameShapedToken(name);
 }
 
 function discoverNames(text: string, seekText?: { haystack: string }): string[] {

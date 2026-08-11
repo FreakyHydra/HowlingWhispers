@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.6.0.2 — Drives that remember
+
+**◐ A side character's inner state now persists across the whole conversation instead of being
+rebuilt for a single reply.** Goals, wants, fears, unresolved concerns, and basic needs carry
+forward turn after turn — including after reloads — and evolve from what actually happens in the
+story, so a character who was just fed, rested, or wronged remembers it the next time they act.
+
+### What's new
+- **Persistent character drives** — autonomous state is now stored with each conversation, so a
+  side character's goal, intent, wants, fears, concerns, and needs survive across turns, reloads,
+  and speaker switches instead of being recomputed fresh every reply.
+- **State that follows the story** — drives are updated deterministically from the recent beats
+  with no extra AI call: eating eases hunger, resting eases fatigue, comfort and company soothe,
+  discovery answers curiosity and settles a concern, an unanswered question weighs on a character,
+  and conflict seeds a fear. When nothing meaningful happens, the state stays stable.
+- **Only real characters hold state** — autonomous state is keyed to the Living Cast member, and
+  identities that are not valid cast members (including the old sentence-start ghosts like What,
+  Why, Did, Tell, Both, Because, Got, and Jail) are pruned instead of accumulating drive state.
+- **Speaker-stays-authoritative** — replying as a specific side character (for example Melody)
+  updates Melody's own state; the driving character is never guessed from the reply text.
+
+### What changed (fixes)
+- Stale autonomous state from characters no longer present is cleaned up automatically.
+- Idle characters keep their current state instead of drifting on every turn.
+
+### Quality
+- Regression coverage for persistent state round trips, drive deltas from story beats, identity
+  pruning, the perception boundary, and prompt integration (146 tests).
+
 ## 0.6.0.1 — The room listens back
 
 **◐ Living Cast stops mistaking ordinary words for people, and present side characters now act

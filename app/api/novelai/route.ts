@@ -23,6 +23,8 @@ import {
   deriveAutonomyPulse,
   sanitizeAutonomousCast,
   seedAutonomyFromCast,
+  updateAutonomyState,
+  type AutonomousAgent,
 } from "../../../lib/generation/autonomous-cast.ts";
 import { resolveBuiltinWorldLore } from "../../../lib/worlds/builtins.ts";
 import type { WorldLorebookV1 } from "../../../lib/worlds/schema.ts";
@@ -281,15 +283,25 @@ export async function POST(request: Request) {
     }, { status: 400 });
   }
 
-  const autonomyPulse = (autonomousCast.size > 0 || livingCast.length > 0)
-    ? deriveAutonomyPulse(seedAutonomyFromCast(autonomousCast.size > 0 ? autonomousCast : new Map(), livingCast), livingCast, {
+  const autonomySeeded = (autonomousCast.size > 0 || livingCast.length > 0)
+    ? seedAutonomyFromCast(autonomousCast.size > 0 ? autonomousCast : new Map(), livingCast)
+    : autonomousCast;
+  const autonomyUpdated = (autonomySeeded.size > 0 && livingCast.length > 0)
+    ? updateAutonomyState(autonomySeeded, livingCast, messages, {
+      speakerName: castSpeaker?.name ?? null,
+      primaryName: character?.identity.name ?? "",
+    })
+    : autonomySeeded;
+  const autonomyPulse = (autonomyUpdated.size > 0 || livingCast.length > 0)
+    ? deriveAutonomyPulse(autonomyUpdated, livingCast, {
       speakerName: castSpeaker?.name ?? null,
       primaryName: character?.identity.name ?? "",
       pendingTargetName: castSpeaker && !matchesName(castSpeaker.name, character?.identity.name ?? "")
         ? castSpeaker.name
         : null,
     })
-    : autonomousCast;
+    : autonomyUpdated;
+  const autonomyPersisted = autonomousAgentsToArray(autonomyUpdated);
 
   const compiled = isConnectionTest ? null : compileContext({
       kind: isAutopilot ? "autopilot" : isImpersonation ? "impersonation" : "roleplay",
@@ -370,6 +382,7 @@ export async function POST(request: Request) {
           autopilot: isAutonomousBeat,
         },
       context: compiled?.manifest,
+      autonomy: autonomyPersisted,
     });
   }
   const controller = new AbortController();
@@ -406,7 +419,7 @@ export async function POST(request: Request) {
           model, prompt, isConnectionTest, temperature, generationLength,
           outputName, playerName, preferences.proseFormat,
           outputKind, stopSequences, compiled?.manifest, controller, timeout, maxTokens, isAutonomousBeat,
-          rerollSeed,
+          rerollSeed, autonomyPersisted,
         );
       } finally {
         releaseGenerationSlot(slotId);
@@ -425,6 +438,7 @@ export async function POST(request: Request) {
       outputName, playerName, preferences.proseFormat,
       outputKind, stopSequences, compiled?.manifest, controller, timeout, maxTokens,
       isAutonomousBeat, rerollSeed, isImpersonation ? impersonationPrompt : "",
+      autonomyPersisted,
     );
   } catch (error) {
     clearTimeout(timeout);
@@ -445,6 +459,7 @@ async function localReply(
   proseFormat: ProseFormat, outputKind: "player" | "character", stopSequences: string[],
   contextManifest: ContextManifest | undefined, controller: AbortController, timeout: NodeJS.Timeout,
   maxTokens: number, autopilot: boolean, rerollSeed?: number,
+  autonomy?: AutonomousAgent[],
 ) {
   if (isTest) {
     const upstream = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
@@ -644,7 +659,7 @@ ${preparedReply}`;
   return Response.json(
     isTest
       ? { ok: true, message: CONNECTION_TEST_RESPONSE }
-      : { reply, context: contextManifest, metadata: metadataOut.metadata ?? null },
+      : { reply, context: contextManifest, metadata: metadataOut.metadata ?? null, autonomy },
   );
 }
 
@@ -798,6 +813,7 @@ async function nonStreamReply(
   contextManifest: ContextManifest | undefined, controller: AbortController, timeout: NodeJS.Timeout,
   maxTokens: number, autopilot: boolean, rerollSeed?: number,
   playerDirection = "",
+  autonomy?: AutonomousAgent[],
 ) {
   const generate = (generationPrompt: string) => fetch(`${NOVELAI_BASE}/completions`, {
       method: "POST",
@@ -860,7 +876,7 @@ async function nonStreamReply(
   return Response.json(
     isTest
       ? { ok: true, message: CONNECTION_TEST_RESPONSE }
-      : { reply, context: contextManifest, metadata: metadataOut.metadata ?? null },
+      : { reply, context: contextManifest, metadata: metadataOut.metadata ?? null, autonomy },
   );
 }
 

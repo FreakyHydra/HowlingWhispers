@@ -53,6 +53,7 @@ import {
 import { compilePlayerPersona } from "../lib/personas/compile";
 import type { PlayerPersona } from "../lib/personas/schema";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
+import type { AutonomousAgent } from "../lib/generation/autonomous-cast.ts";
 import type { StoryMetadata } from "../lib/generation/story-metadata.ts";
 import {
   createCast,
@@ -136,6 +137,7 @@ type StorySession = {
   playerPersona?: string;
   playerPersonaId?: string;
   livingCast?: LivingCastEntry[];
+  autonomousCast?: AutonomousAgent[];
 };
 
 type StoryEditor = {
@@ -1811,6 +1813,15 @@ export default function DreamboundApp() {
     ));
   }
 
+  function persistSessionAutonomy(autonomy: AutonomousAgent[] | undefined) {
+    if (!activeSession || !autonomy || autonomy.length === 0) return;
+    setSessions((current) => current.map((session) =>
+      session.id === activeSession.id
+        ? { ...session, autonomousCast: autonomy, updatedAt: Date.now() }
+        : session,
+    ));
+  }
+
   function clearActiveSessionPersona() {
     if (!activeSession) return;
     setSessions((current) => current.map((session) =>
@@ -2437,6 +2448,7 @@ export default function DreamboundApp() {
         proseFormat: "roleplay",
         autopilotPov: activeSession?.autopilot ? (activeSession.autopilotPov ?? "third") : undefined,
         livingCast: sessionCast,
+        autonomousCast: activeSession?.autonomousCast ?? [],
         respondAs,
         character: {
           id: selected.id,
@@ -2491,6 +2503,7 @@ export default function DreamboundApp() {
         ollamaRequest?: Record<string, unknown>;
         finalization?: Record<string, unknown>;
         context?: ContextManifest;
+        autonomy?: AutonomousAgent[];
         error?: string;
       };
       if (!preparedResponse.ok || !prepared.ollamaRequest || !prepared.finalization) {
@@ -2528,6 +2541,7 @@ export default function DreamboundApp() {
       if (prepared.context) {
         setContextManifests((current) => ({ ...current, [activeMessageKey]: prepared.context! }));
       }
+      persistSessionAutonomy(prepared.autonomy);
       return { reply: finalized.reply, metadata: finalized.metadata ?? null };
     }
     const response = await fetch("/api/novelai", {
@@ -2536,13 +2550,14 @@ export default function DreamboundApp() {
       body: JSON.stringify(requestBody),
       signal: requestSignal,
     });
-    const payload = (await response.json()) as { reply?: string; metadata?: StoryMetadata | null; error?: string; context?: ContextManifest };
+    const payload = (await response.json()) as { reply?: string; metadata?: StoryMetadata | null; error?: string; context?: ContextManifest; autonomy?: AutonomousAgent[] };
     if (!response.ok || !payload.reply) {
       throw new Error(payload.error || `${providerLabel} did not return a reply.`);
     }
     if (payload.context) {
       setContextManifests((current) => ({ ...current, [activeMessageKey]: payload.context! }));
     }
+    persistSessionAutonomy(payload.autonomy);
     return { reply: payload.reply, metadata: payload.metadata ?? null };
   }
 
@@ -5134,6 +5149,25 @@ function updateCharacter(id: string, updates: Partial<Character>) {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
+              <div className="changelog-mark">◐</div>
+              <div>
+                <span>Version 0.6.0.2 · Drives that remember</span>
+                <h2>Side-character inner state now persists across the whole conversation</h2>
+                <p>
+                  Goals, wants, fears, concerns, and basic needs carry forward turn after turn —
+                  even after reloads — and evolve from what actually happens in the story.
+                </p>
+                <h3>What changed</h3>
+                <ul>
+                  <li>Autonomous state is stored with each conversation, so a character&apos;s goal, intent, wants, fears, concerns, and needs survive turns, reloads, and speaker switches.</li>
+                  <li>Drives update deterministically from the recent story with no extra AI call: eating eases hunger, resting eases fatigue, discovery settles a concern, an unanswered question weighs on a character, and conflict seeds a fear.</li>
+                  <li>Only real cast members hold state — sentence-start ghosts (What, Why, Did, Tell, Both, Because, Got, Jail) and stale characters are pruned, never given drives.</li>
+                  <li>Replying as a specific side character updates that character&apos;s own state — never a guessed speaker.</li>
+                </ul>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
               <div className="changelog-mark">◐</div>
               <div>
                 <span>Version 0.6.0.1 · The room listens back</span>
