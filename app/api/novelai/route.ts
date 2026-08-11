@@ -310,14 +310,14 @@ export async function POST(request: Request) {
   const autonomyUpdated = (autonomySeeded.size > 0 && livingCast.length > 0)
     ? updateAutonomyState(autonomySeeded, livingCast, messages, {
       speakerName: castSpeaker?.name ?? null,
-      primaryName: character?.identity.name ?? "",
+      primaryName: character?.name ?? "",
     })
     : autonomySeeded;
   const autonomyPulse = (autonomyUpdated.size > 0 || livingCast.length > 0)
     ? deriveAutonomyPulse(autonomyUpdated, livingCast, {
       speakerName: castSpeaker?.name ?? null,
-      primaryName: character?.identity.name ?? "",
-      pendingTargetName: castSpeaker && !matchesName(castSpeaker.name, character?.identity.name ?? "")
+      primaryName: character?.name ?? "",
+      pendingTargetName: castSpeaker && !matchesName(castSpeaker.name, character?.name ?? "")
         ? castSpeaker.name
         : null,
     })

@@ -1773,6 +1773,10 @@ a:focus-visible {
   margin: 4px 0 7px;
 }
 
+.changelog-entry.hotfix-card h2 {
+  font-size: 22px;
+}
+
 .changelog-entry h3 {
   color: var(--cream);
   font-family: var(--serif);

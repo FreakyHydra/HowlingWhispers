@@ -5166,18 +5166,21 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           </header>
 
           <div className="changelog-list">
-            <article className="changelog-entry featured latest">
+            <article className="changelog-entry featured latest hotfix-card">
               <div className="changelog-mark">◐</div>
               <div>
                 <span>Version 0.6.0.2 · Story pipeline hotfix</span>
-                <h2>Impersonate is now an action, not a separate composer mode</h2>
+                <h2>Impersonate is now an action</h2>
                 <p>
-                  ◐ beside Send uses whatever you already typed in the normal composer as your private
-                  direction, works even on a brand-new blank conversation, clears the composer after
-                  sending, and the character continues the scene as usual. Story replies are also read
-                  and parsed safely, so empty or broken responses now say what went wrong instead of
-                  hiding the real error.
+                  Use the ◐ button beside Send to generate the player&apos;s turn from whatever you already typed.
                 </p>
+                <ul>
+                  <li>Works on completely blank conversations</li>
+                  <li>No separate Impersonate composer mode</li>
+                  <li>Clears the composer after sending</li>
+                  <li>Character replies continue normally afterward</li>
+                  <li>Broken or empty story responses now show a useful error instead of a JSON parse failure</li>
+                </ul>
               </div>
             </article>
             <article className="changelog-entry featured">
