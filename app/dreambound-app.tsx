@@ -1228,6 +1228,26 @@ function escapesRe(name: string): string {
   return name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+async function readResponseJson<T>(response: Response, context: string): Promise<T> {
+  const status = response.status;
+  let text = "";
+  try {
+    text = await response.text();
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new Error(`${context} could not be read (HTTP ${status}).`);
+  }
+  if (!text.trim()) {
+    throw new Error(`${context} returned an empty response (HTTP ${status}).`);
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const preview = text.length > 260 ? `${text.slice(0, 260)}…` : text;
+    throw new Error(`${context} returned an invalid response (HTTP ${status}). ${preview}`.trim());
+  }
+}
+
 function isInvalidImpersonationDraft(
   _direction: string,
   draft: string,
@@ -1398,7 +1418,6 @@ export default function DreamboundApp() {
   const [isReplying, setIsReplying] = useState(false);
   const [isImpersonating, setIsImpersonating] = useState(false);
   const generationAbortRef = useRef<AbortController | null>(null);
-  const [impersonationPrompt, setImpersonationPrompt] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [importError, setImportError] = useState("");
   const [characterBackupMsg, setCharacterBackupMsg] = useState("");
@@ -2500,13 +2519,13 @@ export default function DreamboundApp() {
         body: JSON.stringify(requestBody),
         signal: requestSignal,
       });
-      const prepared = await preparedResponse.json() as {
+      const prepared = await readResponseJson<{
         ollamaRequest?: Record<string, unknown>;
         finalization?: Record<string, unknown>;
         context?: ContextManifest;
         autonomy?: AutonomousAgent[];
         error?: string;
-      };
+      }>(preparedResponse, "The story prompt preparation");
       if (!preparedResponse.ok || !prepared.ollamaRequest || !prepared.finalization) {
         throw new Error(prepared.error || "The story prompt could not be prepared.");
       }
@@ -2521,7 +2540,7 @@ export default function DreamboundApp() {
       } catch {
         throw new Error(`This browser could not reach Ollama. Start Ollama and allow this site with ${ollamaOriginSetting}.`);
       }
-      const generated = await ollamaResponse.json() as { response?: string; error?: string };
+      const generated = await readResponseJson<{ response?: string; error?: string }>(ollamaResponse, "Ollama");
       if (!ollamaResponse.ok || !generated.response) {
         throw new Error(generated.error || "Ollama did not return a reply.");
       }
@@ -2535,7 +2554,7 @@ export default function DreamboundApp() {
         }),
         signal: requestSignal,
       });
-      const finalized = await finalizedResponse.json() as { reply?: string; metadata?: StoryMetadata | null; error?: string };
+      const finalized = await readResponseJson<{ reply?: string; metadata?: StoryMetadata | null; error?: string }>(finalizedResponse, "The reply formatting");
       if (!finalizedResponse.ok || !finalized.reply) {
         throw new Error(finalized.error || "The local reply could not be formatted.");
       }
@@ -2551,7 +2570,7 @@ export default function DreamboundApp() {
       body: JSON.stringify(requestBody),
       signal: requestSignal,
     });
-    const payload = (await response.json()) as { reply?: string; metadata?: StoryMetadata | null; error?: string; context?: ContextManifest; autonomy?: AutonomousAgent[] };
+    const payload = await readResponseJson<{ reply?: string; metadata?: StoryMetadata | null; error?: string; context?: ContextManifest; autonomy?: AutonomousAgent[] }>(response, providerLabel);
     if (!response.ok || !payload.reply) {
       throw new Error(payload.error || `${providerLabel} did not return a reply.`);
     }
@@ -2721,7 +2740,7 @@ export default function DreamboundApp() {
       primary: { id: selected.id, name: selected.name },
       playerName: effectivePlayerName,
     });
-    const castSpeaker = autoNpcReplies && mode !== "Impersonate" && detection.autoSpeakerName
+    const castSpeaker = autoNpcReplies && detection.autoSpeakerName
       ? detection.cast.find((entry) => entry.id === detection.autoSpeakerId)
       : null;
     const respondAs = castSpeaker?.name;
@@ -2844,15 +2863,14 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
   }
 
   async function impersonatePlayer() {
-    if (isReplying || isImpersonating || activeMessages.length === 0) return;
+    if (isReplying || isImpersonating) return;
     if (!configured) {
       setChatError("Set up and test a story engine before generating a player draft.");
-      setMode("Dialogue");
       setView("settings");
       return;
     }
 
-    const playerDirection = impersonationPrompt.trim();
+    const playerDirection = draft.trim();
     setIsImpersonating(true);
     setChatError("");
     try {
@@ -2864,8 +2882,7 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
         direction: playerDirection || undefined,
       };
       await commitPlayerTurn(activeMessages, playerMessage);
-      setImpersonationPrompt("");
-      setMode("Dialogue");
+      setDraft("");
     } catch (error) {
       if (isAbortError(error)) return;
       setProviderState("error");
@@ -5152,6 +5169,20 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             <article className="changelog-entry featured latest">
               <div className="changelog-mark">◐</div>
               <div>
+                <span>Version 0.6.0.2 · Story pipeline hotfix</span>
+                <h2>Impersonate is now an action, not a separate composer mode</h2>
+                <p>
+                  ◐ beside Send uses whatever you already typed in the normal composer as your private
+                  direction, works even on a brand-new blank conversation, clears the composer after
+                  sending, and the character continues the scene as usual. Story replies are also read
+                  and parsed safely, so empty or broken responses now say what went wrong instead of
+                  hiding the real error.
+                </p>
+              </div>
+            </article>
+            <article className="changelog-entry featured">
+              <div className="changelog-mark">◐</div>
+              <div>
                 <span>Version 0.6.0.2 · Drives that remember</span>
                 <h2>Side-character inner state now persists across the whole conversation</h2>
                 <p>
@@ -6789,141 +6820,71 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             )}
             {(!activeSession?.autopilot || activeSession?.autopilotPaused) && !autopilotControlsCollapsed && (
               <div className="composer">
-                {mode === "Impersonate" ? (
-                  <>
-                    <div className="impersonate-composer-header">
-                      <span className="impersonate-mode-tag" aria-hidden="true">◐</span>
-                      <span className="impersonate-mode-label">
-                        Impersonating {selected.name} — the direction stays private
-                      </span>
-                      <button
-                        className="impersonate-exit"
-                        onClick={() => {
-                          setMode("Dialogue");
-                          setImpersonationPrompt("");
-                        }}
-                        aria-label="Exit impersonation"
-                        title="Exit impersonation"
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <textarea
-                      id="story-input"
-                      value={impersonationPrompt}
-                      onChange={(event) => setImpersonationPrompt(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          impersonatePlayer();
-                        }
-                      }}
-                      placeholder={`Private direction for ${selected.name}…`}
-                      rows={2}
-                      autoFocus
-                    />
-                  </>
-                ) : (
-                  <>
-                    <label htmlFor="story-input" className="sr-only">
-                      Message {selected.name}
-                    </label>
-                    <textarea
-                      id="story-input"
-                      value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          sendMessage();
-                        }
-                      }}
-                      placeholder="Speak, act, or shape the scene…"
-                      rows={2}
-                    />
-                  </>
-                )}
+                <>
+                  <label htmlFor="story-input" className="sr-only">
+                    Message {selected.name}
+                  </label>
+                  <textarea
+                    id="story-input"
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        sendMessage();
+                      }
+                    }}
+                    placeholder="Speak, act, or shape the scene…"
+                    rows={2}
+                  />
+                </>
                 <div className="composer-actions">
                   <select
                     aria-label="Message mode"
                     value={mode}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      if (
-                        next === "Impersonate" &&
-                        (isReplying || isImpersonating || activeMessages.length === 0)
-                      ) {
-                        return;
-                      }
-                      setMode(next);
-                    }}
+                    onChange={(event) => setMode(event.target.value)}
                   >
                     <option>Dialogue</option>
                     <option>Action</option>
                     <option>Narration</option>
-                    <option>Impersonate</option>
                   </select>
                   <div className="action-cluster">
-                    {mode === "Impersonate" ? (
-                      <>
-                        <button
-                          className="primary-button impersonate-send"
-                          onClick={impersonatePlayer}
-                          disabled={isReplying || isImpersonating || activeMessages.length === 0}
-                        >
-                          {isImpersonating ? "Generating…" : "Send player turn"}
-                        </button>
-                        {(isReplying || isImpersonating) && (
-                          <button
-                            className="icon-button stop-button"
-                            onClick={stopGeneration}
-                            aria-label="Stop generating"
-                            title="Stop generating"
-                          >
-                            ■
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          className="icon-button"
-                          aria-label="Impersonate player"
-                          title="Impersonate: write the player's turn for you"
-                          onClick={() => setMode("Impersonate")}
-                          disabled={isReplying || isImpersonating || activeMessages.length === 0}
-                        >
-                          ◐
-                        </button>
-                        <button
-                          className="icon-button"
-                          aria-label="Skip turn"
-                          title="Skip turn: let the character continue"
-                          onClick={skipTurn}
-                          disabled={isReplying || isImpersonating || activeMessages.length === 0}
-                        >
-                          »
-                        </button>
-                        {(isReplying || isImpersonating) && (
-                          <button
-                            className="icon-button stop-button"
-                            onClick={stopGeneration}
-                            aria-label="Stop generating"
-                            title="Stop generating"
-                          >
-                            ■
-                          </button>
-                        )}
-                        <button
-                          className="send-button"
-                          onClick={sendMessage}
-                          disabled={!draft.trim() || isReplying || isImpersonating}
-                          aria-label="Send message"
-                        >
-                          ➤
-                        </button>
-                      </>
+                    <button
+                      className="icon-button"
+                      aria-label="Impersonate player"
+                      title="Impersonate: write the player's turn for you"
+                      onClick={impersonatePlayer}
+                      disabled={isReplying || isImpersonating}
+                    >
+                      ◐
+                    </button>
+                    <button
+                      className="icon-button"
+                      aria-label="Skip turn"
+                      title="Skip turn: let the character continue"
+                      onClick={skipTurn}
+                      disabled={isReplying || isImpersonating || activeMessages.length === 0}
+                    >
+                      »
+                    </button>
+                    {(isReplying || isImpersonating) && (
+                      <button
+                        className="icon-button stop-button"
+                        onClick={stopGeneration}
+                        aria-label="Stop generating"
+                        title="Stop generating"
+                      >
+                        ■
+                      </button>
                     )}
+                    <button
+                      className="send-button"
+                      onClick={sendMessage}
+                      disabled={!draft.trim() || isReplying || isImpersonating}
+                      aria-label="Send message"
+                    >
+                      ➤
+                    </button>
                   </div>
                 </div>
               </div>

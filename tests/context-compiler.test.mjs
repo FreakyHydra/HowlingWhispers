@@ -219,6 +219,20 @@ test("impersonation prompt drives the private direction as mandatory control inp
   assert.match(result.prompt, /The player is Kael/);
 });
 
+test("impersonation compiles a blank conversation: no prior messages required", () => {
+  const result = compile(adultCharacter(), {
+    kind: "impersonation",
+    playerName: "Kael",
+    playerDirection: "",
+    messages: [],
+  });
+  assert.equal(result.manifest.kind, "impersonation");
+  assert.equal(result.manifest.omittedMessages, 0);
+  assert.match(result.prompt, /No conversation yet/);
+  assert.match(result.prompt, /The complete player turn begins now:/);
+  assert.match(result.prompt, /The player is Kael/);
+});
+
 test("autopilot compiles the autonomy law without handover cues", () => {
   const result = compile(adultCharacter(), { kind: "autopilot", messages: [] });
   assert.equal(result.manifest.compilerVersion, 3);

@@ -66,6 +66,27 @@ function releaseGenerationSlot(id: number): void {
   if (index >= 0) generationSlots.splice(index, 1);
 }
 
+type UpstreamJson = { value?: unknown; error: string };
+
+async function readUpstreamJson(readable: Response, context: string): Promise<UpstreamJson> {
+  const status = readable.status;
+  let text = "";
+  try {
+    text = await readable.text();
+  } catch {
+    return { error: `${context} could not be read (HTTP ${status}).` };
+  }
+  if (!text.trim()) {
+    return { error: `${context} returned an empty response (HTTP ${status}).` };
+  }
+  try {
+    return { value: JSON.parse(text) };
+  } catch {
+    const preview = text.length > 260 ? `${text.slice(0, 260)}…` : text;
+    return { error: `${context} returned an invalid response (HTTP ${status}). ${preview}`.trim() };
+  }
+}
+
 async function waitForGenerationSlot(waitMs = 15_000): Promise<boolean> {
   const deadline = Date.now() + waitMs;
   while (Date.now() < deadline) {
@@ -269,7 +290,7 @@ export async function POST(request: Request) {
   if (provider === "device" && !isValidOllamaModelName(model)) {
     return Response.json({ error: "Enter the Ollama model installed on this computer." }, { status: 400 });
   }
-  if (!isConnectionTest && (!character || (messages.length === 0 && !isAutopilot))) {
+  if (!isConnectionTest && (!character || (messages.length === 0 && !isAutopilot && !isImpersonation))) {
     return Response.json({ error: "The character or conversation is incomplete." }, { status: 400 });
   }
   if (
@@ -597,7 +618,12 @@ async function localReply(
     }, { status: 502 });
   }
 
-  let result: unknown = await upstream.json();
+  const parsed = await readUpstreamJson(upstream, "Ollama");
+  if (!("value" in parsed)) {
+    clearTimeout(timeout);
+    return Response.json({ error: parsed.error }, { status: 502 });
+  }
+  let result: unknown = parsed.value;
   let rawReply = isRecord(result) && typeof result.response === "string"
     ? result.response
     : "";
@@ -628,7 +654,12 @@ ${preparedReply}`;
       clearTimeout(timeout);
       return Response.json({ error: `Ollama continuation returned HTTP ${upstream.status}.` }, { status: 502 });
     }
-    result = await upstream.json();
+    const continuationRead = await readUpstreamJson(upstream, "Ollama continuation");
+    if (!("value" in continuationRead)) {
+      clearTimeout(timeout);
+      return Response.json({ error: continuationRead.error }, { status: 502 });
+    }
+    result = continuationRead.value;
     rawReply = isRecord(result) && typeof result.response === "string" ? result.response : "";
     const formattedContinuation = formatLocalRoleplayReply(rawReply, outputKind, outputName);
     const continuation = outputKind === "player"
@@ -840,7 +871,11 @@ async function nonStreamReply(
     return Response.json({ error: providerError(upstream.status) }, { status: 502 });
   }
 
-  let result: unknown = await upstream.json();
+  const firstRead = await readUpstreamJson(upstream, "NovelAI");
+  if (!("value" in firstRead)) {
+    return Response.json({ error: firstRead.error }, { status: 502 });
+  }
+  let result: unknown = firstRead.value;
   let rawReply = extractReply(result);
   const metadataOut: { metadata?: StoryMetadata | null } = {};
   let prepared = isTest ? rawReply.trim().slice(0, 200)
@@ -852,7 +887,9 @@ async function nonStreamReply(
     const remainingWords = playerFloor - countWords(prepared);
     upstream = await generate(playerContinuationPrompt(prompt, prepared, remainingWords, playerDirection));
     if (!upstream.ok) break;
-    result = await upstream.json();
+    const extraRead = await readUpstreamJson(upstream, "NovelAI continuation");
+    if (!("value" in extraRead)) break;
+    result = extraRead.value;
     rawReply = extractReply(result);
     const cleanedExtra = cleanReply(rawReply, outputName, playerName, proseFormat, outputKind, autopilot, metadataOut);
     const extra = cleanPlayerContinuationDelta(prepared, cleanedExtra);

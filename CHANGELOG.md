@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.0.2 — Story pipeline hotfix
+
+A small set of fixes to the story-generation pipeline, shipped under the same 0.6.0.2 version.
+
+### What changed (fixes)
+- **Safe story responses** — the app now reads and parses story replies safely. When a request
+  returns an empty or non-JSON body, you get a useful error naming the HTTP status and a short
+  preview of the response instead of a bare "unexpected end of JSON input", and real server or
+  provider errors are never hidden behind a parse error.
+- **Impersonate works on a blank conversation** — you can now start a brand-new scene by having
+  the app write the first player turn (◐) before anything has been said. Normal story generation
+  without any messages still asks for a leading message, and autopilot/skip-turn behavior is unchanged.
+- **Impersonate is an action, not a mode** — the Dialogue/Action/Narration menu no longer hides a
+  separate impersonation editor. The ◐ button beside Send now works with whatever you already
+  typed in the normal composer (kept private as the direction), clears the composer like a normal
+  sent message, and then continues the conversation from the character side. A blank composer still
+  generates a plausible player turn.
+
+### Quality
+- Regression coverage for blank-start impersonation prompt compilation (147 tests).
+
 ## 0.6.0.2 — Drives that remember
 
 **◐ A side character's inner state now persists across the whole conversation instead of being
