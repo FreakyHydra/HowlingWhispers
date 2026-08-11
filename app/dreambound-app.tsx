@@ -2283,12 +2283,13 @@ export default function DreamboundApp() {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    const startedAt = Date.now();
+    let elapsedStartedAt = 0;
     setTestProgress({ phase: "connecting", elapsedSec: 0, tokens: 0, maxTokens: 24 });
     const elapsedTimer = window.setInterval(() => {
-      setTestProgress((current) => current && {
-        ...current,
-        elapsedSec: Math.floor((Date.now() - startedAt) / 1000),
+      setTestProgress((current) => {
+        if (!current) return current;
+        if (elapsedStartedAt === 0) elapsedStartedAt = Date.now();
+        return { ...current, elapsedSec: Math.floor((Date.now() - elapsedStartedAt) / 1000) };
       });
     }, 1_000);
     try {
