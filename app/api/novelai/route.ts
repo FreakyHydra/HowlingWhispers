@@ -119,7 +119,7 @@ const IMPERSONATION_LENGTHS: Record<keyof typeof REPLY_LENGTHS, string> = {
   novel: "Write one substantial player turn, usually 120–260 words: a fuller first-person scene with dialogue, deliberate action, reactions, and interior voice. Do not write for the AI character and do not invent extra decisions merely to pad length.",
 };
 
-const AUTOPILOT_BEAT_INSTRUCTION = "Write one self-contained story beat rather than a full reply: a distinct action or development followed by dialogue or narration, usually 80-150 words. It must advance the scene on its own and never hand the turn back to the player. Follow the same output format as before: actions and narration in single asterisks, inner voice in square brackets, spoken dialogue as plain text with no quotation marks.";
+const AUTOPILOT_BEAT_INSTRUCTION = "Write one self-contained story beat rather than a full reply: a distinct action or development followed by dialogue or narration, usually 80-150 words. It must advance the scene on its own and never hand the turn back to the player. Follow the same output format as before: actions and narration in single asterisks, inner voice in square brackets, spoken dialogue in double quotes. Keep action, dialogue, and inner voice inline within the same paragraph; do not force blank lines between them. Preserve natural paragraph boundaries. Adjacent spans of the same type may merge.";
 const AUTOPILOT_MAX_TOKENS = 264;
 
 type ReplyLength = keyof typeof REPLY_LENGTHS;
@@ -200,7 +200,7 @@ function localContractPrompt(
     : "Never assign the player an action, feeling, perception, or decision. In an open sandbox, do not invent a location, earlier meeting, or shared history that the player did not establish.";
   return `${prompt}
 
-Local output contract: Return a JSON object with a segments array containing at least ${minimumSegments} substantial segments and at least ${minimumWords} words total. ${lengthRule} Each segment has kind dialogue, action, or narration and plain text without asterisks, brackets, quotation marks, or speaker labels. A dialogue segment contains only words spoken aloud. Put gestures, dialogue tags, sensory description, and internal or external narration in separate action or narration segments. Preserve the intended reading order. ${boundary}`;
+Local output contract: Return a JSON object with a segments array containing at least ${minimumSegments} substantial segments and at least ${minimumWords} words total. ${lengthRule} Each segment has kind dialogue, action, or narration and plain text without asterisks, brackets, or speaker labels. A dialogue segment contains only words spoken aloud. Put gestures, dialogue tags, sensory description, and internal or external narration in separate action or narration segments. Preserve the intended reading order. ${boundary}`;
 }
 
 function getDisplayName(requestedName: string): string {

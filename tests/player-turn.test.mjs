@@ -144,3 +144,54 @@ test("deprecated alias still formats player turns", () => {
     "*I reach for the door.*",
   );
 });
+
+test("strips leading internal instruction/reasoning meta paragraphs before the first RP content", () => {
+  const raw = `I need to obey the private direction, which says to have Arrax tell Senako to undress and get on a physio platform, while not looking up from the computer. The response must be in first-person and just contain that line of dialogue and action. I will simply write the line exactly as instructed.
+
+Let's start your physio. You can undress over there and then step onto the platform. I said without looking up from my computer.`;
+
+  const result = formatPlayerTurn(raw);
+  assert.doesNotMatch(result, /I need to obey|private direction|response must|I will simply write|formatting rules/i);
+  assert.equal(
+    result,
+    '"Let\'s start your physio. You can undress over there and then step onto the platform." *I said without looking up from my computer.*',
+  );
+});
+
+test("strips a meta paragraph that only contains instruction echoing", () => {
+  const raw = `The response must be in first-person and avoid extra narration. I must avoid adding anything beyond the requested line.
+
+"Let's take a break." *I stand up from my chair.*`;
+
+  const result = formatPlayerTurn(raw);
+  assert.doesNotMatch(result, /response must|I must avoid/i);
+  assert.equal(result, '"Let\'s take a break." *I stand up from my chair.*');
+});
+
+test("preserves legitimate first-paragraph dialogue that contains no meta indicators", () => {
+  const raw = "I don't know what you want me to say.\n\n*I look over at her.*";
+
+  const result = formatPlayerTurn(raw);
+  assert.match(result, /"I don't know what you want me to say\."/);
+  assert.match(result, /\*I look over at her\.\*/);
+});
+
+test("preserves a single paragraph of legitimate RP with no meta leak", () => {
+  const raw = "I stand up from my chair and gesture toward the divider. Let's take a break from talking for now. We'll do some physio to help you feel more grounded. I walk over to the cupboard and pull out a clean gown. There's a screen there where you can change.";
+
+  const result = formatPlayerTurn(raw);
+  assert.match(result, /\*I stand up from my chair and gesture toward the divider\.\*/);
+  assert.match(result, /"Let's take a break from talking for now\. We'll do some physio to help you feel more grounded\."/);
+  assert.match(result, /\*I walk over to the cupboard and pull out a clean gown\.\*/);
+  assert.match(result, /"There's a screen there where you can change\."/);
+});
+
+test("strips only the leading meta block when RP follows", () => {
+  const raw = `I need to obey the private direction. The response must be in first-person.
+
+*I step closer.* "I'm done with the excuses."`;
+
+  const result = formatPlayerTurn(raw);
+  assert.doesNotMatch(result, /I need to obey|private direction|response must/i);
+  assert.match(result, /^\*I step closer\.\* "I'm done with the excuses\."$/m);
+});

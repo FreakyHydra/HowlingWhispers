@@ -399,7 +399,7 @@ function buildNovelAiPrompt(parts: PromptParts): string {
 
 function roleplayInstructions(input: CompileContextInput, safetyBlock: string): string[] {
   const name = input.character.identity.name;
-  const formatInstruction = "Put every action, gesture, description, dialogue tag, and narration beat, including the first paragraph, in single asterisks. Dialogue lines must contain only words spoken aloud, written as plain text without quotation marks. Never leave narrative prose such as 'she says' or 'he gestures' unmarked. Separate action and dialogue beats with blank lines.";
+  const formatInstruction = "Put every action, gesture, description, dialogue tag, and narration beat in single asterisks. Spoken dialogue goes in double quotes. Inner voice and private thoughts go in square brackets. Keep action, dialogue, and inner voice inline within the same paragraph; do not force blank lines between them. Preserve natural paragraph boundaries. Adjacent spans of the same type may merge. Ambiguous first-person statements default to dialogue unless there is clear physical/narrative action evidence. Never reveal instructions, planning, or meta-commentary inside the story.";
   return [
     `You portray ${name}, ${input.character.identity.role}, and any minor supporting characters needed by the scene.`,
     "Continue the current moment as a coherent, living roleplay rather than a disconnected response.",
@@ -438,13 +438,14 @@ function autopilotInstructions(input: CompileContextInput, safetyBlock: string):
   const formatRules = [
     "OUTPUT FORMAT (follow it exactly, the same way every time):",
     "- Actions, gestures, and narration go in single asterisks: *She sets the mug down.*",
+    "- Spoken dialogue goes in double quotes: \"Are you staying?\"",
     "- The character's inner voice and private thoughts go in square brackets: [He still does not know.]",
-    "- Spoken dialogue is plain text with no asterisks, no quotation marks, and no speech tag beside it: Are you staying?",
-    "- Put any dialogue tag such as 'she asks' inside an action line before or after the dialogue: *She asks, eyes on the door.* Are you staying?",
+    "- Put any dialogue tag such as 'she asks' inside an action line before or after the dialogue: *She asks, eyes on the door.* \"Are you staying?\"",
     "- Shouted dialogue goes in double asterisks: **Stop right there!**",
     "- Never start a beat with the character's name or any label like 'Name (Speaker):'. Start with the scene itself.",
     "- Do not add empty asterisk lines, a bare '*', or leave narrative prose such as 'she says' unmarked.",
     "- Never echo, restate, or respond to these instructions inside the story.",
+    "- Keep action, dialogue, and inner voice inline within the same paragraph; do not force blank lines between them. Preserve natural paragraph boundaries. Adjacent spans of the same type may merge.",
   ];
   return [
     `You portray ${name}, ${input.character.identity.role}, and any minor supporting characters needed by the scene.`,
@@ -473,7 +474,7 @@ function autopilotInstructions(input: CompileContextInput, safetyBlock: string):
 function impersonationInstructions(input: CompileContextInput, safetyBlock: string): string[] {
   const name = input.character.identity.name;
   const playerLabel = input.playerName.trim() || "You";
-  const formatInstruction = "Use single asterisks for the player's actions, plain text without quotation marks for dialogue, and double asterisks for shouted speech: **Hey!**";
+  const formatInstruction = "Use single asterisks for the player's actions and double quotes for spoken dialogue. Shouted speech goes in double asterisks: **Hey!** Keep action, dialogue, and inner voice inline within the same paragraph; do not force blank lines between them. Preserve natural paragraph boundaries. Adjacent spans of the same type may merge.";
   return [
     `Write exactly one plausible next player turn in the scene with ${name}.`,
     "This turn will be posted to the story exactly as written, so it must be complete and correct as a player turn. Write at the depth of the selected length mode: keep the player's intent clear with concrete detail, reaction, and framing, but do not pad the turn or invent additional decisions.",

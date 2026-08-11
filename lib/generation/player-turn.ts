@@ -280,6 +280,59 @@ function renderSpans(spans: Span[]): string {
 }
 
 /**
+ * Deterministic leak boundary: strip leading paragraphs that are clearly
+ * model meta-output / instruction echoing before the first genuine RP content.
+ *
+ * A paragraph is treated as meta if it contains strong meta indicators and
+ * contains no roleplay markers (*…*, "…", […] ) and no physical action evidence.
+ * Ambiguous first-person prose without meta indicators is preserved as dialogue.
+ */
+export function stripLeadingMetaParagraphs(text: string): string {
+  const META_LEAD_RE = /\b(?:obey the private direction|private direction|response must|formatting rules|plain text(?: without| for dialogue| and no)|quotation marks|blank lines between|single asterisks|double asterisks|output format|return only the next|write exactly one|this turn will be posted|mandatory control input|internal instruction|roleplay markup|segment\b|json\b|do not pad|do not invent|never write the character|never begin the turn|write the line|exactly as instructed|follow the formatting|player turn|first-person|analysis|planning|metadata|prompt text|character-card|memory blocks|chat-history markup|private reasoning|generation metadata)\b|^I need to obey|^I will simply write|^I must avoid|^I will ensure|^The response must|^I should/i;
+  const DIALOGUE_INDICATOR_RE = /\?\s*$|\b(?:you|your|you're|you've|you'll)\b|\blet'?s\b|\b(?:trust me|believe me|listen to me|look at me|please)\b|^(?:trust|wait|listen|stop|come|go|stay|watch|please|let|don'?t|yes|no|never|maybe|perhaps|sure|fine|hey)\b|^I\s+(?:said|told)\b|^I\s+came\s+(?:here|in|over|back)?\s+to\s+(?:say|tell|ask|apologize|thank|warn|insist)\b/i;
+
+  const paragraphs = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (paragraphs.length <= 1) return text;
+
+  const kept: string[] = [];
+  let foundStart = false;
+
+  for (const paragraph of paragraphs) {
+    if (foundStart) {
+      kept.push(paragraph);
+      continue;
+    }
+
+    if (/[*“”"\[\]]/.test(paragraph)) {
+      kept.push(paragraph);
+      foundStart = true;
+      continue;
+    }
+
+    if (PHYSICAL_ACTION_RE.test(paragraph)) {
+      kept.push(paragraph);
+      foundStart = true;
+      continue;
+    }
+
+    if (DIALOGUE_INDICATOR_RE.test(paragraph)) {
+      kept.push(paragraph);
+      foundStart = true;
+      continue;
+    }
+
+    if (META_LEAD_RE.test(paragraph)) {
+      continue;
+    }
+
+    kept.push(paragraph);
+    foundStart = true;
+  }
+
+  return kept.length > 0 ? kept.join("\n\n") : text;
+}
+
+/**
  * Deterministically normalize a model-generated player turn:
  *
  * - preserve the paragraph structure of the input (each input line / blank-line
@@ -292,7 +345,9 @@ export function formatPlayerTurn(value: string, playerName = ""): string {
   const text = stripControlResidue(value, playerName);
   if (!text) return text;
 
-  const paragraphs = text.split(/\r?\n+/).map((part) => part.trim()).filter(Boolean);
+  const source = stripLeadingMetaParagraphs(text);
+
+  const paragraphs = source.split(/\r?\n+/).map((part) => part.trim()).filter(Boolean);
   if (paragraphs.length === 0) return text;
 
   const rendered: string[] = [];
