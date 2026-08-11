@@ -123,3 +123,22 @@ test("POST impersonate honors a typed direction", async () => {
     restore();
   }
 });
+
+test("POST impersonate formats bare player prose into deterministic roleplay markup", async () => {
+  const restore = stubNovelAi("I look over at her. I don't know, maybe we should leave. I reach for the door.");
+  try {
+    const response = await POST(makeRequest({
+      ...baseBody,
+      action: "impersonate",
+      impersonationPrompt: "",
+      messages: [{ sender: "character", text: "The rain will pass." }],
+    }));
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.match(payload.reply, /^\*I look over at her\.\*$/m);
+    assert.match(payload.reply, /^"I don't know, maybe we should leave\."$/m);
+    assert.match(payload.reply, /^\*I reach for the door\.\*$/m);
+  } finally {
+    restore();
+  }
+});

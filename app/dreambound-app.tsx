@@ -53,7 +53,7 @@ import {
 import { compilePlayerPersona } from "../lib/personas/compile";
 import type { PlayerPersona } from "../lib/personas/schema";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
-import { normalizeImpersonatedPlayerTurn } from "../lib/generation/player-turn.ts";
+import { formatPlayerTurn } from "../lib/generation/player-turn.ts";
 import type { AutonomousAgent } from "../lib/generation/autonomous-cast.ts";
 import type { StoryMetadata } from "../lib/generation/story-metadata.ts";
 import {
@@ -2824,7 +2824,7 @@ export default function DreamboundApp() {
 
 async function impersonateTurn(conversation: Message[], playerDirection: string): Promise<string> {
     const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
-    let suggestion = normalizeImpersonatedPlayerTurn(
+    let suggestion = formatPlayerTurn(
       (await requestStoryReply(conversation, "impersonate", playerDirection)).reply,
       effectivePlayerName,
     );
@@ -2832,7 +2832,7 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
       const retryGuide = playerDirection
         ? `The private direction was this, and it must be preserved:\n${playerDirection}\n\nThe previous draft was rejected only because it was written from the character's side: it described ${selected.name}'s actions, dialogue, feelings, or reactions, or used ${selected.name}'s name/persona as the speaker. Retry with the SAME direction — do not replace or expand its intent. Rewrite it strictly from the player's first-person point of view: only the player's own actions and spoken words carry the direction's action and dialogue verbatim. Never write ${selected.name}'s actions, dialogue, feelings, reactions, or inner voice, and never call the player by a name ${selected.name} would use. Keep the player's turn complete but brief.`
         : `The previous draft was rejected only because it was written from the character's side: it described ${selected.name}'s actions, dialogue, or reactions, or used ${selected.name}'s name as the speaker. The player left the direction empty, so retry with ONE plausible first-person player turn that advances the scene naturally. Write strictly from the player's point of view: only the player's own actions and spoken words. Never write ${selected.name}'s actions, dialogue, feelings, thoughts, or reactions, and never write another speaker. Mentioning or addressing the character by name inside the player's own first-person action or dialogue is valid.`;
-      suggestion = normalizeImpersonatedPlayerTurn(
+      suggestion = formatPlayerTurn(
         (await requestStoryReply(conversation, "impersonate", retryGuide)).reply,
         effectivePlayerName,
       );
@@ -5188,6 +5188,8 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                   <li>Clears the composer after sending</li>
                   <li>Character replies continue normally afterward</li>
                   <li>Broken or empty story responses now show a useful error instead of a JSON parse failure</li>
+                  <li>Generated player turns are formatted deterministically: spoken dialogue in &quot;quotes&quot;, actions in *asterisks*, beats on their own lines, wrappers stripped — no prompt guesswork</li>
+                  <li>The edit window now looks and writes like the composer text field</li>
                 </ul>
               </div>
             </article>

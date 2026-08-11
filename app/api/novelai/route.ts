@@ -13,6 +13,7 @@ import {
   type StoryPreferences,
 } from "../../../lib/generation/compile-context.ts";
 import { parseStoryMetadata, type StoryMetadata } from "../../../lib/generation/story-metadata.ts";
+import { formatPlayerTurn } from "../../../lib/generation/player-turn.ts";
 import {
   findCastEntryByName,
   matchesName,
@@ -1032,6 +1033,10 @@ function cleanReply(
       .replace(/\s*(?<!\*)(\*[^*]+\*)(?!\*)\s*/g, "\n\n$1\n\n")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
+  }
+
+  if (outputKind === "player" && proseFormat === "roleplay") {
+    reply = formatPlayerTurn(reply, playerName);
   }
 
   const final = autopilot ? limitAutopilotBeat(reply) : reply.slice(0, 12_000);

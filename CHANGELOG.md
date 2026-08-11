@@ -21,10 +21,19 @@ A small set of fixes to the story-generation pipeline, shipped under the same 0.
   and rerun alike) have leaked generation wrappers such as `player user message:` / `Player:` /
   `<|user|>` stripped and are normalized to the same roleplay formatting as a manually written
   player message, with action, dialogue, and narration markers preserved.
+- **Player turns are now formatted deterministically, not by prompt alone** — a single dedicated
+  player-turn formatter rewrites every generated draft (blank-start, normal, rerun, and continued
+  turns, on NovelAI and the local model) into uniform roleplay markup: spoken dialogue in
+  `"quotes"`, player actions in `*asterisks*`, mixed turns split into blank-line-separated
+  paragraphs, and `player user message:` / `<|user|>` / `<character_reply>` residue stripped.
+  Already-correct drafts pass through untouched, and quoted dialogue is never re-wrapped.
+- **The message editor looks like the composer** — the in-bubble edit window is styled the same
+  as the main text field (borderless, transparent, same type and size) so editing feels like
+  writing right on the conversation.
 
 ### Quality
 - Regression coverage for blank-start impersonation prompt compilation and cleaned player-turn
-  formatting, plus end-to-end story-route tests (160 tests).
+  formatting, plus end-to-end story-route tests (167 tests).
 
 ## 0.6.0.2 — Drives that remember
 

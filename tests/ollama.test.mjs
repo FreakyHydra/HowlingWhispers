@@ -347,7 +347,7 @@ test("NovelAI impersonation extends a short player turn to the immersive floor a
   assert.match(calls[0].body.prompt, /Say I am angry about the cubs/);
   assert.match(calls[1].body.prompt, /<\|system\|>\nContinue the existing first-person player turn/);
   assert.match(calls[1].body.prompt, /Say I am angry about the cubs/);
-  assert.match(calls[1].body.prompt, /<\|user\|>\nArrax:\*I step closer\.\*\n\nI'm done with the excuses\.$/);
+  assert.match(calls[1].body.prompt, /<\|user\|>\nArrax:\*I step closer\.\*\n\n"I'm done with the excuses\."$/);
 });
 
 test("player continuation removes leaked directives and repeated prefix from the delta", () => {
