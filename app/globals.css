@@ -3507,6 +3507,32 @@ a:focus-visible {
   width: 100%;
 }
 
+.message.editing {
+  align-self: stretch;
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  width: 100%;
+}
+
+.message.editing .portrait {
+  display: none;
+}
+
+.message.editing .message-body {
+  width: 100%;
+}
+
+.message.editing .message-edit {
+  background: rgba(26, 19, 21, 0.97);
+  border: 1px solid rgba(215, 138, 94, 0.72);
+  border-radius: 5px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.48);
+  min-height: 144px;
+  padding: 20px 20px 15px;
+  width: 100%;
+}
+
 .message-edit textarea.message-edit-textarea {
   min-height: 96px;
   overflow: hidden;

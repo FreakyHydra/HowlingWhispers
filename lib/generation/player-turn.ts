@@ -117,6 +117,8 @@ const DIALOGUE_CUE_RE = new RegExp(
     "i don'?t know|i don'?t think|right\\?)\\b|" +
     "^(?:trust|wait|listen|stop|come|go|stay|watch|please|let|don'?t|yes|no|never|" +
     "maybe|perhaps|sure|fine|hey|look at me)\\b|" +
+    "^(?:i\\s+(?:said|told))\\b|" +
+    "^(?:i\\s+came\\s+(?:here|in|over|back)?\\s+to\\s+(?:say|tell|ask|apologize|thank|warn|insist))\\b|" +
     "\\?\\s*$",
   "i",
 );

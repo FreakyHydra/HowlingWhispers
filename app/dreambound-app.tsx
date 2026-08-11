@@ -3814,7 +3814,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
       message.sender === "character" && isLastCharacter && pageVersions.length > 1;
     return (
       <article
-        className={`message ${message.sender}${options.live && !seenMessageIds.has(`${activeMessageKey}:${message.id}`) ? " message-new" : ""}`}
+        className={`message ${message.sender}${options.live && editingId === message.id ? " editing" : ""}${options.live && !seenMessageIds.has(`${activeMessageKey}:${message.id}`) ? " message-new" : ""}`}
         key={message.id}
       >
         {message.sender === "character" && !message.speaker && <Portrait character={selected} accent={activeTheme.accent} image={portraitUrl(selected)} />}

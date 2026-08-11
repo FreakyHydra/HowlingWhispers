@@ -105,6 +105,12 @@ test("splits an action clause with an embedded speech frame into its parts", () 
   assert.match(result, /^\*I keep my eyes on Peony the whole time\.\*$/m);
 });
 
+test("quotes reported speech and purpose-clause dialogue instead of calling them actions", () => {
+  assert.equal(formatPlayerTurn("I said I'd stay."), "\"I said I'd stay.\"");
+  assert.equal(formatPlayerTurn("I came here to say I was sorry."), "\"I came here to say I was sorry.\"");
+  assert.equal(formatPlayerTurn("I told her it would be fine."), "\"I told her it would be fine.\"");
+});
+
 test("is idempotent — already-correct markup is preserved, not double-wrapped", () => {
   const correct = "\"Did you hear that?\"\n\n*I glance toward the window.*";
   assert.equal(formatPlayerTurn(correct), correct);
