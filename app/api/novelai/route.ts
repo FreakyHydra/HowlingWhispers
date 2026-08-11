@@ -18,6 +18,12 @@ import {
   matchesName,
   sanitizeCast,
 } from "../../../lib/generation/living-cast.ts";
+import {
+  autonomousAgentsToArray,
+  deriveAutonomyPulse,
+  sanitizeAutonomousCast,
+  seedAutonomyFromCast,
+} from "../../../lib/generation/autonomous-cast.ts";
 import { resolveBuiltinWorldLore } from "../../../lib/worlds/builtins.ts";
 import type { WorldLorebookV1 } from "../../../lib/worlds/schema.ts";
 import { parseWorldLorebook } from "../../../lib/worlds/schema.ts";
@@ -229,6 +235,7 @@ export async function POST(request: Request) {
   const character = isConnectionTest ? null : parseCharacter(body.character);
   const messages = isConnectionTest ? [] : parseMessages(body.messages);
   const livingCast = isConnectionTest ? [] : sanitizeCast(body.livingCast);
+  const autonomousCast = isConnectionTest ? new Map() : sanitizeAutonomousCast(body.autonomousCast);
   const requestedSpeaker = limitedString(body.respondAs, 120);
   const castSpeaker = !isConnectionTest && !isImpersonation && !isAutonomousBeat && requestedSpeaker
     ? (() => {
@@ -274,6 +281,16 @@ export async function POST(request: Request) {
     }, { status: 400 });
   }
 
+  const autonomyPulse = (autonomousCast.size > 0 || livingCast.length > 0)
+    ? deriveAutonomyPulse(seedAutonomyFromCast(autonomousCast.size > 0 ? autonomousCast : new Map(), livingCast), livingCast, {
+      speakerName: castSpeaker?.name ?? null,
+      primaryName: character?.identity.name ?? "",
+      pendingTargetName: castSpeaker && !matchesName(castSpeaker.name, character?.identity.name ?? "")
+        ? castSpeaker.name
+        : null,
+    })
+    : autonomousCast;
+
   const compiled = isConnectionTest ? null : compileContext({
       kind: isAutopilot ? "autopilot" : isImpersonation ? "impersonation" : "roleplay",
       provider: provider === "novelai" ? "novelai" : "local",
@@ -306,6 +323,7 @@ export async function POST(request: Request) {
       reroll: isReroll,
       cast: livingCast,
       speaker: castSpeaker?.name,
+      autonomy: autonomousAgentsToArray(autonomyPulse),
     });
   const prompt = isConnectionTest
     ? `Reply with exactly this text and nothing else: ${CONNECTION_TEST_RESPONSE}`

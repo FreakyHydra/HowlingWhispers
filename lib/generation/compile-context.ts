@@ -7,10 +7,12 @@ import type { WorldLorebookV1, WorldLoreEntry } from "../worlds/schema.ts";
 import {
   detectPendingInteraction,
   findCastEntryByName,
+  matchesName as matchesDisplayName,
   renderLivingCastBlock,
   renderSpeakerInstruction,
   type LivingCastEntry,
 } from "./living-cast.ts";
+import { renderAutonomousBlock, renderAutonomyInstruction, type AutonomousAgent } from "./autonomous-cast.ts";
 
 export type ContextMode = "character" | "balanced" | "story";
 export type GenerationProvider = "local" | "novelai";
@@ -48,6 +50,7 @@ export type CompileContextInput = {
   reroll?: boolean;
   cast?: LivingCastEntry[];
   speaker?: string;
+  autonomy?: AutonomousAgent[];
 };
 
 export function freshRerollSeed(): number {
@@ -171,10 +174,24 @@ export function compileContext(input: CompileContextInput): CompiledContext {
       speakerName: speakerEntry?.name,
     })
     : "";
+  const autonomyBlock = input.autonomy && input.autonomy.length > 0
+    ? renderAutonomousBlock(input.autonomy, { primaryName: input.character.identity.name })
+    : "";
   const speakerInstruction = speakerEntry
     ? renderSpeakerInstruction(speakerEntry, input.character.identity.name)
     : "";
-  const staticPartsForSpeaker = speakerInstruction ? [...staticParts, "", speakerInstruction] : staticParts;
+  const speakerAutonomy = speakerEntry && input.autonomy
+    ? input.autonomy.find((agent) => matchesDisplayName(agent.name, speakerEntry.name))
+    : null;
+  const autonomyInstruction = speakerAutonomy
+    ? renderAutonomyInstruction(speakerAutonomy, input.character.identity.name)
+    : "";
+  const autonomyParts = [autonomyInstruction].filter(Boolean);
+  const staticPartsForSpeaker = autonomyParts.length > 0
+    ? [...staticParts, "", speakerInstruction, "", ...autonomyParts]
+    : speakerInstruction
+      ? [...staticParts, "", speakerInstruction]
+      : staticParts;
   const fixedTokens = estimateTokens([
     ...staticPartsForSpeaker,
     canonBlock,
@@ -182,6 +199,7 @@ export function compileContext(input: CompileContextInput): CompiledContext {
     personaBlock,
     stateBlock,
     castBlock,
+    autonomyBlock,
     "Conversation history:",
   ].join("\n"));
   const historyBudget = Math.max(0, inputBudget - fixedTokens);
@@ -196,6 +214,7 @@ export function compileContext(input: CompileContextInput): CompiledContext {
     personaBlock,
     stateBlock,
     castBlock,
+    autonomyBlock,
     history,
     characterName,
     speakerName,
@@ -291,6 +310,7 @@ type PromptParts = {
   personaBlock: string;
   stateBlock: string;
   castBlock: string;
+  autonomyBlock: string;
   history: {
     messages: RoleplayMessage[];
     count: number;
@@ -324,6 +344,7 @@ function buildLegacyPrompt(parts: PromptParts): string {
     ...(parts.loreBlock ? ["<relevant-world-lore>", parts.loreBlock, "</relevant-world-lore>", ""] : []),
     ...(parts.personaBlock ? [parts.personaBlock, ""] : []),
     ...(parts.castBlock ? [parts.castBlock, ""] : []),
+    ...(parts.autonomyBlock ? [parts.autonomyBlock, ""] : []),
     parts.stateBlock,
     "",
     "Conversation history:",
@@ -345,6 +366,7 @@ function buildNovelAiPrompt(parts: PromptParts): string {
       ...(parts.loreBlock ? ["", "<relevant-world-lore>", parts.loreBlock, "</relevant-world-lore>"] : []),
       ...(parts.personaBlock ? ["", parts.personaBlock] : []),
       ...(parts.castBlock ? ["", parts.castBlock] : []),
+      ...(parts.autonomyBlock ? ["", parts.autonomyBlock] : []),
       parts.stateBlock,
     ].join("\n"),
   ];

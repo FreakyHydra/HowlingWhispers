@@ -5136,6 +5136,28 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             <article className="changelog-entry featured latest">
               <div className="changelog-mark">◐</div>
               <div>
+                <span>Version 0.6.0.1 · The room listens back</span>
+                <h2>Living Cast stops seeing ghosts, and side characters act on their own</h2>
+                <p>
+                  Ordinary words like What, Why, Did, Tell, Both, Because, Got, and Jail are no
+                  longer mistaken for characters, and present side characters now carry a
+                  lightweight inner state that shapes how they behave.
+                </p>
+                <h3>What changed</h3>
+                <ul>
+                  <li>Capitalization alone no longer creates a cast member — a name needs real evidence like an introduction, arrival, speech attribution, or repeated use.</li>
+                  <li>Stale false names from before this fix are cleaned up automatically.</li>
+                  <li>Each side character now has an autonomous state: a goal, immediate intent, wants, fears, unresolved concerns, and basic needs like hunger, fatigue, comfort, social, and curiosity.</li>
+                  <li>Drives influence an NPC without forcing them — they may disagree, hesitate, refuse, conceal something, or change their mind.</li>
+                  <li>NPCs can act on their own when their state gives them a reason, not only when asked.</li>
+                  <li>Private thoughts stay hidden behind the perception boundary; the story shows only what the player could see, like shorter answers or a glance toward the doorway.</li>
+                </ul>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
+              <div className="changelog-mark">◐</div>
+              <div>
                 <span>Version 0.6.0 · Side characters speak for themselves</span>
                 <h2>The Living Cast keeps track of who is in the room</h2>
                 <p>
@@ -6121,11 +6143,15 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                         present and what is pending.
                       </small>
                     </span>
-                    <input
-                      type="checkbox"
-                      checked={autoNpcReplies}
-                      onChange={(event) => setAutoNpcReplies(event.target.checked)}
-                    />
+                    <span className="switch">
+                      <input
+                        id="auto-npc-replies"
+                        type="checkbox"
+                        checked={autoNpcReplies}
+                        onChange={(event) => setAutoNpcReplies(event.target.checked)}
+                      />
+                      <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
+                    </span>
                   </label>
                 </fieldset>
 

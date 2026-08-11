@@ -307,3 +307,122 @@ test("matchesName compares normalized display names", () => {
   assert.equal(matchesName("Senako Steel", "senako-steel"), true);
   assert.equal(matchesName("Senako", "Senako Steel"), false);
 });
+
+test("sentence-start question and function words never become cast members (real-world regression)", () => {
+  const result = run(
+    [
+      { sender: "player", text: "*I hold up the ledger.* Why did you tell her all of that? What was the point?" },
+      { sender: "character", text: "*Senako studies the page.* Because the truth was going to come out either way. Got it?" },
+      { sender: "player", text: "*I sit down.* Did you think about what happens now? Both of us are on the line here. Jail is real, you know." },
+    ],
+    createCast(primary, "Alex"),
+  );
+  const bugWords = ["Did", "Tell", "Both", "Because", "Jail", "What", "Why", "Got"];
+  for (const word of bugWords) {
+    assert.ok(
+      !result.cast.some((entry) => matchesName(entry.name, word)),
+      `"${word}" must not be a cast member; cast = ${result.cast.map((entry) => entry.name).join(", ")}`,
+    );
+    assert.ok(!result.newNames.includes(word), `"${word}" must not be reported as a new name`);
+  }
+  const names = result.cast.map((entry) => entry.name);
+  assert.deepEqual(names, ["Senako Steel", "Alex"]);
+  assert.equal(result.pending, null);
+});
+
+test("common English words capitalized mid-sentence are still not treated as names", () => {
+  const result = run(
+    [{ sender: "player", text: "I asked whether jail is really that bad. Tell me the truth, though. What happened today?" }],
+    createCast(primary, "Alex"),
+  );
+  for (const word of ["Jail", "Tell", "What"]) {
+    assert.ok(!result.cast.some((entry) => matchesName(entry.name, word)), `"${word}" must not be a member`);
+  }
+  assert.equal(result.newNames.length, 0);
+});
+
+test("a genuinely introduced name still joins the cast", () => {
+  const result = run(
+    [{ sender: "player", text: "A tall woman steps in behind me. I recognize her as Valeria, who left the guild years ago." }],
+    createCast(primary, "Alex"),
+  );
+  assert.ok(result.cast.some((entry) => matchesName(entry.name, "Valeria")), "Valeria should join the cast");
+  assert.equal(result.cast.filter((entry) => entry.origin === "temporary").length, 1);
+});
+
+test("a side character introduced by accompaniment appears without being an extra", () => {
+  const result = run(
+    [{ sender: "player", text: "I step into the courtyard with Coda at my heels." }],
+    createCast(primary, "Alex"),
+  );
+  assert.ok(result.cast.some((entry) => matchesName(entry.name, "Coda")));
+  const coda = result.cast.find((entry) => matchesName(entry.name, "Coda"));
+  assert.equal(coda.presence, "active");
+});
+
+test("speaker attribution makes a quoted name a stable cast member", () => {
+  const result = run(
+    [{ sender: "character", text: "*A thin woman in a shawl settles into the chair across from you.* \"Melody said you would come,\" she begins." }],
+    createCast(primary, "Alex"),
+  );
+  assert.ok(result.cast.some((entry) => matchesName(entry.name, "Melody")));
+});
+
+test("sanitizeCast prunes single-token common-word names left behind by the old detector", () => {
+  const stale = [
+    ...createCast(primary, "Alex"),
+    { id: "why", name: "Why", origin: "temporary", presence: "mentioned", addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+    { id: "jail", name: "Jail", origin: "temporary", presence: "active", addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+    { id: "valeria-name", name: "Valeria", origin: "temporary", presence: "active", addedAt: 2, updatedAt: 2, notes: [], relationships: [] },
+  ];
+  const cleaned = sanitizeCast(stale);
+  assert.ok(!cleaned.some((entry) => matchesName(entry.name, "Why")));
+  assert.ok(!cleaned.some((entry) => matchesName(entry.name, "Jail")));
+  assert.ok(cleaned.some((entry) => matchesName(entry.name, "Valeria")), "real names survive pruning");
+});
+
+test("a reply requested as Melody keeps Melody as the authoritative speaker even when the text opens like a question", async () => {
+  const cast = await import("../lib/generation/living-cast.ts");
+  const requested = {
+    id: "melody",
+    name: "Melody",
+    origin: "temporary",
+    presence: "active",
+    addedAt: 1,
+    updatedAt: 1,
+    notes: [],
+    relationships: [],
+  };
+  const resolved = [...createCast(primary, "Alex"), requested];
+
+  const pending = detectPendingInteraction(
+    [
+      { sender: "player", text: "*I lean forward.*" },
+      { sender: "character", text: "Melody, what did you see down there? Why did you lie?" },
+      { sender: "player", text: "*I keep still, waiting.*" },
+    ],
+    resolved,
+    primary.name,
+    "Alex",
+  );
+  assert.equal(pending?.kind, "cast");
+  assert.equal(pending?.targetName, "Melody");
+
+  const autop = run(
+    [
+      { sender: "player", text: "*I lean forward.*" },
+      { sender: "character", text: "Melody, what did you see down there? Why did you lie?" },
+      { sender: "player", text: "*I keep still, waiting.*" },
+    ],
+    resolved,
+  );
+  assert.equal(autop.autoSpeakerName, "Melody");
+
+  const speaker = cast.findCastEntryByName(resolved, "Melody");
+  assert.equal(cast.matchesName(speaker?.name ?? "", "Melody"), true);
+  const blockSuffix = cast.renderLivingCastBlock(resolved, {
+    pending: autop.pending,
+    speakerName: autop.autoSpeakerName ?? undefined,
+  });
+  assert.ok(!blockSuffix.includes("PENDING INTERACTION"), "no pending line when Melody is the one speaking");
+});

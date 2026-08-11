@@ -62,6 +62,14 @@ const STOPWORDS = new Set([
   "right", "sure", "okay", "fine", "good", "great", "miss", "mrs", "mr", "sir",
   "boy", "girl", "man", "woman", "kid", "son", "daughter", "she", "herself",
   "himself", "myself", "yourself",
+  "did", "do", "does", "was", "were", "been", "having", "going", "went", "go",
+  "has", "have", "had", "would", "should", "could", "will", "shall", "can",
+  "as", "at", "before", "after", "between", "while", "during", "because",
+  "why", "what", "when", "where", "who", "whom", "whose", "which", "how",
+  "tell", "told", "both", "jail", "got", "get", "gets", "getting", "said",
+  "says", "ask", "asked", "asks", "asked", "thought", "think", "wanted",
+  "first", "last", "next", "again", "only", "too", "also", "still", "even",
+  "every", "any", "some", "all", "each", "few",
 ]);
 
 const ARRIVAL_VERB =
@@ -100,21 +108,84 @@ function countOccurrences(text: string, token: string): number {
   return (text.match(new RegExp(`\\b${escapeRegex(token)}\\b`, "g")) ?? []).length;
 }
 
-function discoverNames(text: string): string[] {
+/** Is this capitalized token capitalized mid-sentence (not just at a sentence start)? */
+function isMidSentenceCapitalization(text: string, token: string): boolean {
+  const regex = new RegExp(`\\b${escapeRegex(token)}\\b`, "g");
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    let cursor = match.index - 1;
+    while (cursor >= 0 && /\s/.test(text[cursor])) cursor -= 1;
+    const before = cursor >= 0 ? text[cursor] : "";
+    if (before && /[^\s]/.test(before) && !/[.!?;:…\n]/.test(before)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const INTRODUCTION_PATTERN =
+  /\b(?:this is|these are|meet|introduc(?:e|es|ed|ing)|say[ing]? hi to|say[ing]? hello to|named|called)\s+/i;
+
+const ARRIVAL_CONTEXT_PATTERN =
+  /\b(?:enter(?:s|ed|ing)?|arrive(?:s|d)?|joins?|joining|follow(?:s|ed)?|accompan(?:ies|ied|ying)|stepped? (?:in|into)|walk(?:s|ed)? (?:in|into)|came (?:in|into|through)|makes? (?:their|his|her) way in|shows? up)\b|\bwith\s+/i;
+
+const SPEECH_ATTRIBUTION_PATTERN =
+  /\b(?:said|says|asked|asks|replied|replies|answered|answers|whispered|whispers|shouted|shouts|called|call|murmured|murmurs|began|started|continued|added|laugh(?:ed)?|sighed)\b/i;
+
+/** Would a name "$token" be rejected merely for being a common word? */
+function isCommonNameShapedToken(token: string): boolean {
+  const lower = token.toLocaleLowerCase("en-US");
+  return STOPWORDS.has(lower);
+}
+
+function discoverNames(text: string, seekText?: { haystack: string }): string[] {
   const seen = new Set<string>();
   const candidates: string[] = [];
   for (const match of text.matchAll(NAME_TOKEN_RE)) {
     const token = match[1];
-    if (STOPWORDS.has(token.toLocaleLowerCase("en-US"))) continue;
+    const lowerToken = token.toLocaleLowerCase("en-US");
+    if (STOPWORDS.has(lowerToken)) continue;
     if (seen.has(token)) continue;
     seen.add(token);
-    const lowerToken = token.toLocaleLowerCase("en-US");
-    const totalLower = countOccurrences(text.toLocaleLowerCase("en-US"), lowerToken);
-    const totalCased = countOccurrences(text, token);
-    if (totalLower > totalCased) continue;
     candidates.push(token);
   }
-  return candidates;
+
+  // A capitalized token is a name only when at least one of these holds:
+  //   1. It is also capitalized mid-sentence somewhere (proper-noun use).
+  //   2. It sits in an introduction/arrival/accompaniment frame ("this is Melody",
+  //      "…with Melody", "Melody entered", "…named Melody").
+  //   3. It has explicit speech attribution ("Melody said", "said Melody").
+  //   4. It is referenced repeatedly across the conversation (contextual evidence).
+  // Sentence-start capitalization alone is never sufficient — "Did", "Tell",
+  // "Both", "Because", "Jail", "What", "Why", "Got" are ordinary words.
+  const haystack = seekText?.haystack ?? text;
+  const accepted: string[] = [];
+  for (const token of candidates) {
+    const nameLike = token.replace(/[^A-Za-z]/g, "");
+    if (nameLike.length < 2) continue;
+    if (isCommonNameShapedToken(token)) continue;
+
+    const midSentence = isMidSentenceCapitalization(haystack, nameLike);
+    const intro = INTRODUCTION_PATTERN.test(text)
+      && new RegExp(`\\b(?:this is|these are|meet|named|called|introduc\\w*|saying? hi to|saying? hello to)\\s+${escapeRegex(nameLike)}\\b`, "i").test(text);
+    const arrival = ARRIVAL_CONTEXT_PATTERN.test(text)
+      && new RegExp(
+        `(?:\\bwith\\s+${escapeRegex(nameLike)}\\b|\\b(?:${escapeRegex(nameLike)})\\s+(?:enter(?:s|ed|ing)?|arrive(?:s|d)?|joins?|joining|follow(?:s|ed)?|accompan(?:ies|ied|ying)|came (?:in|into|through)|walk(?:s|ed)? (?:in|into)|step(?:s|ed)? (?:in|into)|makes? (?:their|his|her) way in|showed? up|return(?:s|ed)?)\\b|\\b(?:enter(?:s|ed|ing)?|arrive(?:s|d)?|joins?|joining|follow(?:s|ed)?|accompan(?:ies|ied|ying))\\s+${escapeRegex(nameLike)}\\b)`,
+        "i",
+      ).test(text);
+    const attribution = SPEECH_ATTRIBUTION_PATTERN.test(text)
+      && new RegExp(
+        `(?:${escapeRegex(nameLike)}\\s+(?:said|says|asked|asks|replied|replies|answered|answers|whispered|whispers|shouted|shouts|called|call|murmured|murmurs|began|started|continued|added|sighed|laugh(?:ed|s)?)\\b|\\b(?:said|asked|replied|whispered|called)\\s+${escapeRegex(nameLike)}\\b)`,
+        "i",
+      ).test(text);
+
+    const repeatedContext = countOccurrences(haystack, nameLike) >= 3
+      && (midSentence || intro || arrival || attribution);
+
+    if (!midSentence && !intro && !arrival && !attribution && !repeatedContext) continue;
+    accepted.push(token);
+  }
+  return accepted;
 }
 
 function presenceVerbKind(value: string): "arrival" | "departure" | null {
@@ -233,6 +304,8 @@ export function sanitizeCast(value: unknown): LivingCastEntry[] {
     const entry = item as Record<string, unknown>;
     const name = typeof entry.name === "string" ? entry.name.trim().slice(0, 80) : "";
     if (!name) continue;
+    const singleToken = !/\s/.test(name);
+    if (singleToken && STOPWORDS.has(name.toLocaleLowerCase("en-US"))) continue;
     const origin: CastOrigin =
       entry.origin === "player" || entry.origin === "permanent" || entry.origin === "temporary"
         ? entry.origin
@@ -354,9 +427,11 @@ export function detectLivingCast(input: {
     Object.assign(entry, patch, { updatedAt: now });
   };
 
+  const conversationText = input.messages.map((message) => message.text ?? "").join("\n");
+
   for (const message of input.messages) {
     const text = message.text ?? "";
-    const candidates = discoverNames(text);
+    const candidates = discoverNames(text, { haystack: conversationText });
 
     for (const token of candidates) {
       if (matchesName(token, primaryName)) continue;

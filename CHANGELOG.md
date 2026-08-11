@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.6.0.1 — The room listens back
+
+**◐ Living Cast stops mistaking ordinary words for people, and present side characters now act
+with their own inner momentum.** The false cast members seen in real use (What, Why, Did, Tell,
+Both, Because, Got, Jail) are gone, and active NPCs carry a lightweight autonomous state that
+shapes how they act even when nobody asks them anything.
+
+### What's new
+- **Autonomous Cast (MVP)** — each present side character carries a small drive state: a current
+  goal, immediate intent, wants, fears, unresolved concerns, and basic needs (hunger, fatigue,
+  comfort, social, curiosity). These drives influence the character's choices without ever
+  mechanically forcing them: an NPC may disagree, hesitate, refuse, conceal something, or change
+  their mind.
+- **NPCs act on their own** — characters pursue their own goals and can initiate with the scene or
+  with each other when their state gives them a reason, instead of always waiting for the player.
+- **Perception boundary** — a character's private state is kept richer than the player ever sees.
+  The prompt carries hidden subtext, while the player-facing story shows only physical residue
+  ("her answers grow shorter", "she keeps glancing toward the doorway").
+
+### What changed (fixes)
+- **No more sentence-start ghosts** — capitalization alone no longer creates cast members. A name
+  needs real evidence: mid-sentence capitalization, an introduction or arrival frame, speech
+  attribution, or repeated context. Occurrences like "What", "Why", "Did", "Tell", "Both",
+  "Because", "Got", and "Jail" from real conversations are no longer treated as characters.
+- **Stale cast cleanup** — previously stored false names are pruned when cast state is loaded.
+- **Speaker stays authoritative** — when a reply is requested as a specific side character (for
+  example Melody), the message is stored and rendered as Melody even if the reply text starts with
+  "What", "Why", or another question word.
+
+### Quality
+- Regression coverage for the real false-positive failure, the strong-evidence discovery rules,
+  the perception boundary, autonomy seeding, and prompt integration.
+
 ## 0.6.0 — Side characters speak for themselves
 
 **◐ The Living Cast keeps track of who is in the room, and named side characters now answer

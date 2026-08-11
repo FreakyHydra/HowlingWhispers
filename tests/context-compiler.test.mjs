@@ -426,3 +426,71 @@ test("a cast speaker writes the turn as that member and labels prior side messag
   assert.match(result.prompt, /<\|assistant\|>\n<think><\/think>\nMelody:$/);
   assert.doesNotMatch(result.prompt, /\[PENDING INTERACTION\].*\nMelody has not responded\./);
 });
+
+test("an autonomous cast renders NPC subtext and observable residue near the living cast block", () => {
+  const result = compile(adultCharacter(), {
+    provider: "novelai",
+    model: "glm-4-6",
+    cast: [
+      { id: "peony", name: "Peony", origin: "permanent", presence: "active", primary: true, addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+      { id: "melody", name: "Melody", origin: "temporary", presence: "active", addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+    ],
+    autonomy: [{
+      id: "rc:melody",
+      name: "Melody",
+      drive: {
+        goal: "leave the greenhouse before nightfall",
+        intent: "find an excuse to step outside",
+        wants: ["the ledger"],
+        fears: ["being followed"],
+        concerns: ["an unspoken warning"],
+        needs: { hunger: 0.8, fatigue: 0.1, comfort: 0.2, social: 0.9, curiosity: 0.5 },
+      },
+      revisions: [{ internal: ["Melody intends to leave"], observable: ["keeps glancing toward the way out"] }],
+      updatedAt: 2,
+    }],
+    messages: [
+      { sender: "character", text: "Melody, what do you think of the dying light?" },
+      { sender: "player", text: "*I wait.*" },
+    ],
+  });
+  assert.match(result.prompt, /<autonomy>\n\[NPC SUBTEXT: Melody\]/);
+  assert.match(result.prompt, /Goal: leave the greenhouse before nightfall/);
+  assert.match(result.prompt, /Fears: being followed/);
+  assert.match(result.prompt, /Pressed needs: hunger, social/);
+  assert.match(result.prompt, /\[OBSERVABLE\] Melody — Melody keeps glancing toward the way out/);
+  assert.doesNotMatch(result.prompt, /\[NPC SUBTEXT: Peony\]/);
+});
+
+test("a side speaker gets the autonomous independence instruction", () => {
+  const result = compile(adultCharacter(), {
+    provider: "novelai",
+    model: "glm-4-6",
+    cast: [
+      { id: "peony", name: "Peony", origin: "permanent", presence: "active", primary: true, addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+      { id: "melody", name: "Melody", origin: "temporary", presence: "active", addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+    ],
+    speaker: "Melody",
+    autonomy: [{
+      id: "rc:melody",
+      name: "Melody",
+      drive: {
+        goal: "slip out of the keep",
+        intent: "",
+        wants: ["her freedom"],
+        fears: ["the warden"],
+        concerns: [],
+        needs: { hunger: 0.7, fatigue: 0, comfort: 0.4, social: 0.2, curiosity: 0.1 },
+      },
+      revisions: [{ internal: ["Melody intends to leave"], observable: ["keeps glancing toward the way out"] }],
+      updatedAt: 2,
+    }],
+    messages: [
+      { sender: "character", text: "Melody, what do you want from tonight?" },
+      { sender: "player", text: "*I wait.*" },
+    ],
+  });
+  assert.match(result.prompt, /you are an independent participant, not a plot device/);
+  assert.match(result.prompt, /you may disagree, hesitate, refuse, conceal what you know, or change your mind/);
+  assert.match(result.prompt, /Melody intends to leave/);
+});

@@ -26,6 +26,11 @@ featured portraits including a "Curation call" ad card linking to the owner's Di
 
 ## Deploy pipeline (LOCKED — follow exactly)
 
+> **RULE: ALWAYS reboot the site after ANY change to the app (JSX/CSS/route/code), not only after deploys.**
+> Run `systemctl restart thehowlingwhispers-dev.service` (sandbox) after every dev change, and let the
+> live service be restarted via the promote script. If you skip the restart, the sandbox keeps serving
+> a stale asset manifest and the page renders blank/white. Verify with a curl of the page + bundle hash.
+
 1. **Work on `dev` only.** Never touch `main`/live without the user's explicit approval.
 2. In `/var/www/HowlingWhispers-dev`:
    - `git pull` (fast-forward `dev` from origin) if not up to date.
