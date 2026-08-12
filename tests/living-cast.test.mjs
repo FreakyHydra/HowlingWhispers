@@ -10,6 +10,7 @@ import {
   renderSpeakerInstruction,
   sanitizeCast,
 } from "../lib/generation/living-cast.ts";
+import { autonomousAgentsToArray, seedAutonomyFromCast } from "../lib/generation/autonomous-cast.ts";
 
 const primary = { id: "senako-steel", name: "Senako Steel" };
 
@@ -278,7 +279,7 @@ test("renderSpeakerInstruction keeps the speaker and primary names and stays saf
   assert.ok(instruction.toLowerCase().includes("unconfirmed"));
 });
 
-test("sanitizeCast bounds entries and keeps only the first primary", () => {
+test("sanitizeCast bounds entries and rejects stray primary:true unless it matches the supplied identity", () => {
   const dirty = {
     id: "x",
     name: "Junk",
@@ -295,12 +296,57 @@ test("sanitizeCast bounds entries and keeps only the first primary", () => {
     "not-an-object",
   ]);
   assert.equal(cast.length, 2);
-  const primaries = cast.filter((entry) => entry.primary);
-  assert.equal(primaries.length, 1);
+  assert.equal(cast.filter((entry) => entry.primary).length, 0);
   assert.equal(cast[0].notes[0].length, 200);
   assert.deepEqual(cast[0].relationships.map((rel) => rel.target), ["Senako Steel"]);
   assert.equal(sanitizeCast("garbage").length, 0);
   assert.equal(sanitizeCast([{ name: "" }]).length, 0);
+});
+
+test("sanitizeCast makes the ID-matched entry primary regardless of array order", () => {
+  const cast = sanitizeCast([
+    { id: "side", name: "Side", origin: "temporary", presence: "active", addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+    { id: "senako-steel", name: "Senako Steel", origin: "permanent", presence: "active", addedAt: 2, updatedAt: 2, notes: [], relationships: [] },
+  ], { id: "senako-steel", name: "Senako Steel" });
+  const senako = cast.find((entry) => entry.id === "senako-steel");
+  assert.ok(senako?.primary, "Senako should be primary by ID");
+  assert.ok(!cast.find((entry) => entry.id === "side")?.primary, "Side should not be primary");
+});
+
+test("sanitizeCast falls back to name matching when ID is absent", () => {
+  const cast = sanitizeCast([
+    { id: "side", name: "Side", origin: "temporary", presence: "active", addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+    { id: "senako", name: "Senako Steel", origin: "permanent", presence: "active", addedAt: 2, updatedAt: 2, notes: [], relationships: [] },
+  ], { name: "Senako Steel" });
+  assert.ok(cast.find((entry) => entry.id === "senako")?.primary, "Senako should be primary by name");
+});
+
+test("sanitizeCast never makes a player entry primary", () => {
+  const cast = sanitizeCast([
+    { id: "player", name: "Alex", origin: "player", presence: "active", addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+    { id: "senako", name: "Senako Steel", origin: "permanent", presence: "active", addedAt: 2, updatedAt: 2, notes: [], relationships: [] },
+  ], { id: "senako", name: "Senako Steel" });
+  assert.ok(!cast.find((entry) => entry.id === "player")?.primary, "Player must not be primary");
+  assert.ok(cast.find((entry) => entry.id === "senako")?.primary, "Senako should be primary");
+});
+
+test("sanitizeCast restores exactly one primary when the supplied identity is missing from the array", () => {
+  const cast = sanitizeCast([
+    { id: "side", name: "Side", origin: "temporary", presence: "active", addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+    { id: "other", name: "Other", origin: "temporary", presence: "active", addedAt: 2, updatedAt: 2, notes: [], relationships: [] },
+  ], { id: "senako", name: "Senako Steel" });
+  const primaries = cast.filter((entry) => entry.primary);
+  assert.equal(primaries.length, 1, "Exactly one primary should be restored defensively");
+});
+
+test("sanitizeCast strips duplicate primaries when the supplied identity matches one entry", () => {
+  const cast = sanitizeCast([
+    { id: "senako", name: "Senako Steel", origin: "permanent", presence: "active", addedAt: 1, updatedAt: 1, notes: [], relationships: [], primary: true },
+    { id: "side", name: "Side", origin: "temporary", presence: "active", addedAt: 2, updatedAt: 2, notes: [], relationships: [], primary: true },
+  ], { id: "senako", name: "Senako Steel" });
+  assert.equal(cast.filter((entry) => entry.primary).length, 1);
+  assert.ok(cast.find((entry) => entry.id === "senako")?.primary);
+  assert.ok(!cast.find((entry) => entry.id === "side")?.primary);
 });
 
 test("matchesName compares normalized display names", () => {
@@ -425,4 +471,25 @@ test("a reply requested as Melody keeps Melody as the authoritative speaker even
     speakerName: autop.autoSpeakerName ?? undefined,
   });
   assert.ok(!blockSuffix.includes("PENDING INTERACTION"), "no pending line when Melody is the one speaking");
+});
+
+test("scene opening introducing a side character seeds them into initial livingCast and autonomy", () => {
+  const character = { id: "senako-steel", name: "Senako Steel" };
+  const scene = { id: "test", title: "Test", opening: "*Senako enters the room with Melody.*" };
+  const session = { createdAt: Date.now() };
+  const baseCast = createCast({ id: character.id, name: character.name }, "Alex");
+  const detected = detectLivingCast({
+    messages: [{ id: session.createdAt, sender: "character", text: scene.opening }],
+    cast: baseCast,
+    primary: { id: character.id, name: character.name },
+    playerName: "Alex",
+  });
+  const melody = detected.cast.find((entry) => matchesName(entry.name, "Melody"));
+  assert.ok(melody, "Melody should be discovered from the opening");
+  assert.equal(melody.presence, "active");
+  const autonomy = seedAutonomyFromCast(new Map(), detected.cast);
+  assert.ok(autonomy.has(melody.id), "Melody should receive initial autonomy");
+  const agent = autonomy.get(melody.id);
+  assert.ok(agent, "Melody autonomy entry should exist");
+  assert.equal(agent.name, "Melody");
 });

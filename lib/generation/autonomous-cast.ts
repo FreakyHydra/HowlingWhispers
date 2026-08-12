@@ -412,6 +412,50 @@ export function deriveAutonomyPulse(
   return working;
 }
 
+export type PulseViewAgent = {
+  id: string;
+  name: string;
+  goal: string;
+  needs: Record<AutonomyNeed, number>;
+  observable: string[];
+};
+
+export type PulseView = {
+  agents: PulseViewAgent[];
+  pending: { targetName: string | null; asker: string | null } | null;
+};
+
+export function renderPulseView(
+  agents: Map<string, AutonomousAgent> | AutonomousAgent[],
+  cast: LivingCastShim[],
+  options: {
+    primaryName: string;
+    speakerName?: string | null;
+    pendingTargetName?: string | null;
+    now?: number;
+  },
+): PulseView {
+  const agentMap = agents instanceof Map ? agents : new Map(agents.map((agent) => [agent.id, agent]));
+  const derived = deriveAutonomyPulse(agentMap, cast, options);
+  const pending = options.pendingTargetName
+    ? { targetName: options.pendingTargetName, asker: null }
+    : null;
+  const viewAgents: PulseViewAgent[] = [];
+  for (const [id, entry] of derived) {
+    if (entry.name === options.primaryName) continue;
+    if (options.speakerName && entry.name === options.speakerName) continue;
+    const residue = recentResidue(entry);
+    viewAgents.push({
+      id: entry.id,
+      name: entry.name,
+      goal: entry.drive.goal,
+      needs: { ...entry.drive.needs },
+      observable: residue.observable,
+    });
+  }
+  return { agents: viewAgents, pending };
+}
+
 /**
  * Agencies map rendered to a compact block for the prompt:
  *   [NPC SUBTEXT] — internal drive (never player-facing)

@@ -251,9 +251,8 @@ test("device impersonation targets only the player and allows short turns", asyn
   assert.equal(payload.finalization.outputKind, "player");
   assert.equal(payload.finalization.outputName, "Kael");
   const prompt = payload.ollamaRequest.prompt;
-  assert.match(prompt, /concise for Quick, developed for Immersive, substantial for Novel-like/);
-  assert.doesNotMatch(prompt, /The selected quick length is mandatory/);
-  assert.doesNotMatch(prompt, /at least 3 substantial segments/);
+  assert.match(prompt, /The selected quick length is mandatory. Write 12–160 words. A shorter or longer draft is invalid./);
+  assert.match(prompt, /Use 1–4 substantial segments. Fewer than 1 or more than 4 segments is invalid./);
   assert.match(prompt, /never write the character's dialogue, actions, voice, reactions/);
   assert.match(prompt, /Never continue, finish, extend, or reword the character's last message/);
   assert.ok(payload.ollamaRequest.options.stop.some((stop) => stop === "\nCoda:"));
@@ -288,8 +287,8 @@ test("device character roleplay targets only the character with a hard length fl
   assert.equal(payload.finalization.outputKind, "character");
   assert.equal(payload.finalization.outputName, "Coda");
   const prompt = payload.ollamaRequest.prompt;
-  assert.match(prompt, /The selected novel length is mandatory; a shorter draft is invalid/);
-  assert.match(prompt, /at least 10 substantial segments and at least 400 words total/);
+  assert.match(prompt, /The selected novel length is mandatory. Write 400–650 words. A shorter or longer draft is invalid./);
+  assert.match(prompt, /Use 10–16 substantial segments. Fewer than 10 or more than 16 segments is invalid./);
   assert.match(prompt, /Never assign the player an action, feeling, perception, or decision/);
   assert.doesNotMatch(prompt, /soft ceiling, not a hard minimum/);
 });
@@ -462,4 +461,192 @@ test("adult server models reject characters that are not confirmed adults", asyn
   assert.deepEqual(await response.json(), {
     error: "The adult roleplay model requires a character explicitly confirmed as an adult.",
   });
+});
+
+function longImmersiveCharacterReply() {
+  const paragraphs = [];
+  for (let i = 0; i < 8; i++) {
+    paragraphs.push(`*Coda shifts her weight from paw to paw, the rain dripping from her coat.* She breathes in the wet pine air and lets it out slowly, watching the sky. "The river will be high by morning," she says, her voice rough but calm. *She turns her head, ears pricked, listening to the forest around them.* The campfire pops and sends a few sparks upward into the dark branches. "We should move before the trail washes out."`);
+  }
+  return paragraphs.join("\n\n");
+}
+
+function makeNovelAIRequest(overrides = {}) {
+  return new Request("http://localhost/api/novelai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider: "novelai",
+      apiToken: "test-token",
+      model: "xialong-v1",
+      playerName: "Kael",
+      temperature: 0.8,
+      replyLength: "immersive",
+      proseFormat: "roleplay",
+      character: {
+        id: "coda",
+        name: "Coda",
+        role: "Wolf guardian",
+        profile: "A test wolf guardian.",
+        canonical: legacyCharacterToCanon({
+          id: "coda",
+          name: "Coda",
+          role: "Wolf guardian",
+          profile: "A test wolf guardian.",
+        }),
+        scene: "Test scene",
+        sceneId: "test",
+        worldId: "coda",
+        worldLore: null,
+        weather: "Rainy",
+        memories: [],
+        sandbox: false,
+        relationship: "Bond 50/100",
+        playerRole: "",
+        playerRoleContext: "",
+        contextMode: "balanced",
+        matureContentRequested: false,
+      },
+      messages: [
+        { sender: "player", text: "Hello, Coda." },
+        { sender: "character", text: "*Coda looks up.* \"You're back.\"" },
+      ],
+      ...overrides,
+    }),
+  });
+}
+
+test("Immersive NovelAI character output over 400 words is capped", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => Response.json({
+    choices: [{ text: longImmersiveCharacterReply() }],
+  });
+
+  const response = await generateStory(makeNovelAIRequest());
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const words = payload.reply.trim().split(/\s+/).filter(Boolean).length;
+  assert.ok(words <= 400, `Immersive reply should be <= 400 words, got ${words}`);
+});
+
+test("Immersive NovelAI output over 5 paragraphs is capped", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => Response.json({
+    choices: [{ text: longImmersiveCharacterReply() }],
+  });
+
+  const response = await generateStory(makeNovelAIRequest());
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const paragraphs = payload.reply.split(/\n\s*\n/).filter((p) => p.trim()).length;
+  assert.ok(paragraphs <= 5, `Immersive reply should be <= 5 paragraphs, got ${paragraphs}`);
+});
+
+test("NovelAI reply already inside limits remains unchanged", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const shortReply = "*Coda nods.* \"Good. Stay close.\"";
+  globalThis.fetch = async () => Response.json({
+    choices: [{ text: shortReply }],
+  });
+
+  const response = await generateStory(makeNovelAIRequest());
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.ok(payload.reply.includes("*Coda nods.*"), "Should preserve action markup");
+  assert.ok(payload.reply.includes("Stay close"), "Should preserve dialogue content");
+});
+
+test("Quick NovelAI ceiling is distinct from Immersive", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const quickReply = Array.from({ length: 20 }, () => "*Coda listens.* \"We move now.\"").join("\n\n");
+  globalThis.fetch = async () => Response.json({
+    choices: [{ text: quickReply }],
+  });
+
+  const response = await generateStory(makeNovelAIRequest({ replyLength: "quick" }));
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const words = payload.reply.trim().split(/\s+/).filter(Boolean).length;
+  assert.ok(words <= 160, `Quick reply should be <= 160 words, got ${words}`);
+  const paragraphs = payload.reply.split(/\n\s*\n/).filter((p) => p.trim()).length;
+  assert.ok(paragraphs <= 2, `Quick reply should be <= 2 paragraphs, got ${paragraphs}`);
+});
+
+test("Novel-like NovelAI ceiling is distinct from Immersive", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const novelReply = Array.from({ length: 12 }, (_, i) => `*Coda moves through the ${i + 1}th scene.* "This is a longer chapter."`).join("\n\n");
+  globalThis.fetch = async () => Response.json({
+    choices: [{ text: novelReply }],
+  });
+
+  const response = await generateStory(makeNovelAIRequest({ replyLength: "novel" }));
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const words = payload.reply.trim().split(/\s+/).filter(Boolean).length;
+  assert.ok(words <= 650, `Novel-like reply should be <= 650 words, got ${words}`);
+  const paragraphs = payload.reply.split(/\n\s*\n/).filter((p) => p.trim()).length;
+  assert.ok(paragraphs <= 8, `Novel-like reply should be <= 8 paragraphs, got ${paragraphs}`);
+});
+
+test("NovelAI player impersonation continuation cannot exceed maxWords", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes("text.novelai.net")) {
+      calls.push({ body: JSON.parse(String(init?.body)) });
+      return Response.json({
+        choices: [{ text: "*I keep going.* I say more and more and more and more and more and more words here to try to blow past the limit." }],
+      });
+    }
+    return Response.json({});
+  };
+
+  const response = await generateStory(makeNovelAIRequest({
+    action: "impersonate",
+    playerDirection: "Say something short.",
+  }));
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const words = payload.reply.trim().split(/\s+/).filter(Boolean).length;
+  assert.ok(words <= 160, `Immersive impersonation should be <= 160 words, got ${words}`);
+});
+
+test("NovelAI reroll still respects the selected Reply Length", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => Response.json({
+    choices: [{ text: longImmersiveCharacterReply() }],
+  });
+
+  const response = await generateStory(makeNovelAIRequest({ reroll: true }));
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const words = payload.reply.trim().split(/\s+/).filter(Boolean).length;
+  assert.ok(words <= 400, `Reroll should respect Immersive word limit, got ${words}`);
+});
+
+test("NovelAI truncation preserves roleplay formatting", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const formatted = Array.from({ length: 10 }, (_, i) => `*Action ${i + 1}.* "Dialogue ${i + 1}." [Inner thought ${i + 1}.]`).join("\n\n");
+  globalThis.fetch = async () => Response.json({
+    choices: [{ text: formatted }],
+  });
+
+  const response = await generateStory(makeNovelAIRequest());
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const lines = payload.reply.split("\n\n").filter((p) => p.trim());
+  assert.ok(lines.length <= 5, `Should cap paragraphs, got ${lines.length}`);
+  for (const line of lines) {
+    assert.ok(!line.includes("``"), "Truncation should not leave broken markup");
+  }
+  assert.ok(payload.reply.includes("*Action 1.*"), "Should preserve leading action markup");
+  assert.ok(payload.reply.includes("Dialogue 1"), "Should preserve leading dialogue content");
 });

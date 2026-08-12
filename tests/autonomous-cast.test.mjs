@@ -9,6 +9,7 @@ import {
   recentResidue,
   renderAutonomousBlock,
   renderAutonomyInstruction,
+  renderPulseView,
   sanitizeAutonomousCast,
   seedAutonomyFromCast,
   updateAutonomyState,
@@ -427,4 +428,48 @@ test("seedAutonomyFromCast then updateAutonomyState round-trips through renderAu
   assert.ok(block.includes("[NPC SUBTEXT: Melody]"));
   assert.ok(updated.get("rc:melody").drive.needs.hunger < 0.9);
   assert.ok(block.includes("Goal: slip out before the market closes"));
+});
+
+test("renderPulseView returns a detached plain-data projection and does not mutate the input agents", () => {
+  const melody = seededAgent("Melody", melodyDrive({ goal: "find the ledger" }));
+  const agents = new Map([["rc:melody", melody]]);
+  const view = renderPulseView(agents, [{ id: "rc:melody", name: "Melody" }], {
+    primaryName: "Senako Steel",
+    now: NOW,
+  });
+  assert.ok(Array.isArray(view.agents));
+  assert.equal(view.agents.length, 1);
+  assert.equal(view.agents[0].name, "Melody");
+  assert.equal(view.agents[0].goal, "find the ledger");
+  view.agents[0].goal = "mutated";
+  view.agents[0].observable.push("fake observable");
+  const original = agents.get("rc:melody");
+  assert.equal(original.drive.goal, "find the ledger", "input agent must not be mutated");
+  const originalResidue = recentResidue(original);
+  assert.ok(!originalResidue.observable.includes("fake observable"), "input revisions must not be mutated");
+});
+
+test("renderPulseView omits the primary character and the current speaker", () => {
+  const senako = seededAgent("Senako Steel", { ...blankDrive(), goal: "guard the entryway" });
+  const melody = seededAgent("Melody", { ...blankDrive(), goal: "slip out" });
+  const agents = new Map([
+    ["rc:senako-steel", senako],
+    ["rc:melody", melody],
+  ]);
+  const view = renderPulseView(agents, [
+    { id: "rc:senako-steel", name: "Senako Steel" },
+    { id: "rc:melody", name: "Melody" },
+  ], { primaryName: "Senako Steel", speakerName: "Melody", now: NOW });
+  assert.ok(!view.agents.some((agent) => agent.name === "Senako Steel"), "primary must be omitted");
+  assert.ok(!view.agents.some((agent) => agent.name === "Melody"), "speaker must be omitted");
+});
+
+test("renderPulseView accepts an array of agents as well as a Map", () => {
+  const melody = seededAgent("Melody", melodyDrive());
+  const view = renderPulseView([melody], [{ id: "rc:melody", name: "Melody" }], {
+    primaryName: "Senako Steel",
+    now: NOW,
+  });
+  assert.equal(view.agents.length, 1);
+  assert.equal(view.agents[0].name, "Melody");
 });

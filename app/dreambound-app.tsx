@@ -55,6 +55,10 @@ import type { PlayerPersona } from "../lib/personas/schema";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
 import { formatPlayerTurn } from "../lib/generation/player-turn.ts";
 import type { AutonomousAgent } from "../lib/generation/autonomous-cast.ts";
+import {
+  autonomousAgentsToArray,
+  seedAutonomyFromCast,
+} from "../lib/generation/autonomous-cast.ts";
 import type { StoryMetadata } from "../lib/generation/story-metadata.ts";
 import {
   createCast,
@@ -1861,6 +1865,43 @@ export default function DreamboundApp() {
     ));
   }
 
+  function refreshSessionCast(
+    conversation: Message[],
+    messageKey: string,
+    overrides: {
+      characterId: string;
+      characterName: string;
+      livingCast: LivingCastEntry[];
+      playerName: string;
+    },
+  ) {
+    const baselineCast = overrides.livingCast?.length
+      ? overrides.livingCast
+      : createCast({ id: overrides.characterId, name: overrides.characterName }, overrides.playerName);
+    const detection = detectLivingCast({
+      messages: conversation,
+      cast: baselineCast,
+      primary: { id: overrides.characterId, name: overrides.characterName },
+      playerName: overrides.playerName,
+    });
+    setSessions((current) => current.map((session) =>
+      session.messageKey === messageKey
+        ? { ...session, updatedAt: Date.now(), livingCast: detection.cast }
+        : session,
+    ));
+  }
+
+  function deriveRelationshipLabel(bond: number): string {
+    if (bond >= 90) return "Deeply bonded";
+    if (bond >= 75) return "Affectionate";
+    if (bond >= 60) return "Close";
+    if (bond >= 45) return "Trusted";
+    if (bond >= 30) return "Comfortable";
+    if (bond >= 15) return "Guarded acquaintance";
+    if (bond >= 5) return "Wary";
+    return "Stranger";
+  }
+
   const selected = useMemo(
     () => characters.find((character) => character.id === selectedId) ?? characters[0],
     [characters, selectedId],
@@ -2015,6 +2056,70 @@ export default function DreamboundApp() {
     };
   }
 
+  function buildSessionInitialState(
+    character: Character,
+    scene: SceneDefinition,
+    overrides: {
+      sandbox?: boolean;
+      autopilot?: boolean;
+      autopilotPaused?: boolean;
+      autopilotPov?: "first" | "third" | "narrator";
+      seedText?: string;
+      description?: string;
+      characterMessage?: string;
+      persona?: PlayerPersona | null;
+      playerRole?: string;
+      playerRoleContext?: string;
+    } = {},
+  ): { session: StorySession; initialMessages: Message[] } {
+    const session = {
+      ...createStorySession(character, scene),
+      ...personaSnapshot(overrides.persona),
+      sandbox: overrides.sandbox,
+      autopilot: overrides.autopilot,
+      autopilotPaused: overrides.autopilotPaused,
+      autopilotPov: overrides.autopilotPov,
+      playerRole: overrides.playerRole,
+      playerRoleContext: overrides.playerRoleContext,
+    };
+
+    const initialMessages: Message[] = [];
+    let nextId = session.createdAt;
+    if (overrides.description) {
+      initialMessages.push({ id: nextId++, sender: "narrator", text: overrides.description });
+    }
+    if (overrides.seedText) {
+      initialMessages.push({ id: nextId++, sender: "narrator", text: overrides.seedText });
+    }
+    if (overrides.characterMessage) {
+      initialMessages.push({ id: nextId++, sender: "character", text: overrides.characterMessage });
+    } else if (scene.opening) {
+      initialMessages.push({ id: nextId++, sender: "character", text: scene.opening });
+    }
+
+    const effectivePlayerName = (session.playerName?.trim() || overrides.persona?.name.trim() || playerProfile.name).trim();
+    const baseCast = createCast({ id: character.id, name: character.name }, effectivePlayerName);
+    const detected = initialMessages.length > 0
+      ? detectLivingCast({
+          messages: initialMessages,
+          cast: baseCast,
+          primary: { id: character.id, name: character.name },
+          playerName: effectivePlayerName,
+        })
+      : { cast: baseCast, newNames: [], events: [], pending: null, autoSpeakerId: null, autoSpeakerName: null };
+
+    const seededAutonomy = autonomousAgentsToArray(seedAutonomyFromCast(new Map(), detected.cast));
+
+    return {
+      session: {
+        ...session,
+        livingCast: detected.cast,
+        autonomousCast: seededAutonomy,
+      },
+      initialMessages,
+    };
+  }
+
   function requestPersonaStart(start: NonNullable<PendingPersonaStart>) {
     setPendingPersonaStart(start);
   }
@@ -2036,16 +2141,17 @@ export default function DreamboundApp() {
     const character =
       characters.find((candidate) => candidate.id === characterId) ?? characters[0];
     const scene = scenesFor(character)[0];
-    const session = { ...createStorySession(character, scene), ...personaSnapshot(persona) };
     const description = character.profile && !character.credit
       ? character.profile
       : "";
+    const { session, initialMessages } = buildSessionInitialState(character, scene, {
+      description,
+      characterMessage: character.reply,
+      persona,
+    });
     setMessages((current) => ({
       ...current,
-      [session.messageKey]: [
-        ...(description ? [{ id: session.createdAt, sender: "narrator" as const, text: description }] : []),
-        { id: session.createdAt + 1, sender: "character" as const, text: character.reply },
-      ],
+      [session.messageKey]: initialMessages,
     }));
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
@@ -2060,18 +2166,16 @@ export default function DreamboundApp() {
       ? codaWorldGuide.roles.find((candidate) => candidate.name === selectedCodaRole)
       : null;
     const customRole = customCodaRole.trim().slice(0, 800);
-    const session = {
-      ...createStorySession(character, scene),
+    const { session, initialMessages } = buildSessionInitialState(character, scene, {
       playerRole: role?.name,
       playerRoleContext: role?.name === "Custom Role"
         ? customRole || "No external player-role facts are established."
         : role?.context,
-      ...personaSnapshot(persona),
-    };
-
+      persona,
+    });
     setMessages((current) => ({
       ...current,
-      [session.messageKey]: [{ id: session.createdAt, sender: "character", text: scene.opening }],
+      [session.messageKey]: initialMessages,
     }));
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
@@ -2111,9 +2215,11 @@ export default function DreamboundApp() {
     const character =
       characters.find((candidate) => candidate.id === characterId) ?? characters[0];
     const scene = sandboxSceneFor(character);
-    const session = { ...createStorySession(character, scene), sandbox: true, ...personaSnapshot(persona) };
-
-    setMessages((current) => ({ ...current, [session.messageKey]: [] }));
+    const { session, initialMessages } = buildSessionInitialState(character, scene, {
+      sandbox: true,
+      persona,
+    });
+    setMessages((current) => ({ ...current, [session.messageKey]: initialMessages }));
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
     setSelectedId(character.id);
@@ -2135,20 +2241,18 @@ export default function DreamboundApp() {
       ? characters.find((candidate) => candidate.id === characterId) ?? selected
       : selected;
     const scene = sandboxSceneFor(target);
-    const session: StorySession = {
-      ...createStorySession(target, scene),
+    const seed = autopilotSeed.trim();
+    const { session, initialMessages } = buildSessionInitialState(target, scene, {
       sandbox: true,
       autopilot: true,
       autopilotPaused: false,
       autopilotPov: autopilotPov,
-      ...personaSnapshot(resolvedPersona),
-    };
-    const seed = autopilotSeed.trim();
+      seedText: seed || undefined,
+      persona: resolvedPersona,
+    });
     setMessages((current) => ({
       ...current,
-      [session.messageKey]: seed
-        ? [{ id: session.createdAt, sender: "narrator", text: seed }]
-        : [],
+      [session.messageKey]: initialMessages,
     }));
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
@@ -2458,6 +2562,7 @@ export default function DreamboundApp() {
         model: activeModel.value,
         temperature: creativity / 10,
         replyLength,
+
         initiative,
         viewpoint,
         tense: storyTense,
@@ -2582,6 +2687,9 @@ export default function DreamboundApp() {
   const isReplyingRef = useRef(isReplying);
   const isImpersonatingRef = useRef(isImpersonating);
   const autopilotBusyRef = useRef(false);
+  const selectedRef = useRef(selected);
+  const sessionsRef = useRef(sessions);
+  const refreshSessionCastRef = useRef<typeof refreshSessionCast | null>(null);
   const [autopilotBusy, setAutopilotBusy] = useState(false);
   const [autopilotError, setAutopilotError] = useState("");
   const [showAutopilotStart, setShowAutopilotStart] = useState(false);
@@ -2594,6 +2702,9 @@ export default function DreamboundApp() {
     messagesRef.current = messages;
     isReplyingRef.current = isReplying;
     isImpersonatingRef.current = isImpersonating;
+    selectedRef.current = selected;
+    sessionsRef.current = sessions;
+    refreshSessionCastRef.current = refreshSessionCast;
   });
 
   const runAutopilotBeat = useCallback(async (messageKey: string) => {
@@ -2606,16 +2717,24 @@ export default function DreamboundApp() {
       const result = await requestStoryReplyRef.current?.(conversation, "autopilot") ?? { reply: "", metadata: null };
       const replyText = result.reply;
       if (replyText) {
+        const updatedConversation = [...conversation, {
+          id: Date.now() + 1,
+          sender: "character" as const,
+          text: replyText,
+          meta: result.metadata ?? null,
+        }];
         setMessages((current) => ({
           ...current,
-          [messageKey]: [
-            ...(current[messageKey] ?? []),
-            { id: Date.now() + 1, sender: "character", text: replyText, meta: result.metadata ?? null },
-          ],
+          [messageKey]: updatedConversation,
         }));
-        setSessions((current) => current.map((session) =>
-          session.messageKey === messageKey ? { ...session, updatedAt: Date.now() } : session,
-        ));
+        const session = sessionsRef.current.find((entry) => entry.messageKey === messageKey);
+        const selected = selectedRef.current;
+        refreshSessionCastRef.current?.(updatedConversation, messageKey, {
+          characterId: session?.characterId ?? selected.id,
+          characterName: selected.name,
+          livingCast: session?.livingCast ?? [],
+          playerName: session?.playerName?.trim() || "",
+        });
         setProviderState("connected");
       }
     } catch (error) {
@@ -2745,13 +2864,12 @@ export default function DreamboundApp() {
       ...current,
       [activeMessageKey]: conversation,
     }));
-    if (activeSession) {
-      setSessions((current) => current.map((session) =>
-        session.id === activeSession.id
-          ? { ...session, updatedAt: Date.now(), livingCast: detection.cast }
-          : session,
-      ));
-    }
+    refreshSessionCast(conversation, activeMessageKey, {
+      characterId: selected.id,
+      characterName: selected.name,
+      livingCast: activeSession?.livingCast ?? [],
+      playerName: effectivePlayerName,
+    });
     setDraft("");
     setIsReplying(true);
     setChatError("");
@@ -2773,19 +2891,12 @@ export default function DreamboundApp() {
         ],
       }));
       const updatedConversation = [...conversation, replyMessage].slice(-30);
-      const finalDetection = detectLivingCast({
-        messages: updatedConversation,
-        cast: detection.cast,
-        primary: { id: selected.id, name: selected.name },
+      refreshSessionCast(updatedConversation, activeMessageKey, {
+        characterId: selected.id,
+        characterName: selected.name,
+        livingCast: activeSession?.livingCast ?? [],
         playerName: effectivePlayerName,
       });
-      if (activeSession) {
-        setSessions((current) => current.map((session) =>
-          session.id === activeSession.id
-            ? { ...session, updatedAt: Date.now(), livingCast: finalDetection.cast }
-            : session,
-        ));
-      }
       const newBond = Math.min(100, (selected.bond || 8) + 1);
       setCharacters((current) => current.map((character) =>
         character.id === selected.id ? { ...character, bond: newBond } : character,
@@ -7090,10 +7201,10 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                 : `No model selected · ${activeReplyLength.label}`}
             </p>
             <div className="pulse-heading">
-              <span>Story pulse</span>
-              <strong>{selected.relationship ?? (selected.bond > 66 ? "Tender" : selected.bond > 35 ? "Guarded" : "New")}</strong>
+              <span>Relationship</span>
+              <strong>{deriveRelationshipLabel(selected.bond)}</strong>
             </div>
-            <div className="bond-meter" aria-label={`Story pulse ${selected.bond}%`}>
+            <div className="bond-meter" aria-label={`Relationship ${selected.bond}%`}>
               <span style={{ width: `${selected.bond}%` }} />
               <i style={{ left: `${selected.bond}%` }}>♡</i>
             </div>

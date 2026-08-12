@@ -101,23 +101,40 @@ async function waitForGenerationSlot(waitMs = 15_000): Promise<boolean> {
 const REPLY_LENGTHS = {
   quick: {
     maxTokens: 360,
-    instruction: "Write 1–2 complete paragraphs, usually 90–160 words. Keep it responsive, but still include characterful action and sensory context.",
+    maxWords: 160,
+    maxParagraphs: 2,
+    instruction: "Write exactly 1–2 complete paragraphs, maximum 160 words. Do not write more than two paragraphs. Do not exceed 160 words. Keep it responsive, but still include characterful action and sensory context.",
   },
   immersive: {
     maxTokens: 850,
-    instruction: "Write 3–5 substantial paragraphs, usually 220–400 words. Develop the moment through physical reactions, sensory environment, emotionally revealing dialogue, and subtext.",
+    maxWords: 400,
+    maxParagraphs: 5,
+    instruction: "Write exactly 3–5 substantial paragraphs, maximum 400 words. Do not write more than five paragraphs. Do not exceed 400 words. Develop the moment through physical reactions, sensory environment, emotionally revealing dialogue, and subtext.",
   },
   novel: {
     maxTokens: 1300,
-    instruction: "Write 5–8 substantial paragraphs, usually 400–650 words. Treat the reply like a polished scene from a character-driven novel, with patient pacing, vivid atmosphere, layered emotion, and meaningful dialogue.",
+    maxWords: 650,
+    maxParagraphs: 8,
+    instruction: "Write exactly 5–8 substantial paragraphs, maximum 650 words. Do not write more than eight paragraphs. Do not exceed 650 words. Treat the reply like a polished scene from a character-driven novel, with patient pacing, vivid atmosphere, layered emotion, and meaningful dialogue.",
   },
 } as const;
 
 const IMPERSONATION_LENGTHS: Record<keyof typeof REPLY_LENGTHS, string> = {
-  quick: "Write one concise player turn, usually 25–55 words: a clear action and/or a line of dialogue with just enough physical framing and reaction to feel alive.",
-  immersive: "Write one developed player turn, usually 70–160 words, in the player's own first-person voice: the intended action or speech plus the player's reaction, body language, and a couple of sensory or emotional details from the player's side. Never write for the AI character.",
-  novel: "Write one substantial player turn, usually 120–260 words: a fuller first-person scene with dialogue, deliberate action, reactions, and interior voice. Do not write for the AI character and do not invent extra decisions merely to pad length.",
+  quick: "Write exactly one concise player turn, 25–55 words maximum. Do not write more than 55 words. Do not write more than one short action or line of dialogue. A clear action and/or a line of dialogue with just enough physical framing and reaction to feel alive.",
+  immersive: "Write exactly one developed player turn, 70–160 words maximum. Do not exceed 160 words. Write in the player's own first-person voice: the intended action or speech plus the player's reaction, body language, and a couple of sensory or emotional details from the player's side. Never write for the AI character.",
+  novel: "Write exactly one substantial player turn, 120–260 words maximum. Do not exceed 260 words. A fuller first-person scene with dialogue, deliberate action, reactions, and interior voice. Do not write for the AI character and do not invent extra decisions merely to pad length.",
 };
+
+function truncateReplyToLength(reply: string, replyLength: ReplyLength): string {
+  const limits = REPLY_LENGTHS[replyLength];
+  const paragraphs = reply.split(/\n\s*\n/).filter((p) => p.trim());
+  const trimmed = paragraphs.slice(0, limits.maxParagraphs).join('\n\n');
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length > limits.maxWords) {
+    return words.slice(0, limits.maxWords).join(' ') + '...';
+  }
+  return trimmed;
+}
 
 const AUTOPILOT_BEAT_INSTRUCTION = "Write one self-contained story beat rather than a full reply: a distinct action or development followed by dialogue or narration, usually 80-150 words. It must advance the scene on its own and never hand the turn back to the player. Follow the same output format as before: actions and narration in single asterisks, inner voice in square brackets, spoken dialogue in double quotes. Keep action, dialogue, and inner voice inline within the same paragraph; do not force blank lines between them. Preserve natural paragraph boundaries. Adjacent spans of the same type may merge.";
 const AUTOPILOT_MAX_TOKENS = 264;
@@ -154,20 +171,26 @@ const LOCAL_MINIMUM_SEGMENTS: Record<ReplyLength, Record<TargetSpeaker, number>>
   novel: { character: 10, player: 5 },
 };
 
+const LOCAL_MAX_SEGMENTS: Record<ReplyLength, Record<TargetSpeaker, number>> = {
+  quick: { character: 6, player: 2 },
+  immersive: { character: 12, player: 6 },
+  novel: { character: 18, player: 10 },
+};
+
 const IMPERSONATION_MIN_WORDS: Record<ReplyLength, number> = {
   quick: 15,
   immersive: 70,
   novel: 120,
 };
 
-function localRoleplayFormat(minSegments: number) {
+function localRoleplayFormat(minSegments: number, maxSegments: number) {
   return {
     type: "object",
     properties: {
       segments: {
         type: "array",
         minItems: minSegments,
-        maxItems: 24,
+        maxItems: maxSegments,
         items: {
           type: "object",
           properties: {
@@ -190,17 +213,18 @@ function localRoleplayFormat(minSegments: number) {
 
 function localContractPrompt(
   prompt: string, replyLength: ReplyLength, outputKind: TargetSpeaker,
-  minimumSegments: number, minimumWords: number,
+  minimumSegments: number, maximumSegments: number, minimumWords: number, maximumWords: number,
 ): string {
   const lengthRule = outputKind === "player"
-    ? "Write the turn to the depth of the selected length: concise for Quick, developed for Immersive, substantial for Novel-like. Make the player's intent come through with concrete action, dialogue, and reaction; do not pad merely to reach the target."
-    : `The selected ${replyLength} length is mandatory; a shorter draft is invalid.`;
+    ? `The selected ${replyLength} length is mandatory. Write ${minimumWords}–${maximumWords} words. A shorter or longer draft is invalid.`
+    : `The selected ${replyLength} length is mandatory. Write ${minimumWords}–${maximumWords} words. A shorter or longer draft is invalid.`;
+  const segmentRule = `Use ${minimumSegments}–${maximumSegments} substantial segments. Fewer than ${minimumSegments} or more than ${maximumSegments} segments is invalid.`;
   const boundary = outputKind === "player"
     ? "The turn must contain only the player's own actions and spoken words. Never continue, finish, extend, or reword the character's last message; never write the character's dialogue, actions, voice, reactions, inner voice, or a second speaker."
     : "Never assign the player an action, feeling, perception, or decision. In an open sandbox, do not invent a location, earlier meeting, or shared history that the player did not establish.";
   return `${prompt}
 
-Local output contract: Return a JSON object with a segments array containing at least ${minimumSegments} substantial segments and at least ${minimumWords} words total. ${lengthRule} Each segment has kind dialogue, action, or narration and plain text without asterisks, brackets, or speaker labels. A dialogue segment contains only words spoken aloud. Put gestures, dialogue tags, sensory description, and internal or external narration in separate action or narration segments. Preserve the intended reading order. ${boundary}`;
+Local output contract: Return a JSON object with a segments array containing ${segmentRule} ${lengthRule} Each segment has kind dialogue, action, or narration and plain text without asterisks, brackets, or speaker labels. A dialogue segment contains only words spoken aloud. Put gestures, dialogue tags, sensory description, and internal or external narration in separate action or narration segments. Preserve the intended reading order. ${boundary}`;
 }
 
 function getDisplayName(requestedName: string): string {
@@ -258,7 +282,7 @@ export async function POST(request: Request) {
   const doStream = body.stream === true;
   const character = isConnectionTest ? null : parseCharacter(body.character);
   const messages = isConnectionTest ? [] : parseMessages(body.messages);
-  const livingCast = isConnectionTest ? [] : sanitizeCast(body.livingCast);
+  const livingCast = isConnectionTest ? [] : sanitizeCast(body.livingCast, character ? { id: character.id, name: character.name } : undefined);
   const autonomousCast = isConnectionTest ? new Map() : sanitizeAutonomousCast(body.autonomousCast);
   const requestedSpeaker = limitedString(body.respondAs, 120);
   const castSpeaker = !isConnectionTest && !isImpersonation && !isAutonomousBeat && requestedSpeaker
@@ -377,7 +401,7 @@ export async function POST(request: Request) {
     const minimumWords = LOCAL_MINIMUM_WORDS[replyLength][targetSpeaker];
     const minimumSegments = LOCAL_MINIMUM_SEGMENTS[replyLength][targetSpeaker];
     const localPrompt = structuredRoleplay
-      ? localContractPrompt(prompt, replyLength, targetSpeaker, minimumSegments, minimumWords)
+      ? localContractPrompt(prompt, replyLength, targetSpeaker, minimumSegments, REPLY_LENGTHS[replyLength].maxParagraphs * 2, minimumWords, REPLY_LENGTHS[replyLength].maxWords)
       : prompt;
     return Response.json({
       ollamaRequest: {
@@ -584,7 +608,7 @@ async function localReply(
   const minimumWords = LOCAL_MINIMUM_WORDS[replyLength][outputKind];
   const minimumSegments = LOCAL_MINIMUM_SEGMENTS[replyLength][outputKind];
   const localPrompt = structuredRoleplay
-    ? localContractPrompt(prompt, replyLength, outputKind, minimumSegments, minimumWords)
+    ? localContractPrompt(prompt, replyLength, outputKind, minimumSegments, REPLY_LENGTHS[replyLength].maxParagraphs * 2, minimumWords, REPLY_LENGTHS[replyLength].maxWords)
     : prompt;
   const generate = (generationPrompt: string) => fetch(`${OLLAMA_BASE_URL}/api/generate`, {
       method: "POST",
@@ -596,7 +620,7 @@ async function localReply(
         format: structuredRoleplay ? localRoleplayFormat(minimumSegments) : undefined,
         options: {
           num_ctx: 16_384,
-          num_predict: maxTokens,
+          num_predict: structuredRoleplay ? Math.min(maxTokens, Math.max(200, REPLY_LENGTHS[replyLength].maxWords * 2)) : maxTokens,
           temperature,
           top_p: 0.95,
           repeat_penalty: 1.08,
@@ -632,8 +656,11 @@ async function localReply(
     ? formatLocalRoleplayReply(rawReply, outputKind, outputName)
     : rawReply;
 
+  const maxWords = REPLY_LENGTHS[replyLength].maxWords;
   for (let attempt = 0; structuredRoleplay && countWords(preparedReply) < minimumWords && attempt < 3; attempt += 1) {
-    const remainingWords = minimumWords - countWords(preparedReply);
+    const currentWords = countWords(preparedReply);
+    if (currentWords >= maxWords) break;
+    const remainingWords = Math.min(minimumWords - currentWords, maxWords - currentWords);
     const continuationPrompt = outputKind === "player"
       ? `${prompt}
 
@@ -672,12 +699,13 @@ ${preparedReply}`;
 
   clearTimeout(timeout);
   const metadataOut: { metadata?: StoryMetadata | null } = {};
-  const reply = isTest
+  const cleaned = isTest
     ? rawReply.trim().slice(0, 200)
       : cleanReply(
        preparedReply,
        outputName, playerName, proseFormat, outputKind, autopilot, metadataOut,
      );
+  const reply = !isTest && !autopilot ? truncateReplyToLength(cleaned, replyLength) : cleaned;
 
   if (!reply) {
     return Response.json({
@@ -884,8 +912,11 @@ async function nonStreamReply(
 
   const enforcePlayerFloor = !isTest && outputKind === "player" && !autopilot;
   const playerFloor = IMPERSONATION_MIN_WORDS[replyLength];
+  const maxWords = REPLY_LENGTHS[replyLength].maxWords;
   for (let attempt = 0; enforcePlayerFloor && countWords(prepared) < playerFloor && attempt < 2; attempt += 1) {
-    const remainingWords = playerFloor - countWords(prepared);
+    const currentWords = countWords(prepared);
+    if (currentWords >= maxWords) break;
+    const remainingWords = Math.min(playerFloor - currentWords, maxWords - currentWords);
     upstream = await generate(playerContinuationPrompt(prompt, prepared, remainingWords, playerDirection));
     if (!upstream.ok) break;
     const extraRead = await readUpstreamJson(upstream, "NovelAI continuation");
@@ -898,6 +929,9 @@ async function nonStreamReply(
     prepared = `${prepared}\n\n${extra}`;
   }
 
+  if (!isTest && !autopilot) {
+    prepared = truncateReplyToLength(prepared, replyLength);
+  }
   const reply = prepared;
   if (!reply) {
     return Response.json({

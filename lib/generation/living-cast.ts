@@ -303,11 +303,17 @@ export function createCast(
 }
 
 /** Bounded, defensive parse of cast entries. */
-export function sanitizeCast(value: unknown): LivingCastEntry[] {
+export function sanitizeCast(
+  value: unknown,
+  primary?: { id?: string; name?: string },
+): LivingCastEntry[] {
   if (!Array.isArray(value)) return [];
   const out: LivingCastEntry[] = [];
-  let primarySeen = false;
-  for (const item of value) {
+  let primaryIndex = -1;
+  const primaryId = typeof primary?.id === "string" ? primary.id.trim() : "";
+  const primaryName = typeof primary?.name === "string" ? primary.name.trim() : "";
+  for (let index = 0; index < value.length; index++) {
+    const item = value[index];
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const entry = item as Record<string, unknown>;
     const name = typeof entry.name === "string" ? entry.name.trim().slice(0, 80) : "";
@@ -322,9 +328,14 @@ export function sanitizeCast(value: unknown): LivingCastEntry[] {
       entry.presence === "active" || entry.presence === "mentioned" || entry.presence === "absent"
         ? entry.presence
         : "mentioned";
-    const isPrimaryOrigin = entry.primary === true && origin !== "player";
-    const primary = isPrimaryOrigin && !primarySeen;
-    if (primary) primarySeen = true;
+    let isPrimary = false;
+    if (origin !== "player") {
+      if (primaryId && entry.id === primaryId) {
+        isPrimary = true;
+      } else if (primaryName && matchesName(name, primaryName)) {
+        isPrimary = true;
+      }
+    }
     const notes = Array.isArray(entry.notes)
       ? entry.notes.filter((note): note is string => typeof note === "string")
         .map((note) => note.trim().slice(0, MAX_NOTE_LENGTH))
@@ -346,14 +357,27 @@ export function sanitizeCast(value: unknown): LivingCastEntry[] {
       id: typeof entry.id === "string" ? entry.id.slice(0, 120) : castKey(name),
       name,
       origin,
-      presence: primary ? "active" : presence,
-      primary,
+      presence: isPrimary ? "active" : presence,
+      primary: isPrimary,
       addedAt,
       updatedAt: typeof entry.updatedAt === "number" ? entry.updatedAt : addedAt,
       notes,
       relationships,
     });
+    if (isPrimary) primaryIndex = out.length - 1;
     if (out.length >= MAX_CAST_MEMBERS) break;
+  }
+  if (primaryIndex >= 0) {
+    for (let i = 0; i < out.length; i++) {
+      if (i !== primaryIndex && out[i].primary) {
+        out[i] = { ...out[i], primary: false };
+      }
+    }
+  } else if (out.length > 0 && (primaryId || primaryName)) {
+    const firstNonPlayer = out.findIndex((entry) => entry.origin !== "player");
+    if (firstNonPlayer >= 0) {
+      out[firstNonPlayer] = { ...out[firstNonPlayer], primary: true, presence: "active" };
+    }
   }
   return out;
 }
@@ -423,7 +447,7 @@ export function detectLivingCast(input: {
 }): CastDetectionResult {
   const now = input.now ?? Date.now();
   const primaryName = input.primary.name.trim();
-  const known = sanitizeCast(input.cast);
+  const known = sanitizeCast(input.cast, input.primary);
   const resolved: LivingCastEntry[] = [];
   const events: string[] = [];
   const newNames: string[] = [];
