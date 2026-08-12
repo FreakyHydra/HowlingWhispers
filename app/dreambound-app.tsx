@@ -60,6 +60,7 @@ import {
   seedAutonomyFromCast,
 } from "../lib/generation/autonomous-cast.ts";
 import { resolveStoryTemplate } from "../lib/generation/story-templates.ts";
+import { starterCommonScenes } from "../lib/generation/starter-common-scenes.ts";
 import type {
   HowlingAddonManifest,
   InstalledAddon,
@@ -110,6 +111,7 @@ type Character = {
   allowedRelationshipTypes?: string[];
   disallowedContent?: string[];
   cardV2?: HowlingV2Metadata;
+  pronouns?: string;
 };
 
 type VisualTheme = {
@@ -445,6 +447,7 @@ const initialCharacters: Character[] = [
       "Coda is a female ancient husky-type dog with fully canine anatomy, pale blue eyes, a dark tan-and-cream double coat, soft partially folded ears, a plume-like tail, large paws, and a rune collar with a red diamond pendant. She is not human or humanoid, uses she/her pronouns, has no human hands, and never wears glasses or human clothing. Any temporary accessory must be practical, suitable for a dog, introduced in the scene, and accepted by Coda. Never give her human gestures or anatomy. Her collar grants speech and deeper understanding, though its origin and mechanism remain unknown. She is a warm, playful companion with a guarded brave streak who notices small details, values trust, and speaks with intimate sincerity.",
     credit: "Character by Arrax Shadowfang",
     accent: "#45b8b3",
+    pronouns: "she/her",
   },
   {
     id: "heather",
@@ -478,6 +481,7 @@ Mind: Heather is a workaholic, and gets anxious when she's away from her post fo
     credit: "Character by Gigasad",
     creditUrl: "https://botbooru.com/character/15573",
     accent: "#d1a84c",
+    pronouns: "she/her",
   },
   {
     id: "peony",
@@ -522,6 +526,7 @@ Body language is essential. When happy she blushes, plays with a strand of hair,
  Speech style: articulate, confident, slightly flirtatious, and sarcastic without becoming relentlessly seductive. Her insight should appear through specific questions and remembered details rather than announced psychological analysis. Put actions and observable narration in *single asterisks*, spoken dialogue in "double quotes", and inner voice in [square brackets]. Keep action, dialogue, and inner voice inline within the same paragraph; do not force blank lines between them. Preserve natural paragraph boundaries. Adjacent spans of the same type may merge. Keep Peony autonomous, relationship-aware, capable of mistakes, and focused on becoming more than the fate assigned to her. Never control the player's thoughts, feelings, dialogue, decisions, consent, or voluntary actions.`,
     credit: "Character by Derkomor",
     accent: "#bd72da",
+    pronouns: "she/her",
   },
   {
     id: "senako-steel",
@@ -578,6 +583,7 @@ My lead, huh? Bold choice. I threw the last controller because the AI cheats.
 *The faintest spark of her old grin appears. She passes you the second controller.* Stay behind me during phase two, save the power-up, and don't tell Melody if we wipe again.`,
     credit: "Character by FurbyMask",
     accent: "#b7d620",
+    pronouns: "she/her",
   },
 ];
 
@@ -2002,6 +2008,15 @@ export default function DreamboundApp() {
   );
 
   const selectedScenes = storyScenes[selected.id] ?? scenesFor(selected);
+  const enabledAddons = installedAddons.filter((addon) => addon.enabled);
+  const addonCommonScenes = enabledAddons
+    .flatMap((addon) => validateAddonContent(addon.manifest.content) ?? [])
+    .map((scene) => ({
+      ...scene,
+      sourceAddonId: installedAddons.find((addon) => (validateAddonContent(addon.manifest.content) ?? []).some((s) => s.id === scene.id))?.manifest.id,
+      sourceAddonName: installedAddons.find((addon) => (validateAddonContent(addon.manifest.content) ?? []).some((s) => s.id === scene.id))?.manifest.name,
+    }));
+  const allCommonScenes = [...commonScenes, ...addonCommonScenes];
   const activeSession = sessions.find((session) => session.id === currentSessionId)
     ?? sessions.find((session) => session.characterId === selected.id && session.messageKey === selected.id)
     ?? null;
@@ -2699,7 +2714,7 @@ export default function DreamboundApp() {
           name: selected.name,
           role: selected.role,
           profile: selected.profile,
-          canonical: characterCardV2ToCanon(selected, `v2-${packageInfo.version}`) ?? legacyCharacterToCanon({
+          canonical: characterCardV2ToCanon({ ...selected, pronouns: selected.pronouns }, `v2-${packageInfo.version}`) ?? legacyCharacterToCanon({
             id: selected.id,
             revision: `builtin-${packageInfo.version}`,
             name: selected.name,
@@ -2709,6 +2724,7 @@ export default function DreamboundApp() {
             isMinor: selected.isMinor,
             allowedRelationshipTypes: selected.allowedRelationshipTypes,
             disallowedContent: selected.disallowedContent,
+            pronouns: selected.pronouns,
           }),
           scene: activeSession?.sandbox ? "" : resolvedSceneTitle,
           sceneId: activeSession?.sandbox ? "" : activeScene.id,
@@ -5437,30 +5453,79 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                   New Common Scene
                 </button>
               </div>
-              {commonScenes.length === 0 ? (
-                <p className="scene-library-empty">No Common Scenes yet. Create one to use with any character.</p>
-              ) : (
-                <div className="scene-preset-grid">
-                  {commonScenes.map((scene) => (
-                    <article className="scene-preset-card" key={scene.id}>
-                      <div className="scene-preset-copy">
-                        <h3>{scene.title || "Untitled scene"}</h3>
-                        <p>{scene.subtitle}</p>
-                        <small>{scene.weather}</small>
-                        <div className="scene-preset-actions">
-                          <button onClick={() => startCommonScene(scene)}>
-                            Begin this scene <span aria-hidden="true">→</span>
-                          </button>
-                          <button className="scene-edit-button" onClick={() => setCommonSceneEditor({ mode: "edit", scene })}>
-                            Edit
-                          </button>
-                          <button className="scene-delete-button" onClick={() => setCommonScenes((current) => current.filter((item) => item.id !== scene.id))}>
-                            Delete
-                          </button>
+              <div className="scene-subsection">
+                <h3>Examples</h3>
+                {starterCommonScenes.length === 0 ? (
+                  <p className="scene-library-empty">No example scenes available.</p>
+                ) : (
+                  <div className="scene-preset-grid">
+                    {starterCommonScenes.map((scene) => (
+                      <article className="scene-preset-card starter-scene-card" key={scene.id}>
+                        <div className="scene-preset-copy">
+                          <h3>{scene.title}</h3>
+                          <p>{scene.subtitle}</p>
+                          <small>{scene.weather}</small>
+                          <small className="scene-source-label">Example</small>
+                          <div className="scene-preset-actions">
+                            <button onClick={() => startCommonScene(scene)}>
+                              Begin this scene <span aria-hidden="true">→</span>
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    </article>
-                  ))}
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="scene-subsection">
+                <h3>Your Common Scenes</h3>
+                {commonScenes.length === 0 ? (
+                  <p className="scene-library-empty">No personal Common Scenes yet. Create one to use with any character.</p>
+                ) : (
+                  <div className="scene-preset-grid">
+                    {commonScenes.map((scene) => (
+                      <article className="scene-preset-card" key={`personal-${scene.id}`}>
+                        <div className="scene-preset-copy">
+                          <h3>{scene.title || "Untitled scene"}</h3>
+                          <p>{scene.subtitle}</p>
+                          <small>{scene.weather}</small>
+                          <div className="scene-preset-actions">
+                            <button onClick={() => startCommonScene(scene)}>
+                              Begin this scene <span aria-hidden="true">→</span>
+                            </button>
+                            <button className="scene-edit-button" onClick={() => setCommonSceneEditor({ mode: "edit", scene })}>
+                              Edit
+                            </button>
+                            <button className="scene-delete-button" onClick={() => setCommonScenes((current) => current.filter((item) => item.id !== scene.id))}>
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {addonCommonScenes.length > 0 && (
+                <div className="scene-subsection">
+                  <h3>From Add-ons</h3>
+                  <div className="scene-preset-grid">
+                    {addonCommonScenes.map((scene) => (
+                      <article className="scene-preset-card addon-scene-card" key={`addon-${scene.sourceAddonId}-${scene.id}`}>
+                        <div className="scene-preset-copy">
+                          <h3>{scene.title || "Untitled scene"}</h3>
+                          <p>{scene.subtitle}</p>
+                          <small>{scene.weather}</small>
+                          <small className="addon-source">From: {scene.sourceAddonName}</small>
+                          <div className="scene-preset-actions">
+                            <button onClick={() => startCommonScene(scene)}>
+                              Begin this scene <span aria-hidden="true">→</span>
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
                 </div>
               )}
             </section>

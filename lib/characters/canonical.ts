@@ -55,6 +55,7 @@ export type LegacyCanonInput = {
   isMinor?: boolean | null;
   allowedRelationshipTypes?: string[];
   disallowedContent?: string[];
+  pronouns?: string;
 };
 
 export function legacyCharacterToCanon(input: LegacyCanonInput): CanonicalCharacterV1 {
@@ -67,7 +68,7 @@ export function legacyCharacterToCanon(input: LegacyCanonInput): CanonicalCharac
     identity: {
       name: input.name,
       role: input.role,
-      pronouns: "",
+      pronouns: input.pronouns ?? "",
       species: "",
     },
     sections: [{

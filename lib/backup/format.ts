@@ -98,6 +98,7 @@ export type BackupUserCharacter = {
   isMinor?: boolean | null;
   allowedRelationshipTypes?: string[];
   disallowedContent?: string[];
+  pronouns?: string;
 };
 
 export type BackupCuratedState = {
@@ -192,6 +193,7 @@ export type BackupSource = {
     isMinor?: boolean | null;
     allowedRelationshipTypes?: string[];
     disallowedContent?: string[];
+    pronouns?: string;
   }>;
   messages: BackupData["messages"];
   sessions: BackupData["sessions"];
@@ -247,6 +249,7 @@ export function buildBackupPayload(
         isMinor: character.isMinor == null ? undefined : character.isMinor,
         allowedRelationshipTypes: character.allowedRelationshipTypes,
         disallowedContent: character.disallowedContent,
+        pronouns: character.pronouns || undefined,
       });
     }
   }
@@ -537,6 +540,7 @@ function sanitizeCharacters(value: unknown): BackupUserCharacter[] {
       disallowedContent: Array.isArray(c.disallowedContent)
         ? c.disallowedContent.filter((t): t is string => typeof t === "string").slice(0, 30)
         : undefined,
+      pronouns: typeof c.pronouns === "string" ? c.pronouns.slice(0, 60) : undefined,
     });
   }
   return out;

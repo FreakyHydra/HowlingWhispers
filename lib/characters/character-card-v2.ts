@@ -105,6 +105,7 @@ export type HowlingPortableCharacter = {
   portraitFocalPoint?: string;
   backgroundFocalPoint?: string;
   cardV2: HowlingV2Metadata;
+  pronouns?: string;
 };
 
 export type V2ExportSource = {
@@ -117,6 +118,7 @@ export type V2ExportSource = {
   credit?: string;
   cardV2?: HowlingV2Metadata;
   portableCharacterBook?: CharacterBookV2;
+  pronouns?: string;
 };
 
 export type V2CanonSource = V2ExportSource & {
@@ -217,6 +219,7 @@ export function characterCardV2ToHowling(card: CharacterCardV2, id = portableId(
     characterBookText(data.character_book),
   ].filter(Boolean);
   const role = data.tags.slice(0, 2).join(" / ") || "Imported character";
+  const pronouns = extractPronounsFromDescription(data.description);
   return {
     id,
     name: data.name,
@@ -248,6 +251,7 @@ export function characterCardV2ToHowling(card: CharacterCardV2, id = portableId(
       characterBook: data.character_book,
       original: card,
     },
+    pronouns: pronouns || undefined,
   };
 }
 
@@ -320,12 +324,13 @@ export function characterCardV2ToCanon(character: V2CanonSource, revision: strin
     sections.unshift(canonSection("v2-fallback", "Character definition", character.profile || character.name, "mandatory")!);
   }
   const ageCategory = character.ageCategory ?? "unknown";
+  const pronouns = character.pronouns ?? extractPronounsFromDescription(metadata.description);
   return {
     format: "howling-whispers-character",
     version: 1,
     id: character.id,
     revision,
-    identity: { name: character.name, role: character.role || "Imported character", pronouns: "", species: "" },
+    identity: { name: character.name, role: character.role || "Imported character", pronouns, species: "" },
     sections,
     safety: {
       ageCategory,
@@ -335,6 +340,16 @@ export function characterCardV2ToCanon(character: V2CanonSource, revision: strin
     },
     rawSources: [],
   };
+}
+
+function extractPronounsFromDescription(description: string): string {
+  const lower = description.toLowerCase();
+  if (/\bshe\/her\b/.test(lower) || /\buses she\/her\b/.test(lower) || /\bpronouns: she\/her\b/.test(lower)) return "she/her";
+  if (/\bhe\/him\b/.test(lower) || /\buses he\/him\b/.test(lower) || /\bpronouns: he\/him\b/.test(lower)) return "he/him";
+  if (/\bthey\/them\b/.test(lower) || /\buses they\/them\b/.test(lower) || /\bpronouns: they\/them\b/.test(lower)) return "they/them";
+  if (/\bfemale\b/.test(lower) || /\bwoman\b/.test(lower) || /\bwomanly\b/.test(lower) || /\bgirl\b/.test(lower)) return "she/her";
+  if (/\bmale\b/.test(lower) || /\bman\b/.test(lower) || /\bboy\b/.test(lower)) return "he/him";
+  return "";
 }
 
 export function characterCardV2BookToWorldLore(characterId: string, book?: CharacterBookV2): WorldLorebookV1 | null {

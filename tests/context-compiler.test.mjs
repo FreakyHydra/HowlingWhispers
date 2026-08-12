@@ -508,3 +508,73 @@ test("a side speaker gets the autonomous independence instruction", () => {
   assert.match(result.prompt, /you may disagree, hesitate, refuse, conceal what you know, or change your mind/);
   assert.match(result.prompt, /Melody intends to leave/);
 });
+
+test("roleplay includes authoritative pronoun instruction when pronouns are set", () => {
+  const character = legacyCharacterToCanon({
+    id: "senako-steel",
+    name: "Senako Steel",
+    role: "Guarded friend",
+    profile: "Senako is a twelve-year-old girl.",
+    pronouns: "she/her",
+    ageCategory: "minor",
+    isMinor: true,
+  });
+  const result = compile(character, { kind: "roleplay" });
+  assert.match(result.prompt, /Senako Steel uses she\/her pronouns\./);
+  assert.doesNotMatch(result.prompt, /\bshe\/he\b/);
+});
+
+test("autopilot includes authoritative pronoun instruction when pronouns are set", () => {
+  const character = legacyCharacterToCanon({
+    id: "senako-steel",
+    name: "Senako Steel",
+    role: "Guarded friend",
+    profile: "Senako is a twelve-year-old girl.",
+    pronouns: "she/her",
+    ageCategory: "minor",
+    isMinor: true,
+  });
+  const result = compile(character, { kind: "autopilot", autopilotPov: "third" });
+  assert.match(result.prompt, /Senako Steel uses she\/her pronouns\./);
+  assert.doesNotMatch(result.prompt, /\bshe\/he\b/);
+});
+
+test("impersonation includes authoritative pronoun instruction when pronouns are set", () => {
+  const character = legacyCharacterToCanon({
+    id: "senako-steel",
+    name: "Senako Steel",
+    role: "Guarded friend",
+    profile: "Senako is a twelve-year-old girl.",
+    pronouns: "she/her",
+    ageCategory: "minor",
+    isMinor: true,
+  });
+  const result = compile(character, { kind: "impersonation" });
+  assert.match(result.prompt, /Senako Steel uses she\/her pronouns\./);
+  assert.doesNotMatch(result.prompt, /\bshe\/he\b/);
+});
+
+test("empty pronouns do not add a pronoun instruction line", () => {
+  const character = legacyCharacterToCanon({
+    id: "unknown-ally",
+    name: "Unknown Ally",
+    role: "Mysterious companion",
+    profile: "A companion of unspecified gender.",
+  });
+  const result = compile(character, { kind: "roleplay" });
+  assert.doesNotMatch(result.prompt, /uses pronouns/);
+  assert.doesNotMatch(result.prompt, /she\/he/);
+});
+
+test("they/them pronouns are preserved and not replaced", () => {
+  const character = legacyCharacterToCanon({
+    id: "ally",
+    name: "Ally",
+    role: "Companion",
+    profile: "A companion who uses they/them pronouns.",
+    pronouns: "they/them",
+  });
+  const result = compile(character, { kind: "roleplay" });
+  assert.match(result.prompt, /Ally uses they\/them pronouns\./);
+  assert.doesNotMatch(result.prompt, /she\/he/);
+});
