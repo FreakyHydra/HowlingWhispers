@@ -1,13 +1,18 @@
 # Changelog
 
-## 0.6.0.3 — Inline roleplay formatting contract
+## 0.6.1 — Reusable Common Scene templates
 
-Updated player-turn formatting contract to preserve paragraph structure and keep action beats and dialogue inline within paragraphs.
+* `{{char}}` resolves to the active character name at runtime.
+* `{{user}}` resolves to the active persona name, falling back to the session player name.
+* Stored Common Scene templates remain unchanged; only the runtime copy is expanded.
 
 ### What changed
-- **Deterministic inline player roleplay** — player turns now preserve input paragraph boundaries and flow actions and spoken dialogue inline within paragraphs (e.g. `*I look over at her.* "I don't know, maybe we should leave." *I reach for the door.*`) instead of forcing blank-line breaks after every beat.
-- **Evidence-driven action detection** — physical action recognition is driven by verb evidence, while ambiguous first-person statements default to dialogue.
-- **Adjacent span merging** — consecutive same-type spans within a paragraph are merged cleanly.
+- **Runtime template resolution** — added `resolveStoryTemplate` for `{{char}}` and `{{user}}` substitution.
+- **Scene opening expansion** — Common Scene openings are expanded before entering the normal session-start pipeline.
+- **Context fields expanded** — scene title and weather strings injected into the generation prompt are also resolved at runtime.
+- **Reply length enforcement** — Immersive/Quick/Novel-like ceilings are now hard-enforced via `truncateReplyToLength`, bounded local contracts, and continuation guards.
+- **Living cast initialization** — scenes now detect side characters from the complete opening conversation and seed autonomy from the detected cast.
+- **Story Pulse UI** — restored as a compact dynamic relationship meter between the active persona and primary character, separate from the Living Cast presence list.
 
 ## 0.6.0.2 — Story pipeline hotfix
 

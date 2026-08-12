@@ -59,6 +59,16 @@ import {
   autonomousAgentsToArray,
   seedAutonomyFromCast,
 } from "../lib/generation/autonomous-cast.ts";
+import { resolveStoryTemplate } from "../lib/generation/story-templates.ts";
+import type {
+  HowlingAddonManifest,
+  InstalledAddon,
+  AddonCommonScene,
+} from "../lib/generation/howling-addons.ts";
+import {
+  isHowlingAddon,
+  validateAddonContent,
+} from "../lib/generation/howling-addons.ts";
 import type { StoryMetadata } from "../lib/generation/story-metadata.ts";
 import {
   createCast,
@@ -122,6 +132,39 @@ type SceneDefinition = {
   opening: string;
   theme: VisualTheme;
 };
+
+type CommonScene = {
+  id: string;
+  title: string;
+  subtitle: string;
+  weather: string;
+  opening: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+const DEFAULT_COMMON_SCENE_THEME: VisualTheme = {
+  accent: "#8aa4c9",
+  accentMuted: "#4a5f7a",
+  glow: "#1e293b",
+  surface: "#0f172a",
+  wash: "#020617",
+  motif: "common",
+};
+
+function commonSceneToSceneDefinition(commonScene: CommonScene): SceneDefinition {
+  return {
+    id: commonScene.id,
+    title: commonScene.title,
+    subtitle: commonScene.subtitle,
+    status: "",
+    weather: commonScene.weather,
+    background: "",
+    backgroundFocalPoint: "",
+    opening: commonScene.opening,
+    theme: DEFAULT_COMMON_SCENE_THEME,
+  };
+}
 
 type StorySession = {
   id: string;
@@ -972,6 +1015,44 @@ function readSavedStoryScenes(): Record<string, SceneDefinition[]> {
   );
 }
 
+function readSavedCommonScenes(): CommonScene[] {
+  return readSession<CommonScene[]>("commonScenes", []);
+}
+
+function readSavedInstalledAddons(): InstalledAddon[] {
+  return readSession<InstalledAddon[]>("installedAddons", []);
+}
+
+function installAddon(manifest: HowlingAddonManifest): InstalledAddon[] {
+  setInstalledAddons((current) => {
+    const existing = current.find((addon) => addon.manifest.id === manifest.id);
+    if (existing) {
+      return current.map((addon) =>
+        addon.manifest.id === manifest.id
+          ? { ...addon, manifest, updatedAt: Date.now() }
+          : addon,
+      );
+    }
+    return [...current, { manifest, enabled: true, installedAt: Date.now(), updatedAt: Date.now() }];
+  });
+}
+
+function uninstallAddon(addonId: string): void {
+  setInstalledAddons((current) => current.filter((addon) => addon.manifest.id !== addonId));
+}
+
+function toggleAddonEnabled(addonId: string): void {
+  setInstalledAddons((current) =>
+    current.map((addon) =>
+      addon.manifest.id === addonId ? { ...addon, enabled: !addon.enabled, updatedAt: Date.now() } : addon,
+    ),
+  );
+}
+
+function exportAddon(addon: InstalledAddon): Blob {
+  return new Blob([JSON.stringify(addon.manifest, null, 2)], { type: "application/json" });
+}
+
 function readSession<T>(key: string, fallback: T): T {
   if (typeof localStorage === "undefined") return fallback;
   try {
@@ -1364,7 +1445,10 @@ export default function DreamboundApp() {
   const [storyScenes, setStoryScenes] = useState<Record<string, SceneDefinition[]>>(
     readSavedStoryScenes,
   );
+  const [commonScenes, setCommonScenes] = useState<CommonScene[]>(readSavedCommonScenes);
+  const [installedAddons, setInstalledAddons] = useState<InstalledAddon[]>(readSavedInstalledAddons);
   const [storyEditor, setStoryEditor] = useState<StoryEditor | null>(null);
+  const [commonSceneEditor, setCommonSceneEditor] = useState<{ mode: "create" | "edit"; scene: CommonScene } | null>(null);
   const [selectedCodaRole, setSelectedCodaRole] = useState("Trusted Companion");
   const [customCodaRole, setCustomCodaRole] = useState("");
   const animationMessageKey = sessions.find((session) => session.id === currentSessionId)?.messageKey
@@ -1395,6 +1479,7 @@ export default function DreamboundApp() {
   const [deviceModelScan, setDeviceModelScan] = useState<ModelScanState>("loading");
   const [deviceModelError, setDeviceModelError] = useState("");
   const [deviceModelRefresh, setDeviceModelRefresh] = useState(0);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [storyProvider, setStoryProvider] = useState<StoryProvider>(
     () => readSession<StoryProvider>("storyProvider", "novelai"),
   );
@@ -1431,6 +1516,7 @@ export default function DreamboundApp() {
     | { kind: "sandbox"; characterId: string }
     | { kind: "autopilot"; characterId: string }
     | { kind: "imported"; characterId: string }
+    | { kind: "commonScene"; scene: CommonScene }
     | null;
   const [pendingPersonaStart, setPendingPersonaStart] = useState<PendingPersonaStart>(null);
   const [autopilotPersona, setAutopilotPersona] = useState<PlayerPersona | null>(null);
@@ -1793,6 +1879,14 @@ export default function DreamboundApp() {
   }, [storyScenes]);
 
   useEffect(() => {
+    writeSession("commonScenes", commonScenes);
+  }, [commonScenes]);
+
+  useEffect(() => {
+    writeSession("installedAddons", installedAddons);
+  }, [installedAddons]);
+
+  useEffect(() => {
     writeSession("contextManifests", contextManifests);
   }, [contextManifests]);
 
@@ -1914,14 +2008,14 @@ export default function DreamboundApp() {
   const activeScene = activeSession?.sandbox
     ? sandboxSceneFor(selected)
     : selectedScenes.find((scene) => scene.id === activeSession?.sceneId) ?? selectedScenes[0];
-  const activePlayerName = activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name.trim();
+  const activePlayerName = activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim();
   const sessionUsesDefaultPersona = Boolean(
     !activeSession?.playerName?.trim() && !activeSession?.playerPersona?.trim(),
   );
   const sessionPersonaSnapshot = activeSession?.playerPersona?.trim() || "";
   const sessionPersonaName =
-    activeSession?.playerName?.trim() ||
     activePersona?.name.trim() ||
+    activeSession?.playerName?.trim() ||
     playerProfile.name.trim() ||
     null;
   const activeMessageKey = activeSession?.messageKey ?? selected.id;
@@ -2091,13 +2185,22 @@ export default function DreamboundApp() {
     if (overrides.seedText) {
       initialMessages.push({ id: nextId++, sender: "narrator", text: overrides.seedText });
     }
+    const charName = character.name;
+    const userName = (overrides.persona?.name.trim() || session.playerName?.trim() || playerProfile.name).trim();
+    const resolvedScene = {
+      ...scene,
+      title: resolveStoryTemplate(scene.title, { charName, userName }),
+      subtitle: resolveStoryTemplate(scene.subtitle, { charName, userName }),
+      weather: resolveStoryTemplate(scene.weather, { charName, userName }),
+      opening: resolveStoryTemplate(scene.opening, { charName, userName }),
+    };
     if (overrides.characterMessage) {
       initialMessages.push({ id: nextId++, sender: "character", text: overrides.characterMessage });
-    } else if (scene.opening) {
-      initialMessages.push({ id: nextId++, sender: "character", text: scene.opening });
+    } else if (resolvedScene.opening) {
+      initialMessages.push({ id: nextId++, sender: "character", text: resolvedScene.opening });
     }
 
-    const effectivePlayerName = (session.playerName?.trim() || overrides.persona?.name.trim() || playerProfile.name).trim();
+    const effectivePlayerName = (overrides.persona?.name.trim() || session.playerName?.trim() || playerProfile.name).trim();
     const baseCast = createCast({ id: character.id, name: character.name }, effectivePlayerName);
     const detected = initialMessages.length > 0
       ? detectLivingCast({
@@ -2135,6 +2238,7 @@ export default function DreamboundApp() {
       setShowAutopilotStart(true);
     }
     else if (start.kind === "imported") startImported(start.characterId, persona ?? null);
+    else if (start.kind === "commonScene") startCommonScene(start.scene, persona ?? null);
   }
 
   function startImported(characterId: string, persona?: PlayerPersona | null) {
@@ -2156,6 +2260,23 @@ export default function DreamboundApp() {
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
     setSelectedId(character.id);
+    setView("chat");
+  }
+
+  function startCommonScene(commonScene: CommonScene, persona?: PlayerPersona | null) {
+    const character = characters.find((candidate) => candidate.id === selected.id) ?? characters[0];
+    const scene = commonSceneToSceneDefinition(commonScene);
+    const { session, initialMessages } = buildSessionInitialState(character, scene, {
+      persona,
+    });
+    setMessages((current) => ({
+      ...current,
+      [session.messageKey]: initialMessages,
+    }));
+    setSessions((current) => [session, ...current]);
+    setCurrentSessionId(session.id);
+    setAutopilotError("");
+    setChatError("");
     setView("chat");
   }
 
@@ -2546,11 +2667,13 @@ export default function DreamboundApp() {
     generationAbortRef.current?.abort();
     generationAbortRef.current = controller;
     const requestSignal = controller.signal;
-    const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
+    const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
     const effectivePlayerPersona = (activeSession?.playerPersona?.trim() || compiledActivePersona || playerProfile.persona).trim();
     const sessionCast = activeSession?.livingCast?.length
       ? activeSession.livingCast
       : createCast({ id: selected.id, name: selected.name }, effectivePlayerName);
+    const resolvedSceneTitle = resolveStoryTemplate(activeScene.title, { charName: selected.name, userName: effectivePlayerName });
+    const resolvedSceneWeather = resolveStoryTemplate(`${activeScene.weather}. ${activeScene.subtitle}`, { charName: selected.name, userName: effectivePlayerName });
     const requestBody = {
         action,
         playerName: effectivePlayerName,
@@ -2587,7 +2710,7 @@ export default function DreamboundApp() {
             allowedRelationshipTypes: selected.allowedRelationshipTypes,
             disallowedContent: selected.disallowedContent,
           }),
-          scene: activeSession?.sandbox ? "" : activeScene.title,
+          scene: activeSession?.sandbox ? "" : resolvedSceneTitle,
           sceneId: activeSession?.sandbox ? "" : activeScene.id,
           worldId: activeSession?.sandbox ? "" : selected.id,
           worldLore: activeSession?.sandbox ? null : characterCardV2BookToWorldLore(
@@ -2596,12 +2719,12 @@ export default function DreamboundApp() {
           ) ?? legacyCharacterToWorldLore({
             worldId: selected.id,
             revision: `runtime-${packageInfo.version}`,
-            scene: activeScene.title,
-            weather: `${activeScene.weather}. ${activeScene.subtitle}`,
+            scene: resolvedSceneTitle,
+            weather: resolvedSceneWeather,
           }),
           weather: activeSession?.sandbox
             ? ""
-            : `${activeScene.weather}. ${activeScene.subtitle}`,
+            : resolvedSceneWeather,
           memories: activeSession?.sandbox ? [] : selected.memories,
           sandbox: Boolean(activeSession?.sandbox),
           relationship: [selected.relationship, `Bond ${selected.bond}/100`].filter(Boolean).join("; "),
@@ -2689,6 +2812,8 @@ export default function DreamboundApp() {
   const autopilotBusyRef = useRef(false);
   const selectedRef = useRef(selected);
   const sessionsRef = useRef(sessions);
+  const activePersonaRef = useRef(activePersona);
+  const playerProfileRef = useRef(playerProfile);
   const refreshSessionCastRef = useRef<typeof refreshSessionCast | null>(null);
   const [autopilotBusy, setAutopilotBusy] = useState(false);
   const [autopilotError, setAutopilotError] = useState("");
@@ -2704,6 +2829,8 @@ export default function DreamboundApp() {
     isImpersonatingRef.current = isImpersonating;
     selectedRef.current = selected;
     sessionsRef.current = sessions;
+    activePersonaRef.current = activePersona;
+    playerProfileRef.current = playerProfile;
     refreshSessionCastRef.current = refreshSessionCast;
   });
 
@@ -2733,7 +2860,7 @@ export default function DreamboundApp() {
           characterId: session?.characterId ?? selected.id,
           characterName: selected.name,
           livingCast: session?.livingCast ?? [],
-          playerName: session?.playerName?.trim() || "",
+          playerName: activePersonaRef.current?.name.trim() || session?.playerName?.trim() || "",
         });
         setProviderState("connected");
       }
@@ -2845,7 +2972,7 @@ export default function DreamboundApp() {
             : text,
     };
     const conversation = [...activeMessages, playerMessage];
-    const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
+    const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
     const baselineCast = activeSession?.livingCast?.length
       ? activeSession.livingCast
       : createCast({ id: selected.id, name: selected.name }, effectivePlayerName);
@@ -2929,7 +3056,7 @@ export default function DreamboundApp() {
   }
 
 async function impersonateTurn(conversation: Message[], playerDirection: string): Promise<string> {
-    const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
+    const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
     let suggestion = formatPlayerTurn(
       (await requestStoryReply(conversation, "impersonate", playerDirection)).reply,
       effectivePlayerName,
@@ -4658,16 +4785,10 @@ function updateCharacter(id: string, updates: Partial<Character>) {
               Personas
             </button>
           <button
-            className={`changelog-nav-button ${view === "changelog" ? "active" : ""}`}
-            onClick={() => setView("changelog")}
+            className={view === "addons" ? "active" : ""}
+            onClick={() => setView("addons")}
           >
-            What&apos;s new
-          </button>
-          <button
-            className={view === "settings" ? "active" : ""}
-            onClick={() => setView("settings")}
-          >
-            Settings
+            Add-ons
           </button>
           <button
             className={view === "archive" ? "active" : ""}
@@ -4677,21 +4798,23 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           </button>
         </nav>
         <div className="current-scene">
-          <span aria-hidden="true">{view === "chat" ? "♜" : view === "scenes" ? "◈" : view === "changelog" ? "◇" : view === "settings" ? "⚙" : view === "archive" ? "☍" : view === "personas" ? "👤" : "✦"}</span>
+          <span aria-hidden="true">{view === "chat" ? "♜" : view === "scenes" ? "◈" : view === "changelog" ? "◇" : view === "settings" ? "⚙" : view === "archive" ? "☍" : view === "personas" ? "👤" : view === "addons" ? "◈" : "✦"}</span>
           <span>
             {view === "chat"
               ? activeScene.title
               : view === "scenes"
                 ? `${selected.name} · scenes`
-              : view === "changelog"
-                ? "What's new"
-                : view === "settings"
-                  ? "User settings"
-                  : view === "archive"
-                    ? "The Whispering Archive"
-                    : view === "personas"
-                      ? "Persona Library"
-                      : "Choose a character"}
+                : view === "changelog"
+                  ? "What's new"
+                  : view === "settings"
+                    ? "User settings"
+                    : view === "archive"
+                      ? "The Whispering Archive"
+                      : view === "personas"
+                        ? "Persona Library"
+                        : view === "addons"
+                          ? "Howling Add-ons"
+                          : "Choose a character"}
           </span>
           <span aria-hidden="true">›</span>
         </div>
@@ -4712,14 +4835,36 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                   ? storyProvider === "novelai" ? "Token entered" : "Ollama model selected"
                   : "Set up story engine"}
           </button>
-          <div className="account-chip" title="Local story space">
-            <span aria-hidden="true">
-              {currentUser?.displayName.trim().charAt(0).toUpperCase() || "U"}
-            </span>
-            <div>
-              <strong>{currentUser?.displayName.trim() || "Local player"}</strong>
-              <button className="link-button" onClick={handleSignOut}>Return to entrance</button>
-            </div>
+          <div className="account-menu">
+            <button
+              className="account-menu-trigger"
+              onClick={() => setAccountMenuOpen((current) => !current)}
+              aria-expanded={accountMenuOpen}
+              aria-haspopup="true"
+            >
+              <span className="account-chip" aria-hidden="true">
+                <span aria-hidden="true">
+                  {currentUser?.displayName.trim().charAt(0).toUpperCase() || "U"}
+                </span>
+                <div>
+                  <strong>{currentUser?.displayName.trim() || "Local player"}</strong>
+                </div>
+              </span>
+            </button>
+            {accountMenuOpen && (
+              <div className="account-menu-dropdown" role="menu">
+                <button onClick={() => { setAccountMenuOpen(false); setView("settings"); }} role="menuitem">
+                  Settings
+                </button>
+                <button onClick={() => { setAccountMenuOpen(false); setView("changelog"); }} role="menuitem">
+                  What&apos;s new
+                </button>
+                <div className="account-menu-divider" />
+                <button onClick={() => { setAccountMenuOpen(false); handleSignOut(); }} role="menuitem">
+                  Return to entrance
+                </button>
+              </div>
+            )}
           </div>
           <button className="outline-button create-button" onClick={() => setIsCreating(true)}>
             <span aria-hidden="true">＋</span>
@@ -5108,6 +5253,77 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                   </div>
                 </form>
               )}
+              {commonSceneEditor && (
+                <form className="story-editor" key={`common:${commonSceneEditor.scene.id || "new"}`} onSubmit={(event) => {
+                  event.preventDefault();
+                  const form = event.target as HTMLFormElement;
+                  const title = String(form.elements.namedItem("title")?.value || "").trim();
+                  const subtitle = String(form.elements.namedItem("subtitle")?.value || "").trim();
+                  const weather = String(form.elements.namedItem("weather")?.value || "").trim();
+                  const opening = String(form.elements.namedItem("opening")?.value || "").trim();
+                  if (!title || !opening) return;
+                  const now = Date.now();
+                  const scene: CommonScene = {
+                    id: commonSceneEditor.scene.id || `common-${now}-${Math.random().toString(36).slice(2, 7)}`,
+                    title,
+                    subtitle,
+                    weather,
+                    opening,
+                    createdAt: commonSceneEditor.scene.createdAt || now,
+                    updatedAt: now,
+                  };
+                  setCommonScenes((current) => {
+                    const next = current.map((item) => item.id === scene.id ? scene : item);
+                    return commonSceneEditor.mode === "create" ? [...next, scene] : next;
+                  });
+                  setCommonSceneEditor(null);
+                }}>
+                  <div className="story-editor-heading">
+                    <div>
+                      <p className="eyebrow">
+                        {commonSceneEditor.mode === "create" ? "New Common Scene" : "Edit Common Scene"}
+                      </p>
+                      <h3>
+                        {commonSceneEditor.mode === "create"
+                          ? "Create a reusable scene"
+                          : `Edit ${commonSceneEditor.scene.title}`}
+                      </h3>
+                    </div>
+                    <button type="button" className="editor-close" onClick={() => setCommonSceneEditor(null)}>
+                      Close
+                    </button>
+                  </div>
+                  <div className="story-editor-grid">
+                    <label>
+                      <span>Story title</span>
+                      <input name="title" defaultValue={commonSceneEditor.scene.title} required />
+                    </label>
+                    <label>
+                      <span>Short setup</span>
+                      <input name="subtitle" defaultValue={commonSceneEditor.scene.subtitle} />
+                    </label>
+                    <label>
+                      <span>Atmosphere / weather</span>
+                      <input name="weather" defaultValue={commonSceneEditor.scene.weather} />
+                    </label>
+                    <label className="story-opening-field">
+                      <span>Opening message</span>
+                      <textarea name="opening" defaultValue={commonSceneEditor.scene.opening} rows={7} required />
+                      <small>
+                        Use <code>{'{{char}}'}</code> for the active character and <code>{'{{user}}'}</code> for the active persona/player.
+                      </small>
+                    </label>
+                  </div>
+                  <div className="story-editor-footer">
+                    <button type="button" className="outline-button" onClick={() => setCommonSceneEditor(null)}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="story-save-button">
+                      {commonSceneEditor.mode === "create" ? "Create scene" : "Save changes"}
+                    </button>
+                  </div>
+                </form>
+              )}
               <div className="scene-preset-grid">
                 <article
                   className="scene-preset-card sandbox-preset-card"
@@ -5199,6 +5415,56 @@ function updateCharacter(id: string, updates: Partial<Character>) {
               </div>
             </section>
 
+            <section className="scene-library-section common-scenes">
+              <div className="scene-library-heading">
+                <div>
+                  <p className="eyebrow">Reusable</p>
+                  <h2>Common Scenes</h2>
+                </div>
+                <button
+                  type="button"
+                  className="outline-button"
+                  onClick={() => setCommonSceneEditor({ mode: "create", scene: {
+                    id: `common-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                    title: "",
+                    subtitle: "",
+                    weather: "",
+                    opening: "",
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  } })}
+                >
+                  New Common Scene
+                </button>
+              </div>
+              {commonScenes.length === 0 ? (
+                <p className="scene-library-empty">No Common Scenes yet. Create one to use with any character.</p>
+              ) : (
+                <div className="scene-preset-grid">
+                  {commonScenes.map((scene) => (
+                    <article className="scene-preset-card" key={scene.id}>
+                      <div className="scene-preset-copy">
+                        <h3>{scene.title || "Untitled scene"}</h3>
+                        <p>{scene.subtitle}</p>
+                        <small>{scene.weather}</small>
+                        <div className="scene-preset-actions">
+                          <button onClick={() => startCommonScene(scene)}>
+                            Begin this scene <span aria-hidden="true">→</span>
+                          </button>
+                          <button className="scene-edit-button" onClick={() => setCommonSceneEditor({ mode: "edit", scene })}>
+                            Edit
+                          </button>
+                          <button className="scene-delete-button" onClick={() => setCommonScenes((current) => current.filter((item) => item.id !== scene.id))}>
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+
             <section className="scene-library-section existing-scenes">
               <div className="scene-library-heading">
                 <div>
@@ -5274,22 +5540,25 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             <button className="outline-button" onClick={() => setView("home")}>← Back to characters</button>
           </header>
 
-          <div className="changelog-list">
-            <article className="changelog-entry featured latest hotfix-card">
-              <div className="changelog-mark">◐</div>
-              <div>
-                <span>Version 0.6.0.3 · Inline roleplay formatting</span>
-                <h2>Inline player roleplay formatting contract</h2>
-                <p>
-                  Player turns now preserve input paragraph boundaries and flow actions and spoken dialogue inline within paragraphs instead of forcing blank-line breaks after every beat.
-                </p>
-                <ul>
-                  <li>Actions and dialogue flow naturally inline (e.g. <em>*I look over at her.* &quot;I don&apos;t know...&quot; *I reach for the door.*</em>)</li>
-                  <li>Evidence-driven action detection isolates physical verbs while ambiguous statements default to dialogue</li>
-                  <li>Adjacent same-type spans within a paragraph are cleanly merged</li>
-                </ul>
-              </div>
-            </article>
+           <div className="changelog-list">
+             <article className="changelog-entry featured latest hotfix-card">
+               <div className="changelog-mark">◐</div>
+               <div>
+                 <span>Version 0.6.1 · Reusable Common Scene templates</span>
+                 <h2>Runtime template variables for Common Scenes</h2>
+                 <p>
+                   Common Scenes can now use <code>{{char}}</code> and <code>{{user}}</code> in their prose.
+                 </p>
+                 <ul>
+                   <li><code>{{char}}</code> resolves to the active character name at runtime</li>
+                   <li><code>{{user}}</code> resolves to the active persona, falling back to the player name</li>
+                   <li>Stored templates remain unchanged; only the runtime copy is expanded</li>
+                 </ul>
+                 <p>
+                   Also includes hard reply-length ceilings for all generation paths and living-cast initialization from scene openings.
+                 </p>
+               </div>
+             </article>
             <article className="changelog-entry featured">
               <div className="changelog-mark">◐</div>
               <div>
@@ -6680,6 +6949,118 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             onChange={setPersonas}
             onSelectActive={setActivePersonaId}
           />
+        </section>
+      )}
+
+      {view === "addons" && (
+        <section className="settings-page">
+          <div className="settings-heading">
+            <div>
+              <p className="eyebrow">Content packs</p>
+              <h1>Howling Add-ons</h1>
+              <p>Install reusable content packs that work with any character.</p>
+            </div>
+            <div>
+              <input
+                type="file"
+                id="addon-import-input"
+                accept="application/json"
+                style={{ display: "none" }}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    try {
+                      const parsed = JSON.parse(reader.result as string);
+                      if (!isHowlingAddon(parsed)) {
+                        setChatError("Invalid add-on package. Expected format: howling-addon v1.");
+                        return;
+                      }
+                      const scenes = validateAddonContent(parsed.content);
+                      if (scenes === null) {
+                        setChatError("Add-on content is malformed.");
+                        return;
+                      }
+                      installAddon(parsed);
+                      setChatError("");
+                    } catch {
+                      setChatError("Could not read the add-on file.");
+                    }
+                  };
+                  reader.readAsText(file);
+                  event.target.value = "";
+                }}
+              />
+              <button
+                className="outline-button"
+                type="button"
+                onClick={() => document.getElementById("addon-import-input")?.click()}
+              >
+                Install Add-on
+              </button>
+            </div>
+          </div>
+
+          {installedAddons.length === 0 ? (
+            <p className="scene-library-empty">No add-ons installed yet. Install a JSON package to get started.</p>
+          ) : (
+            <div className="addon-list">
+              {installedAddons.map((addon) => {
+                const addonScenes = validateAddonContent(addon.manifest.content);
+                return (
+                  <div className="addon-card" key={addon.manifest.id}>
+                    <div className="addon-card-header">
+                      <div>
+                        <h3>{addon.manifest.name}</h3>
+                        <small>v{addon.manifest.version} · {addonScenes?.length ?? 0} scenes</small>
+                        {addon.manifest.author && <small>by {addon.manifest.author}</small>}
+                        {addon.manifest.description && <p>{addon.manifest.description}</p>}
+                      </div>
+                      <span className={`addon-status ${addon.enabled ? "enabled" : "disabled"}`}>
+                        {addon.enabled ? "Enabled" : "Disabled"}
+                      </span>
+                    </div>
+                    <div className="addon-card-actions">
+                      <button
+                        className="outline-button"
+                        type="button"
+                        onClick={() => toggleAddonEnabled(addon.manifest.id)}
+                      >
+                        {addon.enabled ? "Disable" : "Enable"}
+                      </button>
+                      <button
+                        className="outline-button"
+                        type="button"
+                        onClick={() => {
+                          const blob = exportAddon(addon);
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement("a");
+                          link.href = url;
+                          link.download = `${addon.manifest.id}-${addon.manifest.version}.json`;
+                          link.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                      >
+                        Export
+                      </button>
+                      <button
+                        className="outline-button"
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`Uninstall "${addon.manifest.name}"? This does not delete scenes you already started.`)) {
+                            uninstallAddon(addon.manifest.id);
+                          }
+                        }}
+                      >
+                        Uninstall
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
       )}
 

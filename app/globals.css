@@ -588,6 +588,57 @@ a:focus-visible {
   text-underline-offset: 3px;
 }
 
+.account-menu {
+  position: relative;
+}
+
+.account-menu-trigger {
+  align-items: center;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  gap: 9px;
+  padding: 0;
+}
+
+.account-menu-dropdown {
+  background: rgba(20, 20, 24, 0.98);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  min-width: 200px;
+  padding: 8px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 100;
+}
+
+.account-menu-dropdown button {
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--body);
+  cursor: pointer;
+  display: block;
+  font-family: var(--sans);
+  font-size: 14px;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.account-menu-dropdown button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.account-menu-divider {
+  border-top: 1px solid var(--line);
+  margin: 6px 0;
+}
+
 .character-home,
 .settings-page {
   height: calc(100vh - 76px);
