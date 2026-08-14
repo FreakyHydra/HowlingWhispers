@@ -154,6 +154,10 @@ const DEFAULT_COMMON_SCENE_THEME: VisualTheme = {
   motif: "common",
 };
 
+function generateMessageId() {
+  return Date.now() + 1;
+}
+
 function commonSceneToSceneDefinition(commonScene: CommonScene): SceneDefinition {
   return {
     id: commonScene.id,
@@ -2861,7 +2865,7 @@ export default function DreamboundApp() {
       const replyText = result.reply;
       if (replyText) {
         const updatedConversation = [...conversation, {
-          id: Date.now() + 1,
+          id: generateMessageId(),
           sender: "character" as const,
           text: replyText,
           meta: result.metadata ?? null,
@@ -5605,25 +5609,40 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             <button className="outline-button" onClick={() => setView("home")}>← Back to characters</button>
           </header>
 
-           <div className="changelog-list">
-             <article className="changelog-entry featured latest hotfix-card">
-               <div className="changelog-mark">◐</div>
-               <div>
-                 <span>Version 0.6.1 · Reusable Common Scene templates</span>
-                 <h2>Runtime template variables for Common Scenes</h2>
-                 <p>
-                   Common Scenes can now use <code>{{char}}</code> and <code>{{user}}</code> in their prose.
-                 </p>
-                 <ul>
-                   <li><code>{{char}}</code> resolves to the active character name at runtime</li>
-                   <li><code>{{user}}</code> resolves to the active persona, falling back to the player name</li>
-                   <li>Stored templates remain unchanged; only the runtime copy is expanded</li>
-                 </ul>
-                 <p>
-                   Also includes hard reply-length ceilings for all generation paths and living-cast initialization from scene openings.
-                 </p>
-               </div>
-             </article>
+              <div className="changelog-list">
+               <article className="changelog-entry featured latest hotfix-card">
+                <div className="changelog-mark">◐</div>
+                <div>
+                  <span>Version 0.6.1 · Howling Add-ons, Common Scenes &amp; Story Improvements</span>
+                  <h2>Howling Add-ons, Common Scenes &amp; story improvements</h2>
+                  <p>
+                     This release adds a data-only add-on system, reusable Common Scenes with runtime template variables, and fixes to reply-length enforcement, Living Cast initialization, pronoun handling, and navigation.
+                  </p>
+                  <ul>
+                     <li>Howling Add-ons let you import, enable, disable, export, and uninstall JSON add-on packages</li>
+                     <li>Add-ons can contribute Common Scenes with source attribution</li>
+                     <li>Reusable Common Scenes work with any character via the normal scene pipeline</li>
+                     <li><code>{'{{char}}'}</code> and <code>{'{{user}}'}</code> resolve at runtime only</li>
+                     <li>Reply-length ceilings are now enforced across all generation paths</li>
+                     <li>Living Cast initializes from scene openings and seeds autonomy automatically</li>
+                     <li>Story Pulse restored as a compact relationship meter</li>
+                     <li>Character pronouns propagate authoritatively through the context compiler</li>
+                      <li>Add-ons in main nav; What&apos;s New and Settings moved to account menu</li>
+                  </ul>
+                  <h3>What changed</h3>
+                  <ul>
+                    <li><strong>Howling Add-ons</strong> — data-only JSON manifests for Common Scenes and character content. Install, enable/disable, export, and uninstall. Malformed packages are rejected during validation. No executable mod or plugin API yet.</li>
+                    <li><strong>Add-on Common Scenes</strong> — add-ons contribute scenes separate from personal Common Scenes, show source attribution, and hide automatically when disabled.</li>
+                    <li><strong>Common Scenes</strong> — reusable starter scenes that work with any character or persona through the normal <code>startCommonScene()</code> pipeline. Includes built-in starter scenes.</li>
+                    <li><strong>Runtime template variables</strong> — <code>{'{{char}}'}</code> and <code>{'{{user}}'}</code> resolve only at runtime. Stored templates remain unchanged. Active persona has priority for <code>{'{{user}}'}</code>.</li>
+                    <li><strong>Reply-length enforcement</strong> — Quick, Immersive, and Novel-like ceilings are hard-enforced via truncation, bounded local contracts, and continuation guards.</li>
+                    <li><strong>Living Cast initialization</strong> — scene openings detect side characters and seed autonomy from the detected cast.</li>
+                    <li><strong>Story Pulse UI</strong> — restored compact dynamic relationship meter between active persona and primary character.</li>
+                    <li><strong>Pronoun propagation</strong> — authoritative character pronouns survive canonical conversion and context compilation. Built-in female characters carry <code>she/her</code>. They/them preserved per character.</li>
+                    <li><strong>Navigation cleanup</strong> — Add-ons added to main navigation. What&apos;s New and Settings moved to account menu.</li>
+                  </ul>
+                </div>
+              </article>
             <article className="changelog-entry featured">
               <div className="changelog-mark">◐</div>
               <div>

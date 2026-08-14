@@ -1,18 +1,24 @@
 # Changelog
 
-## 0.6.1 — Reusable Common Scene templates
+## 0.6.1 — Howling Add-ons, Common Scenes & Story Improvements
 
-* `{{char}}` resolves to the active character name at runtime.
-* `{{user}}` resolves to the active persona name, falling back to the session player name.
-* Stored Common Scene templates remain unchanged; only the runtime copy is expanded.
+**◐ This release adds a data-only add-on system, reusable Common Scenes with runtime template variables, and fixes to reply-length enforcement, Living Cast initialization, pronoun handling, and navigation.**
+
+### What's new
+- **Howling Add-ons** — data-only JSON manifests for Common Scenes and character content. Install, enable/disable, export, and uninstall packages. Malformed packages are rejected during validation. No executable mod or plugin API yet.
+- **Add-on Common Scenes** — add-ons can contribute Common Scenes that stay separate from personal scenes, show source attribution, and hide automatically when disabled.
+- **Common Scenes** — reusable starter scenes that work with any character or persona through the normal scene pipeline. Includes built-in starter scenes.
+- **Runtime template variables** — `{{char}}` and `{{user}}` resolve only at runtime. Stored templates remain unchanged. Active persona has priority for `{{user}}`.
+- **Story Pulse UI** — restored as a compact dynamic relationship meter between the active persona and primary character.
 
 ### What changed
-- **Runtime template resolution** — added `resolveStoryTemplate` for `{{char}}` and `{{user}}` substitution.
-- **Scene opening expansion** — Common Scene openings are expanded before entering the normal session-start pipeline.
-- **Context fields expanded** — scene title and weather strings injected into the generation prompt are also resolved at runtime.
-- **Reply length enforcement** — Immersive/Quick/Novel-like ceilings are now hard-enforced via `truncateReplyToLength`, bounded local contracts, and continuation guards.
-- **Living cast initialization** — scenes now detect side characters from the complete opening conversation and seed autonomy from the detected cast.
-- **Story Pulse UI** — restored as a compact dynamic relationship meter between the active persona and primary character, separate from the Living Cast presence list.
+- **Reply-length enforcement** — Quick, Immersive, and Novel-like ceilings are now hard-enforced via truncation, bounded local contracts, and continuation guards.
+- **Living Cast initialization** — scene openings now detect side characters from the complete opening conversation and seed autonomy from the detected cast.
+- **Pronoun propagation** — authoritative character pronouns now survive through canonical character data and the context compiler. Built-in female characters such as Senako carry `she/her`. They/them is preserved per character, not globally rewritten.
+- **Navigation cleanup** — Add-ons appears in the main navigation rail. What's New and Settings moved into the account menu.
+
+### Quality
+- 216/216 tests passed · lint clean · build validated.
 
 ## 0.6.0.2 — Story pipeline hotfix
 
