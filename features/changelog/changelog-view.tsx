@@ -17,6 +17,25 @@ export function ChangelogView(props: ChangelogViewProps) {
 
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
+              <span className="changelog-mark">◐</span>
+              <span className="changelog-version">Version 0.7.1 · The Black Memory</span>
+              <h2>The Black Memory</h2>
+              <p>
+                The player remembers now. Personas now own private Memory Cards, relationship state
+                follows the active identity across scenes, and the Character Hub displays the real
+                relationship meter. Backups preserve Memory Cards and relationship history.
+              </p>
+              <ul>
+                <li>Personas behave as persistent player identities</li>
+                <li>Every Persona owns a non-transferable Memory Card</li>
+                <li>Relationship state follows the Persona, not the scene</li>
+                <li>Character Hub shows relationship label, meter, and Memory Card status</li>
+                <li>Selected-character layout restored with Resume Latest, Quick Start, Curated Scenes, Common Scenes, and Older Chats</li>
+                <li>Memory Injector groundwork added for future context selection</li>
+                <li>Backups include Memory Cards and preserve Persona ↔ Card ownership</li>
+              </ul>
+            </article>
+            <article className="changelog-entry featured">
               <div className="changelog-mark">◐</div>
               <div>
                 <span>Version 0.7.0 · Relationship System V1</span>

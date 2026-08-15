@@ -72,6 +72,13 @@ export interface CharacterAreaProps {
   continueRoleplay: (session: import("../dreambound-app").StorySession) => void;
   deleteSession: (session: import("../dreambound-app").StorySession) => void;
   sandboxSceneFor: (character: Character) => SceneDefinition;
+  relationshipScore: number;
+  relationshipLabel: string;
+  relationshipMeterPercent: number;
+  activePersonaName: string | null;
+  memoryCardStatus: string;
+  onResumeLatest: () => void;
+  hasLatestSession: boolean;
   Portrait: ComponentType<{ character: Character; accent?: string; image?: string }>;
 }
 
@@ -619,6 +626,17 @@ export function CharacterArea(props: CharacterAreaProps) {
                 <p className="eyebrow">Stories with {props.selected.name}</p>
                 <h1>Choose where the story begins.</h1>
                 <p>{props.selected.role} · {props.selected.status}</p>
+                {props.activePersonaName && (
+                  <p className="scene-library-persona">Playing as {props.activePersonaName}</p>
+                )}
+                <div className="relationship-meter-container">
+                  <span className="relationship-label">{props.relationshipLabel}</span>
+                  <div className="bond-meter" aria-label={`Relationship meter at ${props.relationshipMeterPercent}%`}>
+                    <span style={{ width: `${props.relationshipMeterPercent}%` }} />
+                    <i style={{ left: `${props.relationshipMeterPercent}%` }}>♡</i>
+                  </div>
+                  <small className="memory-card-status">{props.memoryCardStatus}</small>
+                </div>
               </div>
               <Portrait character={props.selected} image={props.portraitUrl(props.selected)} />
             </header>
@@ -687,11 +705,43 @@ export function CharacterArea(props: CharacterAreaProps) {
               </section>
             )}
 
+            {/* PRIMARY */}
+            <section className="scene-library-section primary-actions">
+              <div className="scene-library-heading">
+                <div>
+                  <p className="eyebrow">Primary</p>
+                  <h2>Resume Latest</h2>
+                </div>
+              </div>
+              {props.hasLatestSession && props.selectedSessions.length > 0 ? (
+                <div className="resume-latest-card" style={{
+                  "--session-accent": props.selectedScenes.find(s => s.id === props.selectedSessions[0].sceneId)?.theme.accent ?? props.selected.accent,
+                  "--session-glow": props.selectedScenes.find(s => s.id === props.selectedSessions[0].sceneId)?.theme.glow ?? `${props.selected.accent}45`,
+                } as React.CSSProperties}>
+                  <button className="resume-latest-action" onClick={props.onResumeLatest}>
+                    <span className="resume-latest-mark">
+                      {(props.selectedScenes.find(s => s.id === props.selectedSessions[0].sceneId)?.theme.motif ?? "◆").slice(0, 2)}
+                    </span>
+                    <span className="resume-latest-copy">
+                      <strong>Continue: {props.selectedSessions[0].title}</strong>
+                      <span>{props.selectedSessions[0].messageKey === props.selected.id ? "Sandbox session" : (props.selectedScenes.find(s => s.id === props.selectedSessions[0].sceneId)?.title ?? "Unknown scene")}</span>
+                    </span>
+                    <span className="resume-latest-meta">
+                      <small>{new Date(props.selectedSessions[0].updatedAt).toLocaleDateString()}</small>
+                      <i aria-hidden="true">→</i>
+                    </span>
+                  </button>
+                </div>
+              ) : (
+                <p className="scene-library-empty">No previous sessions with {props.selected.name} yet.</p>
+              )}
+            </section>
+
             <section className="scene-library-section">
               <div className="scene-library-heading">
                 <div>
-                  <p className="eyebrow">Create new</p>
-                  <h2>Opening scenes</h2>
+                  <p className="eyebrow">Primary</p>
+                  <h2>Quick Start</h2>
                   {props.selected.id === "coda" && <p className="selected-role-note">Your role: {props.selectedCodaRole}</p>}
                 </div>
                 <div className="scene-heading-actions">
@@ -874,6 +924,18 @@ export function CharacterArea(props: CharacterAreaProps) {
                     </div>
                   </div>
                 </article>
+              </div>
+            </section>
+
+            {/* STORIES */}
+            <section className="scene-library-section">
+              <div className="scene-library-heading">
+                <div>
+                  <p className="eyebrow">Stories</p>
+                  <h2>Curated Scenes</h2>
+                </div>
+              </div>
+              <div className="scene-preset-grid">
                 {props.selectedScenes.map((scene) => (
                   <article
                     className="scene-preset-card"
@@ -925,7 +987,7 @@ export function CharacterArea(props: CharacterAreaProps) {
             <section className="scene-library-section common-scenes">
               <div className="scene-library-heading">
                 <div>
-                  <p className="eyebrow">Reusable</p>
+                  <p className="eyebrow">Stories</p>
                   <h2>Common Scenes</h2>
                 </div>
                 <button
@@ -1021,11 +1083,12 @@ export function CharacterArea(props: CharacterAreaProps) {
               )}
             </section>
 
+            {/* HISTORY */}
             <section className="scene-library-section existing-scenes">
               <div className="scene-library-heading">
                 <div>
-                  <p className="eyebrow">Continue</p>
-                  <h2>Existing sessions</h2>
+                  <p className="eyebrow">History</p>
+                  <h2>Older Chats</h2>
                 </div>
                 <span>{props.selectedSessions.length} saved locally</span>
               </div>
@@ -1081,6 +1144,7 @@ export function CharacterArea(props: CharacterAreaProps) {
                 </div>
               )}
             </section>
+
           </div>
         </section>
       )}

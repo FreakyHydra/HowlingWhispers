@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.7.1 — The Black Memory
+
+◐ "The player remembers now."
+
+### What's new
+
+- Personas now behave as persistent player identities
+- every Persona owns a private non-transferable Memory Card
+- relationship state follows the Persona across scenes
+- persistent state is separated from narrative Memories
+- relationship information appears on the Character Hub
+- selected-character layout restored and redesigned
+- groundwork added for the Memory Injector context system
+- backups preserve Persona Memory Cards and relationship state
+
+### What changed
+
+- Added `lib/memory-card/` domain for Memory Card storage and ownership
+- Relationship lookups now resolve through the active Persona's Memory Card
+- Character Hub shows real relationship meter, persona name, and Memory Card status
+- Persona library shows subtle Memory Card status per persona
+- Backup format extended to include Memory Cards
+- Migration ensures every existing Persona receives a Memory Card on load
+- Duplicate Personas receive a fresh empty card; deleted Personas lose their card
+
+### Quality
+
+281/281 tests passed · lint clean · build validated.
+
 ## 0.7.0 — Relationship System V1
 
 **◐ A persistent, provider-neutral relationship system replaces the fixed character bond with score-driven state tied to your active persona. Relationship state is hidden from visible roleplay: only a non-commanding tier/label phrase feeds the generation context, and deltas are stored in a separate event store.**

@@ -4294,6 +4294,117 @@ a:focus-visible {
   width: 31px;
 }
 
+.scene-library-persona {
+  color: var(--copper-bright);
+  font-size: 13px;
+  margin-top: 4px;
+  opacity: 0.9;
+}
+
+.relationship-meter-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.relationship-label {
+  color: var(--muted);
+  font-size: 12px;
+  min-width: 70px;
+}
+
+.memory-card-status {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 6px;
+  opacity: 0.75;
+}
+.resume-latest-card {
+  background: linear-gradient(100deg, color-mix(in srgb, var(--session-accent) 10%, #0d0c0f), #0b0a0dcf);
+  border: 1px solid color-mix(in srgb, var(--session-accent) 35%, transparent);
+  border-radius: 4px;
+  overflow: hidden;
+  transition: 160ms ease;
+}
+
+.resume-latest-card:hover {
+  border-color: var(--session-accent);
+  box-shadow: 0 12px 35px var(--session-glow);
+}
+
+.resume-latest-action {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 52px 1fr auto;
+  padding: 18px 22px;
+  text-align: left;
+  width: 100%;
+}
+
+.resume-latest-mark {
+  align-items: center;
+  border: 1px solid var(--session-accent);
+  border-radius: 50%;
+  color: var(--session-accent);
+  display: flex;
+  font-family: var(--serif);
+  font-size: 16px;
+  height: 44px;
+  justify-content: center;
+  width: 44px;
+}
+
+.resume-latest-copy {
+  min-width: 0;
+}
+
+.resume-latest-copy strong {
+  display: block;
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 500;
+  margin: 2px 0 4px;
+}
+
+.resume-latest-copy span {
+  color: var(--muted);
+  display: block;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resume-latest-meta {
+  align-items: end;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.resume-latest-meta small {
+  font-size: 11px;
+}
+
+.resume-latest-meta i {
+  font-size: 18px;
+}
+
+.primary-actions .resume-latest-card + .scene-preset-grid {
+  margin-top: 18px;
+}
+
+.quick-start .scene-library-heading {
+  margin-bottom: 14px;
+}
+
 .modal-backdrop {
   align-items: center;
   animation: fade-in 180ms ease both;
@@ -5821,6 +5932,14 @@ a:focus-visible {
   display: block;
   font-size: 12px;
   margin-top: 2px;
+}
+
+.persona-memory-status {
+  color: var(--copper-bright);
+  display: block;
+  font-size: 11px;
+  margin-top: 4px;
+  opacity: 0.85;
 }
 
 .persona-card-copy > p {

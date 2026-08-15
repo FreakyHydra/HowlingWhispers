@@ -15,6 +15,7 @@ import { PersonaEditor } from "./persona-editor";
 type PersonaLibraryProps = {
   personas: PlayerPersona[];
   activePersonaId: string | null;
+  memoryCards: Record<string, { memoryRefs: Array<{ id: string }>; relationships: Record<string, unknown> }>;
   onChange: (personas: PlayerPersona[]) => void;
   onSelectActive: (id: string | null) => void;
 };
@@ -39,6 +40,7 @@ function downloadText(filename: string, text: string) {
 export function PersonaLibrary({
   personas,
   activePersonaId,
+  memoryCards,
   onChange,
   onSelectActive,
 }: PersonaLibraryProps) {
@@ -153,6 +155,11 @@ export function PersonaLibrary({
                   <small>{persona.pronouns ?? "no pronouns set"}</small>
                   <p>{persona.description || "No description yet."}</p>
                   <pre className="persona-compiled-preview">{compiled}</pre>
+                  {memoryCards[persona.id] && (
+                    <small className="persona-memory-status">
+                      {memoryCards[persona.id].memoryRefs.length} memories · {Object.keys(memoryCards[persona.id].relationships).length} relationships
+                    </small>
+                  )}
                 </div>
                 <div className="persona-card-actions">
                   <button

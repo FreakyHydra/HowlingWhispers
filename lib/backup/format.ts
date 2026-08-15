@@ -127,6 +127,28 @@ export type BackupRelationshipRecord = {
   events: BackupRelationshipEvent[];
 };
 
+export type BackupMemoryCard = {
+  id: string;
+  personaId: string;
+  version: number;
+  relationships: Record<string, { score: number; updatedAt: number }>;
+  stats: Record<string, Record<string, number>>;
+  flags: Record<string, Record<string, boolean | string | number>>;
+  milestones: Record<string, string[]>;
+  memoryRefs: Array<{
+    id: string;
+    participants: string[];
+    event: string;
+    context?: string;
+    importance: number;
+    origin?: string;
+    timestamp: number;
+    persistenceMetadata?: Record<string, unknown>;
+  }>;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type BackupRelationshipState = Record<string, BackupRelationshipRecord>;
 
 export type BackupPersona = {
@@ -194,6 +216,7 @@ export type BackupData = {
   preferences: BackupPreferences;
   /** Persistent relationship state keyed by "characterId::personaId". */
   relationships?: BackupRelationshipState;
+  memoryCards?: Record<string, BackupMemoryCard>;
 };
 
 export type BackupPayload = {
@@ -243,6 +266,7 @@ export type BackupSource = {
   playerName: string;
   preferences: BackupPreferences;
   relationships: BackupRelationshipState;
+  memoryCards?: Record<string, MemoryCard>;
 };
 
 /**
@@ -313,6 +337,7 @@ export function buildBackupPayload(
       storyScenes: sanitizeStoryScenes(source.storyScenes),
       preferences: sanitizePreferences(source.preferences),
       relationships: sanitizeRelationships(source.relationships ?? {}),
+      memoryCards: sanitizeMemoryCards(source.memoryCards ?? {}),
     },
   };
 }
@@ -505,6 +530,82 @@ function nextBackupEventId(): string {
   return `rel-backup-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function sanitizeMemoryCards(value: unknown): Record<string, BackupMemoryCard> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, BackupMemoryCard> = {};
+  for (const [personaId, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const card = raw as Record<string, unknown>;
+    const relationships: Record<string, { score: number; updatedAt: number }> = {};
+    if (card.relationships && typeof card.relationships === "object" && !Array.isArray(card.relationships)) {
+      for (const [charId, rel] of Object.entries(card.relationships as Record<string, unknown>)) {
+        if (!rel || typeof rel !== "object" || Array.isArray(rel)) continue;
+        const r = rel as Record<string, unknown>;
+        relationships[charId] = {
+          score: typeof r.score === "number" && Number.isFinite(r.score) ? Math.round(r.score) : 0,
+          updatedAt: typeof r.updatedAt === "number" ? r.updatedAt : 0,
+        };
+      }
+    }
+    const stats: Record<string, Record<string, number>> = {};
+    if (card.stats && typeof card.stats === "object" && !Array.isArray(card.stats)) {
+      for (const [charId, charStats] of Object.entries(card.stats as Record<string, unknown>)) {
+        if (!charStats || typeof charStats !== "object" || Array.isArray(charStats)) continue;
+        const statMap: Record<string, number> = {};
+        for (const [k, v] of Object.entries(charStats as Record<string, unknown>)) {
+          if (typeof v === "number" && Number.isFinite(v)) statMap[k] = Math.round(v);
+        }
+        stats[charId] = statMap;
+      }
+    }
+    const flags: Record<string, Record<string, boolean | string | number>> = {};
+    if (card.flags && typeof card.flags === "object" && !Array.isArray(card.flags)) {
+      for (const [charId, charFlags] of Object.entries(card.flags as Record<string, unknown>)) {
+        if (!charFlags || typeof charFlags !== "object" || Array.isArray(charFlags)) continue;
+        const flagMap: Record<string, boolean | string | number> = {};
+        for (const [k, v] of Object.entries(charFlags as Record<string, unknown>)) {
+          if (typeof v === "boolean" || typeof v === "string" || typeof v === "number") flagMap[k] = v;
+        }
+        flags[charId] = flagMap;
+      }
+    }
+    const milestones: Record<string, string[]> = {};
+    if (card.milestones && typeof card.milestones === "object" && !Array.isArray(card.milestones)) {
+      for (const [charId, ms] of Object.entries(card.milestones as Record<string, unknown>)) {
+        if (!Array.isArray(ms)) continue;
+        milestones[charId] = ms.filter((m): m is string => typeof m === "string").slice(0, 100);
+      }
+    }
+    const memoryRefs: BackupMemoryCard["memoryRefs"] = Array.isArray(card.memoryRefs)
+      ? card.memoryRefs.filter((m): m is BackupMemoryCard["memoryRefs"][number] => {
+          if (!m || typeof m !== "object" || Array.isArray(m)) return false;
+          const ref = m as Record<string, unknown>;
+          return (
+            typeof ref.id === "string" &&
+            typeof ref.event === "string" &&
+            typeof ref.importance === "number" &&
+            typeof ref.timestamp === "number" &&
+            Array.isArray(ref.participants) &&
+            ref.participants.every((p: unknown) => typeof p === "string")
+          );
+        }).slice(0, 500)
+      : [];
+    out[personaId] = {
+      id: typeof card.id === "string" ? card.id : `mc-${personaId}`,
+      personaId: typeof card.personaId === "string" ? card.personaId : personaId,
+      version: typeof card.version === "number" ? card.version : 0,
+      relationships,
+      stats,
+      flags,
+      milestones,
+      memoryRefs,
+      createdAt: typeof card.createdAt === "number" ? card.createdAt : 0,
+      updatedAt: typeof card.updatedAt === "number" ? card.updatedAt : 0,
+    };
+  }
+  return out;
+}
+
 function sanitizePreferences(value: unknown): BackupPreferences {
   if (!value || typeof value !== "object") return {};
   const p = value as Record<string, unknown>;
@@ -606,6 +707,7 @@ export function validatePayload(value: unknown): BackupPayload | null {
       storyScenes: sanitizeStoryScenes(data.storyScenes),
        preferences: sanitizePreferences(data.preferences),
       relationships: sanitizeRelationships(data.relationships),
+      memoryCards: sanitizeMemoryCards(data.memoryCards),
     },
   };
 }

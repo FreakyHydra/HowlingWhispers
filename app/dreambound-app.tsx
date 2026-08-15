@@ -96,9 +96,18 @@ import {
   relationshipTierPhrase,
   loadRelationships,
   saveRelationships,
+  relationshipMeterPercent,
   type RelationshipState,
   type RelationshipScorer,
 } from "../lib/relationships/index.ts";
+import {
+  loadMemoryCards,
+  saveMemoryCards,
+  type MemoryCard,
+  ensureMemoryCard,
+  syncMemoryCardRelationships,
+  getMemoryCard,
+} from "../lib/memory-card";
 import {
   describeOllamaModel,
   parseOllamaModels,
@@ -1387,6 +1396,7 @@ export default function DreamboundApp() {
   const [installedAddons, setInstalledAddons] = useState<InstalledAddon[]>(readSavedInstalledAddons);
   const [relationships, setRelationships] = useState<RelationshipState>(loadRelationships);
   const [relationshipDelta, setRelationshipDelta] = useState<number | null>(null);
+  const [rawMemoryCards, setRawMemoryCards] = useState<Record<string, MemoryCard>>(() => loadMemoryCards());
   const [storyEditor, setStoryEditor] = useState<StoryEditor | null>(null);
   const [commonSceneEditor, setCommonSceneEditor] = useState<{ mode: "create" | "edit"; scene: CommonScene } | null>(null);
   const [selectedCodaRole, setSelectedCodaRole] = useState("Trusted Companion");
@@ -1964,6 +1974,30 @@ export default function DreamboundApp() {
     selected.relationship,
     relationshipTierPhrase(relationshipScore),
   ].filter(Boolean).join(" — ");
+
+  const memoryCards = useMemo(() => {
+    let next = rawMemoryCards;
+    for (const persona of personas) {
+      if (!next[persona.id]) {
+        next = ensureMemoryCard(next, persona.id);
+      }
+    }
+    const personaId = activeRelationshipPersonaId;
+    if (personaId) {
+      const record = relationships[relationshipKeyForSelected];
+      const score = record ? record.score : migrateBondToScore(selected.bond);
+      next = syncMemoryCardRelationships(next, personaId, { [selected.id]: score });
+    }
+    return next;
+  }, [rawMemoryCards, personas, activeRelationshipPersonaId, relationshipKeyForSelected, relationships, selected.id, selected.bond]);
+
+  useEffect(() => {
+    saveMemoryCards(memoryCards);
+  }, [memoryCards]);
+
+  useEffect(() => {
+    saveMemoryCards(memoryCards);
+  }, [memoryCards]);
 
   const activeScene = activeSession?.sandbox
     ? sandboxSceneFor(selected)
@@ -3778,6 +3812,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
          activePersonaId: resolvedActivePersonaId,
          playerName: playerProfile.name,
          relationships,
+         memoryCards,
          preferences: {
           storyProvider,
           model: selectedModel,
@@ -3850,6 +3885,10 @@ function updateCharacter(id: string, updates: Partial<Character>) {
 
     if (data.relationships && typeof data.relationships === "object") {
       setRelationships((current) => ({ ...current, ...data.relationships }));
+    }
+
+    if (data.memoryCards && typeof data.memoryCards === "object") {
+      setRawMemoryCards((current) => ({ ...current, ...data.memoryCards }));
     }
 
     if (data.player.name.trim()) {
@@ -4808,6 +4847,22 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           continueRoleplay={continueRoleplay}
           deleteSession={deleteSession}
           sandboxSceneFor={sandboxSceneFor}
+          relationshipScore={relationshipScore}
+          relationshipLabel={deriveRelationshipLabel(relationshipScore)}
+          relationshipMeterPercent={relationshipMeterPercent(relationshipScore)}
+          activePersonaName={activePersona?.name ?? null}
+          memoryCardStatus={(() => {
+            const card = getMemoryCard(memoryCards, activeRelationshipPersonaId);
+            if (!card) return "No card";
+            const relCount = Object.keys(card.relationships).length;
+            const memCount = card.memoryRefs.length;
+            return `${memCount} memories · ${relCount} relationships`;
+          })()}
+          onResumeLatest={() => {
+            const latest = selectedSessions[0];
+            if (latest) continueRoleplay(latest);
+          }}
+          hasLatestSession={selectedSessions.length > 0}
           Portrait={Portrait}
         />
       )}
@@ -4911,7 +4966,18 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           <PersonaLibrary
             personas={personas}
             activePersonaId={resolvedActivePersonaId}
-            onChange={setPersonas}
+            memoryCards={memoryCards}
+            onChange={(next) => {
+              const removed = personas.find((p) => !next.find((n) => n.id === p.id));
+              if (removed) {
+                setRawMemoryCards((current) => {
+                  const nextCards = { ...current };
+                  delete nextCards[removed.id];
+                  return nextCards;
+                });
+              }
+              setPersonas(next);
+            }}
             onSelectActive={setActivePersonaId}
           />
         </section>
