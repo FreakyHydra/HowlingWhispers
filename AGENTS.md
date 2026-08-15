@@ -135,9 +135,8 @@ Do not touch the live service unless explicitly authorized.
 
 ## Version bump checklist (for a release)
 
-Bump the version in ALL of these together (the version test fails otherwise). The example below
-uses the current release family (the codebase is at `0.6.1`; the next release would be `0.7.0`).
-Do NOT touch dependency versions like `^0.4.0`:
+Bump the version in ALL of these together (the version test fails otherwise). Use the new release
+version (e.g. `0.7.0`); do NOT touch dependency version ranges (the `^` entries) in the same files:
 
 - `package.json` and `package-lock.json` (`"version": "X.Y.Z"`, both the top-level and the
   `packages[""]` entry).
