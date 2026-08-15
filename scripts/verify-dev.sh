@@ -26,6 +26,21 @@ systemctl restart "$SERVICE"
 echo "==> service active?"
 systemctl is-active "$SERVICE"
 
+echo "==> waiting for sandbox to become ready"
+ready=0
+for i in $(seq 1 30); do
+  if curl -fsS -o /dev/null --max-time 3 "$SANDBOX_URL" 2>/dev/null; then
+    echo "ready (after ${i}s)"
+    ready=1
+    break
+  fi
+  sleep 1
+done
+if [ "$ready" != "1" ]; then
+  echo "ERROR: sandbox did not become ready" >&2
+  exit 1
+fi
+
 echo "==> HTTP health check ($SANDBOX_URL)"
 STATUS="$(curl -sS -o /tmp/howling-dev.html -w "%{http_code}" --max-time 30 "$SANDBOX_URL" || true)"
 echo "sandbox HTTP $STATUS"
