@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.0 — Relationship System V1
+
+**◐ A persistent, provider-neutral relationship system replaces the fixed character bond with score-driven state tied to your active persona. Relationship state is hidden from visible roleplay: only a non-commanding tier/label phrase feeds the generation context, and deltas are stored in a separate event store.**
+
+### What's new
+- **Relationship state** — score (-1000..0..10000) tracked per (character, persona) and persisted across sessions in `lib/relationships/`.
+- **Local scorer** — a conservative, provider-neutral heuristic evaluates each committed character reply and produces a delta (never an absolute score).
+- **Reroll/edit/delete/rewind integrity** — events are keyed by a stable turn id and replaced, not stacked; the score is recomputed from surviving events so it stays consistent with history.
+- **Relationship meter** — the chat meter now reflects accumulated history instead of a static `bond` value, with a transient +/- delta indicator.
+- **Backup/restore** — relationship state and event history are included in portable backups and restore correctly, migrating legacy `bond` values.
+
+### What changed
+- **Live state** — `Character.bond` is no longer the live relationship; it seeds a record on first use via `migrateBondToScore` and is otherwise left intact for backward compatibility.
+- **Generation context** — only a non-commanding tier/label phrase is fed to the model via the `relationship` context field; deltas and reasons never enter `Message.meta` or the prompt.
+
+### Quality
+- 247/247 tests passed · lint clean · build validated.
+
 ## 0.6.1 — Howling Add-ons, Common Scenes & Story Improvements
 
 **◐ This release adds a data-only add-on system, reusable Common Scenes with runtime template variables, and fixes to reply-length enforcement, Living Cast initialization, pronoun handling, and navigation.**

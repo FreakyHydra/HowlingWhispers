@@ -16,7 +16,31 @@ export function ChangelogView(props: ChangelogViewProps) {
       </header>
 
           <div className="changelog-list">
-            <article className="changelog-entry featured latest hotfix-card">
+            <article className="changelog-entry featured latest">
+              <div className="changelog-mark">◐</div>
+              <div>
+                <span>Version 0.7.0 · Relationship System V1</span>
+                <h2>Relationship System V1</h2>
+                <p>
+                  A persistent, provider-neutral relationship system replaces the fixed character
+                  bond with score-driven state tied to your active persona.
+                </p>
+                <ul>
+                  <li>Relationship score (-1000..10000) tracked per (character, persona), saved across sessions</li>
+                  <li>A local, provider-neutral scorer evaluates each committed character reply for a relationship delta</li>
+                  <li>Rerolls, edits, deletes, and rewinds preserve score consistency &mdash; never farmable</li>
+                  <li>Relationship state is included in backups and restores, migrating legacy bond values</li>
+                  <li>The relationship meter reflects accumulated history instead of a static bond</li>
+                </ul>
+                <h3>What changed</h3>
+                <ul>
+                  <li><strong>Relationship state</strong> &mdash; (characterId, personaId) records with event history in <code>lib/relationships/</code></li>
+                  <li><strong>Generation context</strong> &mdash; only a non-commanding tier/label phrase feeds the prompt; deltas never enter the reply</li>
+                  <li><strong>Reroll/edit/delete/rewind integrity</strong> &mdash; events keyed by a stable turn id, replaced not stacked</li>
+                </ul>
+              </div>
+            </article>
+            <article className="changelog-entry featured hotfix-card">
              <div className="changelog-mark">◐</div>
              <div>
                <span>Version 0.6.1 · Howling Add-ons, Common Scenes &amp; Story Improvements</span>
