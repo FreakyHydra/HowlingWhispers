@@ -109,6 +109,26 @@ export type BackupCuratedState = {
   memories: string[];
 };
 
+export type BackupRelationshipEvent = {
+  id: string;
+  characterId: string;
+  personaId: string;
+  turnId: string;
+  delta: number;
+  reason: string;
+  createdAt: number;
+};
+
+export type BackupRelationshipRecord = {
+  characterId: string;
+  personaId: string;
+  score: number;
+  updatedAt: number;
+  events: BackupRelationshipEvent[];
+};
+
+export type BackupRelationshipState = Record<string, BackupRelationshipRecord>;
+
 export type BackupPersona = {
   id: string;
   name: string;
@@ -172,6 +192,8 @@ export type BackupData = {
   /** User-created scenes/backgrounds per character. */
   storyScenes: Record<string, BackupStoryScene[]>;
   preferences: BackupPreferences;
+  /** Persistent relationship state keyed by "characterId::personaId". */
+  relationships?: BackupRelationshipState;
 };
 
 export type BackupPayload = {
@@ -220,6 +242,7 @@ export type BackupSource = {
   activePersonaId: string | null;
   playerName: string;
   preferences: BackupPreferences;
+  relationships: BackupRelationshipState;
 };
 
 /**
@@ -284,11 +307,12 @@ export function buildBackupPayload(
       activePersonaId: source.activePersonaId ?? null,
       characters,
       curatedState,
-      messages: sanitizeMessages(source.messages),
+       messages: sanitizeMessages(source.messages),
       sessions: sanitizeSessions(source.sessions),
       currentSessionId: source.currentSessionId ?? null,
       storyScenes: sanitizeStoryScenes(source.storyScenes),
       preferences: sanitizePreferences(source.preferences),
+      relationships: sanitizeRelationships(source.relationships ?? {}),
     },
   };
 }
@@ -433,6 +457,54 @@ function sanitizeStoryScenes(value: unknown): BackupData["storyScenes"] {
   return out;
 }
 
+function sanitizeRelationships(value: unknown): BackupRelationshipState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: BackupRelationshipState = {};
+  for (const [key, unknownRecord] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof unknownRecord !== "object" || unknownRecord === null || Array.isArray(unknownRecord)) continue;
+    const record = unknownRecord as Record<string, unknown>;
+    const events: BackupRelationshipEvent[] = [];
+    if (Array.isArray(record.events)) {
+      for (const raw of record.events) {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+        const event = raw as Record<string, unknown>;
+        if (
+          typeof event.turnId === "string"
+          && typeof event.delta === "number"
+          && Number.isFinite(event.delta)
+          && typeof event.reason === "string"
+          && typeof event.createdAt === "number"
+          && Number.isFinite(event.createdAt)
+        ) {
+          events.push({
+            id: typeof event.id === "string" ? event.id : nextBackupEventId(),
+            characterId: typeof event.characterId === "string" ? event.characterId : "",
+            personaId: typeof event.personaId === "string" ? event.personaId : "",
+            turnId: event.turnId,
+            delta: Math.round(event.delta),
+            reason: event.reason.slice(0, 500),
+            createdAt: Math.round(event.createdAt),
+          });
+        }
+      }
+    }
+    out[key] = {
+      characterId: typeof record.characterId === "string" ? record.characterId : "",
+      personaId: typeof record.personaId === "string" ? record.personaId : "",
+      score: typeof record.score === "number" && Number.isFinite(record.score)
+        ? Math.round(record.score)
+        : events.reduce((total, event) => total + event.delta, 0),
+      updatedAt: typeof record.updatedAt === "number" && Number.isFinite(record.updatedAt) ? record.updatedAt : 0,
+      events,
+    };
+  }
+  return out;
+}
+
+function nextBackupEventId(): string {
+  return `rel-backup-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function sanitizePreferences(value: unknown): BackupPreferences {
   if (!value || typeof value !== "object") return {};
   const p = value as Record<string, unknown>;
@@ -532,7 +604,8 @@ export function validatePayload(value: unknown): BackupPayload | null {
       sessions: sanitizeSessions(data.sessions),
       currentSessionId: typeof data.currentSessionId === "string" ? data.currentSessionId : null,
       storyScenes: sanitizeStoryScenes(data.storyScenes),
-      preferences: sanitizePreferences(data.preferences),
+       preferences: sanitizePreferences(data.preferences),
+      relationships: sanitizeRelationships(data.relationships),
     },
   };
 }

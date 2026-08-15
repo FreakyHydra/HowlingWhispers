@@ -4,6 +4,7 @@ import React from "react";
 import type { Character, Message, SceneDefinition, StorySession } from "../app/dreambound-app";
 import type { LivingCastEntry, PlayerPersona } from "../../lib/generation/living-cast";
 import { createCast, detectPendingInteraction } from "../../lib/generation/living-cast";
+import { relationshipMeterPercent } from "../../lib/relationships/index.ts";
 
 export interface ChatWorkspaceProps {
   showCharacterRail: boolean;
@@ -80,7 +81,9 @@ export interface ChatWorkspaceProps {
   storyProvider: "novelai" | "local" | "device";
   activeModel: { label: string };
   activeReplyLength: { label: string };
-  deriveRelationshipLabel: (bond: number) => string;
+  deriveRelationshipLabel: (relationshipScore: number) => string;
+  relationshipScore: number;
+  relationshipDelta: number | null;
   autopilotError: string;
   textStyle: { dialogue: string; action: string; narration: string; fontSize: number };
   editingId: number | null;
@@ -172,6 +175,8 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
     activeModel,
     activeReplyLength,
     deriveRelationshipLabel,
+    relationshipScore,
+    relationshipDelta,
     autopilotError,
     textStyle,
     editingId,
@@ -905,11 +910,22 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
           </p>
           <div className="pulse-heading">
             <span>Relationship</span>
-            <strong>{deriveRelationshipLabel(selected.bond)}</strong>
+            <strong>{deriveRelationshipLabel(relationshipScore)}</strong>
+            {relationshipDelta !== null && relationshipDelta !== 0 && (
+              <span
+                className={`relationship-tick ${relationshipDelta > 0 ? "positive" : "negative"}`}
+                aria-label={relationshipDelta > 0 ? `Gained ${relationshipDelta}` : `Lost ${-relationshipDelta}`}
+              >
+                {relationshipDelta > 0 ? `+${relationshipDelta}` : `${relationshipDelta}`}
+              </span>
+            )}
           </div>
-          <div className="bond-meter" aria-label={`Relationship ${selected.bond}%`}>
-            <span style={{ width: `${selected.bond}%` }} />
-            <i style={{ left: `${selected.bond}%` }}>♡</i>
+          <div
+            className="bond-meter"
+            aria-label={`Relationship meter at ${relationshipMeterPercent(relationshipScore)}%`}
+          >
+            <span style={{ width: `${relationshipMeterPercent(relationshipScore)}%` }} />
+            <i style={{ left: `${relationshipMeterPercent(relationshipScore)}%` }}>♡</i>
           </div>
         </section>
       </aside>}
@@ -977,11 +993,11 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
             >
               ×
             </button>
-            <p className="eyebrow">Player's turn</p>
+            <p className="eyebrow">Player&apos;s turn</p>
             <h2 id="direction-title">Impersonation direction</h2>
             <p className="modal-intro">
               The direction remembered for this turn. Edit it and re-run to regenerate the
-              player's draft from that prompt — or clear it to keep only the text.
+              player&apos;s draft from that prompt — or clear it to keep only the text.
             </p>
             <textarea
               className="direction-editor-textarea"

@@ -4247,6 +4247,21 @@ a:focus-visible {
   font-weight: 500;
 }
 
+.relationship-tick {
+  color: var(--copper-bright);
+  font-weight: 600;
+  font-size: 0.85em;
+  opacity: 0.9;
+}
+
+.relationship-tick.positive {
+  color: color-mix(in srgb, var(--copper-bright) 85%, transparent);
+}
+
+.relationship-tick.negative {
+  color: color-mix(in srgb, #e3c48b 85%, transparent);
+}
+
 .bond-meter {
   background: repeating-linear-gradient(90deg, #161013 0 18%, #9a5436 18% 19%);
   border: 1px solid rgba(183, 101, 63, 0.56);

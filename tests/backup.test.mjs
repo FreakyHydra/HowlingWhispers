@@ -76,17 +76,28 @@ function sampleSource(overrides = {}) {
         updatedAt: 4,
       },
     ],
-    activePersonaId: "persona-1",
-    playerName: "Rinn",
-    preferences: {
-      storyProvider: "novelai",
-      model: "xialong-v1",
-      creativity: 8,
-      replyLength: "immersive",
-    },
-    ...overrides,
-  };
-}
+     activePersonaId: "persona-1",
+     playerName: "Rinn",
+     preferences: {
+       storyProvider: "novelai",
+       model: "xialong-v1",
+       creativity: 8,
+       replyLength: "immersive",
+     },
+     relationships: {
+       "coda::persona-1": {
+         characterId: "coda",
+         personaId: "persona-1",
+         score: 82,
+         updatedAt: 9,
+         events: [
+           { id: "ev-1", characterId: "coda", personaId: "persona-1", turnId: "char-3", delta: 82, reason: "shared a secret", createdAt: 8 },
+         ],
+       },
+     },
+     ...overrides,
+   };
+ }
 
 function build(overrides = {}) {
   return buildBackupPayload(
@@ -171,4 +182,53 @@ test("curated helper matches the curated ids", () => {
   assert.equal(isCuratedCharacterId("peony"), true);
   assert.equal(isCuratedCharacterId("senako-steel"), true);
   assert.equal(isCuratedCharacterId("my-own"), false);
+});
+
+test("relationship state survives the round trip", () => {
+  const payload = build();
+  const reparsed = parsePortableBackup(serializeBackupPayload(payload));
+  assert.ok(reparsed.ok);
+  if (!reparsed.ok) return;
+  const rel = reparsed.payload.data.relationships?.["coda::persona-1"];
+  assert.ok(rel, "relationship record restored");
+  assert.equal(rel.score, 82);
+  assert.equal(rel.personaId, "persona-1");
+  assert.equal(rel.events[0].turnId, "char-3");
+  assert.equal(rel.events[0].delta, 82);
+  assert.equal(rel.events[0].reason, "shared a secret");
+});
+
+test("backups without relationship state restore as empty (backward compatible)", () => {
+  // A source with no relationships builds an empty relationship map, and an old
+  // backup that simply lacks the field still restores to an empty map so the app
+  // can re-seed from legacy bond values.
+  const payload = build({ relationships: undefined });
+  assert.deepEqual(payload.data.relationships, {});
+  const reparsed = parsePortableBackup(serializeBackupPayload(payload));
+  assert.ok(reparsed.ok);
+  if (!reparsed.ok) return;
+  assert.deepEqual(reparsed.payload.data.relationships ?? {}, {});
+});
+
+test("malformed relationship events are dropped during sanitize", () => {
+  const payload = build({
+    relationships: {
+      "coda::persona-1": {
+        characterId: "coda",
+        personaId: "persona-1",
+        score: 5,
+        updatedAt: 1,
+        events: [
+          { turnId: "char-3", delta: "not-a-number", reason: "bad" },
+          { turnId: "char-4", delta: 5, reason: "good", createdAt: 2 },
+        ],
+      },
+    },
+  });
+  const reparsed = parsePortableBackup(serializeBackupPayload(payload));
+  assert.ok(reparsed.ok);
+  if (!reparsed.ok) return;
+  const rel = reparsed.payload.data.relationships?.["coda::persona-1"];
+  assert.equal(rel.events.length, 1);
+  assert.equal(rel.events[0].turnId, "char-4");
 });

@@ -82,6 +82,23 @@ import {
 import { isNewerVersion } from "../lib/version.mjs";
 import { legacyCharacterToWorldLore } from "../lib/worlds/schema.ts";
 import { resolveBuiltinWorldLore } from "../lib/worlds/builtins.ts";
+import type { WorldLorebookV1 } from "../lib/worlds/schema.ts";
+import { parseWorldLorebook } from "../lib/worlds/schema.ts";
+import {
+  commitEvent,
+  effectivePersonaId,
+  effectiveScore,
+  heuristicRelationshipScorer,
+  migrateBondToScore,
+  removeEventsForTurns,
+  deriveRelationshipLabel,
+  relationshipKey,
+  relationshipTierPhrase,
+  loadRelationships,
+  saveRelationships,
+  type RelationshipState,
+  type RelationshipScorer,
+} from "../lib/relationships/index.ts";
 import {
   describeOllamaModel,
   parseOllamaModels,
@@ -1368,6 +1385,8 @@ export default function DreamboundApp() {
   );
   const [commonScenes, setCommonScenes] = useState<CommonScene[]>(readSavedCommonScenes);
   const [installedAddons, setInstalledAddons] = useState<InstalledAddon[]>(readSavedInstalledAddons);
+  const [relationships, setRelationships] = useState<RelationshipState>(loadRelationships);
+  const [relationshipDelta, setRelationshipDelta] = useState<number | null>(null);
   const [storyEditor, setStoryEditor] = useState<StoryEditor | null>(null);
   const [commonSceneEditor, setCommonSceneEditor] = useState<{ mode: "create" | "edit"; scene: CommonScene } | null>(null);
   const [selectedCodaRole, setSelectedCodaRole] = useState("Trusted Companion");
@@ -1808,6 +1827,10 @@ export default function DreamboundApp() {
   }, [installedAddons]);
 
   useEffect(() => {
+    saveRelationships(relationships);
+  }, [relationships]);
+
+  useEffect(() => {
     writeSession("contextManifests", contextManifests);
   }, [contextManifests]);
 
@@ -1906,17 +1929,6 @@ export default function DreamboundApp() {
     ));
   }
 
-  function deriveRelationshipLabel(bond: number): string {
-    if (bond >= 90) return "Deeply bonded";
-    if (bond >= 75) return "Affectionate";
-    if (bond >= 60) return "Close";
-    if (bond >= 45) return "Trusted";
-    if (bond >= 30) return "Comfortable";
-    if (bond >= 15) return "Guarded acquaintance";
-    if (bond >= 5) return "Wary";
-    return "Stranger";
-  }
-
   const selected = useMemo(
     () => characters.find((character) => character.id === selectedId) ?? characters[0],
     [characters, selectedId],
@@ -1935,6 +1947,24 @@ export default function DreamboundApp() {
   const activeSession = sessions.find((session) => session.id === currentSessionId)
     ?? sessions.find((session) => session.characterId === selected.id && session.messageKey === selected.id)
     ?? null;
+
+  const activeRelationshipPersonaId = useMemo(
+    () => effectivePersonaId(
+      activePersona?.id ?? null,
+      activeSession?.playerPersonaId ?? null,
+    ),
+    [activePersona?.id, activeSession?.playerPersonaId],
+  );
+  const relationshipKeyForSelected = relationshipKey(selected.id, activeRelationshipPersonaId);
+  const relationshipRecord = relationships[relationshipKeyForSelected];
+  const relationshipScore = relationshipRecord
+    ? relationshipRecord.score
+    : migrateBondToScore(selected.bond);
+  const relationshipContext = [
+    selected.relationship,
+    relationshipTierPhrase(relationshipScore),
+  ].filter(Boolean).join(" — ");
+
   const activeScene = activeSession?.sandbox
     ? sandboxSceneFor(selected)
     : selectedScenes.find((scene) => scene.id === activeSession?.sceneId) ?? selectedScenes[0];
@@ -2658,7 +2688,7 @@ export default function DreamboundApp() {
             : resolvedSceneWeather,
           memories: activeSession?.sandbox ? [] : selected.memories,
           sandbox: Boolean(activeSession?.sandbox),
-          relationship: [selected.relationship, `Bond ${selected.bond}/100`].filter(Boolean).join("; "),
+           relationship: relationshipContext,
           playerRole: activeSession?.sandbox
             ? ""
             : activeSession?.playerRoleContext || activeSession?.playerRole || "",
@@ -2753,6 +2783,7 @@ export default function DreamboundApp() {
   const [autopilotPov, setAutopilotPov] = useState<"first" | "third" | "narrator">("third");
   const [autopilotControlsCollapsed, setAutopilotControlsCollapsed] = useState(false);
   const [storyBackgroundBlur, setStoryBackgroundBlur] = useState(8);
+  const relationshipsRef = useRef(relationships);
   useEffect(() => {
     requestStoryReplyRef.current = requestStoryReply;
     messagesRef.current = messages;
@@ -2762,6 +2793,7 @@ export default function DreamboundApp() {
     sessionsRef.current = sessions;
     activePersonaRef.current = activePersona;
     playerProfileRef.current = playerProfile;
+    relationshipsRef.current = relationships;
     refreshSessionCastRef.current = refreshSessionCast;
   });
 
@@ -2882,6 +2914,97 @@ export default function DreamboundApp() {
     generationAbortRef.current?.abort();
   }
 
+  function characterTurnId(messageId: number): string {
+    return `c:${String(messageId)}`;
+  }
+
+  function lastPlayerMessageText(conversation: Message[]): string {
+    for (let index = conversation.length - 1; index >= 0; index -= 1) {
+      if (conversation[index].sender === "player") return conversation[index].text;
+    }
+    return "";
+  }
+
+  function scoreCharacterReply(
+    messageId: number,
+    replyText: string,
+    conversation: Message[],
+  ): void {
+    const personaId = activeRelationshipPersonaId;
+    const playerName = activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim();
+    const previousScore = effectiveScore(
+      relationshipsRef.current,
+      selected.id,
+      personaId,
+      selected.bond,
+    );
+    const result = (heuristicRelationshipScorer as RelationshipScorer).evaluate({
+      characterId: selected.id,
+      personaId,
+      playerName,
+      characterName: selected.name,
+      previousScore,
+      playerMessage: lastPlayerMessageText(conversation),
+      characterReply: replyText,
+      conversation: conversation.map((message) => ({ sender: message.sender, text: message.text })),
+    });
+    if (!result) {
+      setRelationshipDelta(null);
+      return;
+    }
+    const next: RelationshipState = { ...relationshipsRef.current };
+    commitEvent(next, {
+      characterId: selected.id,
+      personaId,
+      turnId: characterTurnId(messageId),
+      delta: result.delta,
+      reason: result.reason,
+    });
+    setRelationships(next);
+    setRelationshipDelta(result.delta);
+  }
+
+  function removeRelationshipTurns(turnIds: string[]): void {
+    if (turnIds.length === 0) return;
+    const next: RelationshipState = { ...relationshipsRef.current };
+    removeEventsForTurns(next, selected.id, activeRelationshipPersonaId, turnIds);
+    setRelationships(next);
+  }
+
+  function recomputeRelationshipForMessage(messageId: number, characterReply: string, conversation: Message[]): void {
+    const message = conversation.find((candidate) => candidate.id === messageId);
+    if (!message || message.sender !== "character") return;
+    const personaId = activeRelationshipPersonaId;
+    const next: RelationshipState = { ...relationshipsRef.current };
+    // Replace whatever event (if any) existed for this character turn, then
+    // re-evaluate the edited text. A zero/empty result clears any prior event.
+    removeEventsForTurns(next, selected.id, personaId, [characterTurnId(messageId)]);
+    const result = (heuristicRelationshipScorer as RelationshipScorer).evaluate({
+      characterId: selected.id,
+      personaId,
+      playerName: activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim(),
+      characterName: selected.name,
+      previousScore: effectiveScore(next, selected.id, personaId, selected.bond),
+      playerMessage: lastPlayerMessageText(conversation),
+      characterReply,
+      conversation: conversation.map((candidate) => ({ sender: candidate.sender, text: candidate.text })),
+    });
+    if (!result || result.delta === 0) {
+      setRelationships(next);
+      setRelationshipDelta(null);
+      return;
+    }
+    commitEvent(next, {
+      characterId: selected.id,
+      personaId,
+      turnId: characterTurnId(messageId),
+      delta: result.delta,
+      reason: result.reason,
+    });
+    setRelationships(next);
+    setRelationshipDelta(result.delta);
+  }
+
   async function sendMessage() {
     const text = draft.trim();
     if (!text || isReplying || isImpersonating) return;
@@ -2929,6 +3052,7 @@ export default function DreamboundApp() {
       playerName: effectivePlayerName,
     });
     setDraft("");
+    setRelationshipDelta(null);
     setIsReplying(true);
     setChatError("");
 
@@ -2955,10 +3079,7 @@ export default function DreamboundApp() {
         livingCast: activeSession?.livingCast ?? [],
         playerName: effectivePlayerName,
       });
-      const newBond = Math.min(100, (selected.bond || 8) + 1);
-      setCharacters((current) => current.map((character) =>
-        character.id === selected.id ? { ...character, bond: newBond } : character,
-      ));
+      void scoreCharacterReply(replyMessage.id, replyMessage.text, [...conversation, replyMessage]);
       if (activeSession) {
         setSessions((current) => current.map((session) =>
           session.id === activeSession.id ? { ...session, updatedAt: Date.now() } : session,
@@ -3018,21 +3139,20 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
         session.id === activeSession.id ? { ...session, updatedAt: Date.now() } : session,
       ));
     }
-    setIsReplying(true);
-    const result = await requestStoryReply(conversation);
-    setMessages((current) => ({
-      ...current,
-      [activeMessageKey]: [
-        ...(current[activeMessageKey] ?? []),
-        { id: Date.now() + 1, sender: "character", text: result.reply, meta: result.metadata ?? null },
-      ],
-    }));
-    const newBond = Math.min(100, (selected.bond || 8) + 1);
-    setCharacters((current) => current.map((character) =>
-      character.id === selected.id ? { ...character, bond: newBond } : character,
-    ));
-    setProviderState("connected");
-  }
+     setIsReplying(true);
+     setRelationshipDelta(null);
+     const result = await requestStoryReply(conversation);
+     const replyMessage: Message = { id: Date.now() + 1, sender: "character", text: result.reply, meta: result.metadata ?? null };
+     setMessages((current) => ({
+       ...current,
+       [activeMessageKey]: [
+         ...(current[activeMessageKey] ?? []),
+         replyMessage,
+       ],
+     }));
+     void scoreCharacterReply(replyMessage.id, replyMessage.text, [...conversation, replyMessage]);
+     setProviderState("connected");
+   }
 
   async function impersonatePlayer() {
     if (isReplying || isImpersonating) return;
@@ -3116,18 +3236,24 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
   function saveEditMessage(id: number) {
     const text = editDraft.trim();
     if (!text) return;
-    setMessages((current) => ({
-      ...current,
-      [activeMessageKey]: (current[activeMessageKey] ?? []).map((m) => {
-        if (m.id !== id) return m;
-        const { versions, activeIndex } = messageVersions(m);
-        const pages = versions.map((page, index) => (index === activeIndex ? text : page));
-        return { ...m, text, pages, pageIndex: activeIndex };
-      }),
-    }));
-    setEditingId(null);
-    setEditDraft("");
-  }
+     setMessages((current) => ({
+       ...current,
+       [activeMessageKey]: (current[activeMessageKey] ?? []).map((m) => {
+         if (m.id !== id) return m;
+         const { versions, activeIndex } = messageVersions(m);
+         const pages = versions.map((page, index) => (index === activeIndex ? text : page));
+         return { ...m, text, pages, pageIndex: activeIndex };
+       }),
+     }));
+     const conversation = messages[activeMessageKey] ?? [];
+     const edited = conversation.find((m) => m.id === id);
+     if (edited?.sender === "character") {
+       // Recompute/replace the event for an edited character turn.
+       void Promise.resolve().then(() => recomputeRelationshipForMessage(id, text, conversation));
+     }
+     setEditingId(null);
+     setEditDraft("");
+   }
 
   function setMessageActivePage(id: number, index: number) {
     setMessages((current) => ({
@@ -3167,8 +3293,10 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
         (message) => !removedIds.has(message.id),
       ),
     }));
+    removeRelationshipTurns([...removedIds].map((id) => characterTurnId(id)));
     if (editingId !== null && removedIds.has(editingId)) cancelEditMessage();
     setPendingDeleteMessage(null);
+    setRelationshipDelta(null);
   }
 
   async function rerunImpersonation(id: number, directionText: string) {
@@ -3177,6 +3305,12 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
     const target = currentMessages.find((m) => m.id === id);
     const truncated = currentMessages.filter((m) => m.id < id);
     if (!target || truncated.length === 0) return;
+    // The re-run rewrites the player turn and everything after it. Reverse any
+    // relationship events that belonged to the character turns being discarded.
+    const removedCharacterTurnIds = currentMessages
+      .filter((m) => m.id >= id && m.sender === "character")
+      .map((m) => characterTurnId(m.id));
+    removeRelationshipTurns(removedCharacterTurnIds);
     const nextDirection = directionText.trim();
     setDirectionEditor(null);
     setChatError("");
@@ -3217,6 +3351,7 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
     const truncated = (messages[activeMessageKey] ?? []).filter((m) => m.id < message.id);
     if (truncated.length === 0) return;
     setChatError("");
+    setRelationshipDelta(null);
     setIsReplying(true);
 
     try {
@@ -3230,15 +3365,18 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
       const reply = result.reply;
       const meta = result.metadata ?? null;
 
-      setMessages((current) => ({
-        ...current,
-        [activeMessageKey]: (current[activeMessageKey] ?? []).map((m) => {
-          if (m.id !== message.id) return m;
-          const pages = m.pages && m.pages.length > 0 ? [...m.pages, reply] : [m.text, reply];
-          return { ...m, text: reply, pages, pageIndex: pages.length - 1, ...(meta ? { meta } : {}) };
-        }),
-      }));
-      setProviderState("connected");
+       setMessages((current) => ({
+         ...current,
+         [activeMessageKey]: (current[activeMessageKey] ?? []).map((m) => {
+           if (m.id !== message.id) return m;
+           const pages = m.pages && m.pages.length > 0 ? [...m.pages, reply] : [m.text, reply];
+           return { ...m, text: reply, pages, pageIndex: pages.length - 1, ...(meta ? { meta } : {}) };
+         }),
+       }));
+       // Same turnId as the original reply -> commitEvent replaces the old event
+       // instead of stacking another one, so rerolls cannot farm points.
+       void scoreCharacterReply(message.id, reply, [...truncated, { id: message.id, sender: "character", text: reply }]);
+       setProviderState("connected");
     } catch (error) {
       if (isAbortError(error)) return;
       setProviderState("error");
@@ -3636,10 +3774,11 @@ function updateCharacter(id: string, updates: Partial<Character>) {
         sessions,
         currentSessionId,
         storyScenes,
-        personas,
-        activePersonaId: resolvedActivePersonaId,
-        playerName: playerProfile.name,
-        preferences: {
+         personas,
+         activePersonaId: resolvedActivePersonaId,
+         playerName: playerProfile.name,
+         relationships,
+         preferences: {
           storyProvider,
           model: selectedModel,
           localModel: selectedLocalModel,
@@ -3707,6 +3846,10 @@ function updateCharacter(id: string, updates: Partial<Character>) {
       data.personas.some((persona) => persona.id === id);
     if (data.activePersonaId && personaIdKnown(data.activePersonaId)) {
       setActivePersonaId(data.activePersonaId);
+    }
+
+    if (data.relationships && typeof data.relationships === "object") {
+      setRelationships((current) => ({ ...current, ...data.relationships }));
     }
 
     if (data.player.name.trim()) {
@@ -4957,6 +5100,8 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           activeModel={activeModel}
           activeReplyLength={activeReplyLength}
           deriveRelationshipLabel={deriveRelationshipLabel}
+          relationshipScore={relationshipScore}
+          relationshipDelta={relationshipDelta}
           autopilotError={autopilotError}
           textStyle={textStyle}
           editingId={editingId}
