@@ -1995,9 +1995,6 @@ export default function DreamboundApp() {
     saveMemoryCards(memoryCards);
   }, [memoryCards]);
 
-  useEffect(() => {
-    saveMemoryCards(memoryCards);
-  }, [memoryCards]);
 
   const activeScene = activeSession?.sandbox
     ? sandboxSceneFor(selected)

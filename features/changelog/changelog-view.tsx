@@ -18,6 +18,7 @@ export function ChangelogView(props: ChangelogViewProps) {
           <div className="changelog-list">
             <article className="changelog-entry featured latest">
               <span className="changelog-mark">◐</span>
+              <div>
               <span className="changelog-version">Version 0.7.1 · The Black Memory</span>
               <h2>The Black Memory</h2>
               <p>
@@ -34,6 +35,7 @@ export function ChangelogView(props: ChangelogViewProps) {
                 <li>Memory Injector groundwork added for future context selection</li>
                 <li>Backups include Memory Cards and preserve Persona ↔ Card ownership</li>
               </ul>
+              </div>
             </article>
             <article className="changelog-entry featured">
               <div className="changelog-mark">◐</div>

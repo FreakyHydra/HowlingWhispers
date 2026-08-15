@@ -3,7 +3,6 @@
 import { useRef, useState } from "react";
 import type { PlayerPersona } from "../../lib/personas/schema";
 import { clonePersona } from "../../lib/personas/schema";
-import { compilePlayerPersona } from "../../lib/personas/compile";
 import {
   ensureUniquePersonaIds,
   parsePersonaImport,
@@ -135,7 +134,6 @@ export function PersonaLibrary({
       ) : (
         <ul className="persona-list">
           {personas.map((persona) => {
-            const compiled = compilePlayerPersona(persona);
             const active = persona.id === activePersonaId;
             return (
               <li className="persona-card" key={persona.id}>
@@ -154,12 +152,15 @@ export function PersonaLibrary({
                   </strong>
                   <small>{persona.pronouns ?? "no pronouns set"}</small>
                   <p>{persona.description || "No description yet."}</p>
-                  <pre className="persona-compiled-preview">{compiled}</pre>
-                  {memoryCards[persona.id] && (
-                    <small className="persona-memory-status">
-                      {memoryCards[persona.id].memoryRefs.length} memories · {Object.keys(memoryCards[persona.id].relationships).length} relationships
-                    </small>
-                  )}
+                  <div className="persona-memory-card">
+                    <span className="persona-memory-card-label">Memory Card</span>
+                    <span className="persona-memory-card-status">● Inserted</span>
+                    <div className="persona-memory-card-stats">
+                      <span>{memoryCards[persona.id]?.memoryRefs.length ?? 0} memories</span>
+                      <span>{Object.keys(memoryCards[persona.id]?.relationships ?? {}).length} relationships</span>
+                      <span>{Object.keys(memoryCards[persona.id]?.milestones ?? {}).length} milestones</span>
+                    </div>
+                  </div>
                 </div>
                 <div className="persona-card-actions">
                   <button

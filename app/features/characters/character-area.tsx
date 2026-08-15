@@ -624,18 +624,19 @@ export function CharacterArea(props: CharacterAreaProps) {
               )}
               <div>
                 <p className="eyebrow">Stories with {props.selected.name}</p>
-                <h1>Choose where the story begins.</h1>
+                <h1>{props.selected.name}</h1>
                 <p>{props.selected.role} · {props.selected.status}</p>
                 {props.activePersonaName && (
                   <p className="scene-library-persona">Playing as {props.activePersonaName}</p>
                 )}
                 <div className="relationship-meter-container">
+                  <span className="relationship-label">Relationship with {props.selected.name}</span>
+                  <strong className="relationship-score">{props.relationshipScore.toLocaleString()}</strong>
                   <span className="relationship-label">{props.relationshipLabel}</span>
                   <div className="bond-meter" aria-label={`Relationship meter at ${props.relationshipMeterPercent}%`}>
                     <span style={{ width: `${props.relationshipMeterPercent}%` }} />
                     <i style={{ left: `${props.relationshipMeterPercent}%` }}>♡</i>
                   </div>
-                  <small className="memory-card-status">{props.memoryCardStatus}</small>
                 </div>
               </div>
               <Portrait character={props.selected} image={props.portraitUrl(props.selected)} />
@@ -738,19 +739,6 @@ export function CharacterArea(props: CharacterAreaProps) {
             </section>
 
             <section className="scene-library-section">
-              <div className="scene-library-heading">
-                <div>
-                  <p className="eyebrow">Primary</p>
-                  <h2>Quick Start</h2>
-                  {props.selected.id === "coda" && <p className="selected-role-note">Your role: {props.selectedCodaRole}</p>}
-                </div>
-                <div className="scene-heading-actions">
-                  <span>Each choice creates a separate local session</span>
-                  <button className="outline-button" onClick={props.openStoryCreator}>
-                    + Create a story
-                  </button>
-                </div>
-              </div>
               {props.storyEditor && (
                 <form
                   className="story-editor"
