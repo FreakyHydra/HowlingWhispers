@@ -120,6 +120,23 @@ export type BackupPersona = {
   avatar?: string;
   createdAt: number;
   updatedAt: number;
+  hwCard?: import("../personas/hw-card").HwCard;
+  identity?: import("../personas/hw-card").HwCardIdentity;
+  personalityTraits?: string[];
+  emotionalProfile?: Record<string, unknown>;
+  socialBehavior?: Record<string, unknown>;
+  communicationStyle?: Record<string, unknown>;
+  likes?: string[];
+  dislikes?: string[];
+  interests?: string[];
+  habits?: string[];
+  boundaries?: string[];
+  history?: Record<string, unknown>;
+  roleplayGuidance?: string[];
+  memoryPriorities?: string[];
+  tags?: string[];
+  creator?: string;
+  cardVersion?: string;
 };
 
 export type BackupPreferences = {
@@ -298,7 +315,7 @@ function sanitizePersonas(value: unknown): BackupPersona[] {
     .filter((item): item is BackupPersona => !!item && typeof item === "object")
     .map((persona) => {
       const p = persona as Record<string, unknown>;
-      return {
+      const out: BackupPersona = {
         id: typeof p.id === "string" ? p.id : "",
         name: typeof p.name === "string" ? p.name.slice(0, 100) : "",
         pronouns: typeof p.pronouns === "string" ? p.pronouns : undefined,
@@ -310,6 +327,26 @@ function sanitizePersonas(value: unknown): BackupPersona[] {
         createdAt: typeof p.createdAt === "number" ? p.createdAt : 0,
         updatedAt: typeof p.updatedAt === "number" ? p.updatedAt : 0,
       };
+
+      if (p.hwCard && typeof p.hwCard === "object" && !Array.isArray(p.hwCard)) out.hwCard = p.hwCard as BackupPersona["hwCard"];
+      if (p.identity && typeof p.identity === "object" && !Array.isArray(p.identity)) out.identity = p.identity as BackupPersona["identity"];
+      if (Array.isArray(p.personalityTraits)) out.personalityTraits = p.personalityTraits.filter((t: unknown) => typeof t === "string");
+      if (p.emotionalProfile && typeof p.emotionalProfile === "object" && !Array.isArray(p.emotionalProfile)) out.emotionalProfile = p.emotionalProfile as Record<string, unknown>;
+      if (p.socialBehavior && typeof p.socialBehavior === "object" && !Array.isArray(p.socialBehavior)) out.socialBehavior = p.socialBehavior as Record<string, unknown>;
+      if (p.communicationStyle && typeof p.communicationStyle === "object" && !Array.isArray(p.communicationStyle)) out.communicationStyle = p.communicationStyle as Record<string, unknown>;
+      if (Array.isArray(p.likes)) out.likes = p.likes.filter((t: unknown) => typeof t === "string");
+      if (Array.isArray(p.dislikes)) out.dislikes = p.dislikes.filter((t: unknown) => typeof t === "string");
+      if (Array.isArray(p.interests)) out.interests = p.interests.filter((t: unknown) => typeof t === "string");
+      if (Array.isArray(p.habits)) out.habits = p.habits.filter((t: unknown) => typeof t === "string");
+      if (Array.isArray(p.boundaries)) out.boundaries = p.boundaries.filter((t: unknown) => typeof t === "string");
+      if (p.history && typeof p.history === "object" && !Array.isArray(p.history)) out.history = p.history as Record<string, unknown>;
+      if (Array.isArray(p.roleplayGuidance)) out.roleplayGuidance = p.roleplayGuidance.filter((t: unknown) => typeof t === "string");
+      if (Array.isArray(p.memoryPriorities)) out.memoryPriorities = p.memoryPriorities.filter((t: unknown) => typeof t === "string");
+      if (Array.isArray(p.tags)) out.tags = p.tags.filter((t: unknown) => typeof t === "string");
+      if (typeof p.creator === "string") out.creator = p.creator;
+      if (typeof p.cardVersion === "string") out.cardVersion = p.cardVersion;
+
+      return out;
     })
     .filter((persona) => persona.id && persona.name);
 }

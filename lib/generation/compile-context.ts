@@ -42,7 +42,7 @@ export type CompileContextInput = {
   sandbox: boolean;
   messages: RoleplayMessage[];
   playerName: string;
-  playerPersona?: string;
+  playerPersona?: import("../personas/schema").PlayerPersona | string;
   preferences: StoryPreferences;
   autopilotPov?: "first" | "third" | "narrator";
   lengthInstruction: string;
@@ -380,16 +380,6 @@ function buildNovelAiPrompt(parts: PromptParts): string {
     }
   }
   if (parts.kind === "impersonation") {
-    if (parts.playerDirection?.trim()) {
-      lines.push(
-        "PRIVATE DIRECTION (MANDATORY):",
-        `The following is private control input that must be honored by ${parts.playerLabel} on this exact turn:`,
-        `<player-direction-immediate>`,
-        parts.playerDirection,
-        `</player-direction-immediate>`,
-        "Follow it literally. Do not soften, omit, replace, reinterpret, or summarize it, and do not continue or reword the AI character's last message.",
-      );
-    }
     lines.push("<|user|>", `${parts.playerLabel}:`);
   } else {
     lines.push("<|assistant|>", "<think></think>", `${parts.speakerName}:`);
@@ -571,10 +561,99 @@ function renderLoreEntry(entry: WorldLoreEntry): string {
   return `<world-lore-entry title="${escapeAttribute(entry.title)}">\n${entry.content}\n</world-lore-entry>`;
 }
 
-function renderPlayerPersona(persona: string | undefined): string {
-  const content = persona?.trim();
-  if (!content) return "";
-  return `<player-persona>\n${content}\n</player-persona>`;
+function renderPlayerPersona(persona: import("../personas/schema").PlayerPersona | string | undefined): string {
+  if (!persona) return "";
+
+  if (typeof persona === "string") {
+    const content = persona.trim();
+    if (!content) return "";
+    return `<player-persona>\n${content}\n</player-persona>`;
+  }
+
+  const parts: string[] = [];
+
+  const push = (value: string | undefined) => {
+    const trimmed = value?.trim();
+    if (trimmed) parts.push(trimmed);
+  };
+
+  parts.push(`<player-persona>`);
+
+  if (persona.identity) {
+    const id = persona.identity;
+    parts.push(`<identity`);
+    if (id.gender) parts.push(`gender="${escapeAttribute(id.gender)}"`);
+    if (id.genderIdentity) parts.push(`gender-identity="${escapeAttribute(id.genderIdentity)}"`);
+    if (id.pronouns) parts.push(`pronouns="${escapeAttribute(id.pronouns)}"`);
+    if (id.presentation) parts.push(`presentation="${escapeAttribute(id.presentation)}"`);
+    if (id.sex) parts.push(`sex="${escapeAttribute(id.sex)}"`);
+    parts.push(`>`);
+    if (id.notes) parts.push(id.notes);
+    parts.push(`</identity>`);
+  } else if (persona.pronouns) {
+    parts.push(`<identity pronouns="${escapeAttribute(persona.pronouns)}" />`);
+  }
+
+  if (persona.hwCard?.summary) push(`<summary>${persona.hwCard.summary}</summary>`);
+  if (persona.hwCard?.description && persona.hwCard?.summary) {
+    push(`<description>${persona.hwCard.description}</description>`);
+  } else if (persona.description && !persona.hwCard?.summary) {
+    push(`<description>${persona.description}</description>`);
+  }
+  if (persona.appearance) push(`<appearance>${persona.appearance}</appearance>`);
+
+  if (persona.personalityTraits?.length) {
+    push(`<personality>${persona.personalityTraits.map((t) => `<trait>${escapeXml(t)}</trait>`).join("")}</personality>`);
+  }
+
+  const behaviorFields: Array<{ key: string; value: string | undefined }> = [
+    ["emotional-profile", persona.hwCard?.emotional_profile ? JSON.stringify(persona.hwCard.emotional_profile) : undefined],
+    ["social-behavior", persona.hwCard?.social_behavior ? JSON.stringify(persona.hwCard.social_behavior) : undefined],
+    ["communication-style", persona.hwCard?.communication_style ? JSON.stringify(persona.hwCard.communication_style) : undefined],
+    ["trust-behavior", persona.hwCard?.trust_behavior],
+    ["relationship-behavior", persona.hwCard?.relationship_behavior],
+    ["vulnerability-behavior", persona.hwCard?.vulnerability_behavior],
+    ["conflict-behavior", persona.hwCard?.conflict_behavior],
+    ["reassurance-behavior", persona.hwCard?.reassurance_behavior],
+  ];
+
+  for (const [key, value] of behaviorFields) {
+    if (value) push(`<${key}>${escapeXml(value)}</${key}>`);
+  }
+
+  const listFields: Array<{ key: string; values: string[] | undefined }> = [
+    ["core-fears", persona.hwCard?.core_fears],
+    ["core-needs", persona.hwCard?.core_needs],
+    ["insecurities", persona.hwCard?.insecurities],
+    ["defense-mechanisms", persona.hwCard?.defense_mechanisms],
+    ["speech-patterns", persona.hwCard?.speech_patterns],
+    ["likes", persona.likes],
+    ["dislikes", persona.dislikes],
+    ["interests", persona.interests],
+    ["habits", persona.habits],
+    ["boundaries", persona.boundaries],
+    ["roleplay-guidance", persona.roleplayGuidance],
+    ["memory-priorities", persona.memoryPriorities],
+  ];
+
+  for (const [key, values] of listFields) {
+    if (values?.length) {
+      push(`<${key}>${values.map((v) => `<item>${escapeXml(v)}</item>`).join("")}</${key}>`);
+    }
+  }
+
+  if (persona.hwCard?.history && typeof persona.hwCard.history === "object") {
+    push(`<history>${escapeXml(JSON.stringify(persona.hwCard.history))}</history>`);
+  } else if (persona.background) {
+    push(`<history>${escapeXml(persona.background)}</history>`);
+  }
+
+  if (persona.hwCard?.tags?.length) {
+    push(`<tags>${persona.hwCard.tags.map((t) => `<tag>${escapeXml(t)}</tag>`).join("")}</tags>`);
+  }
+
+  parts.push(`</player-persona>`);
+  return parts.join("\n");
 }
 
 function normalizeKey(value: string): string {
@@ -611,4 +690,8 @@ function renderMessage(message: RoleplayMessage, playerLabel: string, characterN
 
 function escapeAttribute(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function escapeXml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

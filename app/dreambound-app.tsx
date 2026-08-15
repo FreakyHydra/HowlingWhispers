@@ -2687,7 +2687,7 @@ export default function DreamboundApp() {
     generationAbortRef.current = controller;
     const requestSignal = controller.signal;
     const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
-    const effectivePlayerPersona = (activeSession?.playerPersona?.trim() || compiledActivePersona || playerProfile.persona).trim();
+    const effectivePlayerPersona = activePersona ?? (activeSession?.playerPersona?.trim() || compiledActivePersona || playerProfile.persona).trim();
     const sessionCast = activeSession?.livingCast?.length
       ? activeSession.livingCast
       : createCast({ id: selected.id, name: selected.name }, effectivePlayerName);

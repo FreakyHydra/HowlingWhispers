@@ -9,6 +9,11 @@ import {
   serializePersona,
   serializePersonaLibrary,
 } from "../lib/personas/import-export.ts";
+import {
+  validateHwCard,
+  serializeHwCard,
+  migrateHwCard,
+} from "../lib/personas/hw-card.ts";
 
 test("compilePlayerPersona skips empty sections", () => {
   const persona = createPersona({
@@ -99,4 +104,157 @@ test("imported text is length-limited", () => {
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.ok(result.personas[0].description.length <= 4000);
+});
+
+test("validateHwCard rejects missing name", () => {
+  const result = validateHwCard(JSON.stringify({
+    spec: "HW-Card",
+    spec_version: "1.0",
+    type: "persona",
+  }));
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.ok(result.error.includes("name"));
+});
+
+test("validateHwCard rejects wrong spec", () => {
+  const result = validateHwCard(JSON.stringify({
+    spec: "Not-HW-Card",
+    spec_version: "1.0",
+    type: "persona",
+    name: "x",
+  }));
+  assert.equal(result.ok, false);
+});
+
+test("validateHwCard rejects wrong type", () => {
+  const result = validateHwCard(JSON.stringify({
+    spec: "HW-Card",
+    spec_version: "1.0",
+    type: "character",
+    name: "x",
+  }));
+  assert.equal(result.ok, false);
+});
+
+test("validateHwCard accepts a valid card with identity fields", () => {
+  const card = {
+    spec: "HW-Card",
+    spec_version: "1.0",
+    type: "persona",
+    name: "Arrax",
+    identity: {
+      gender: "Intersex",
+      genderIdentity: "Boy-aligned",
+      pronouns: "Context-dependent",
+      presentation: "Mostly masculine / boyish",
+      sex: "Intersex",
+      notes: "Does not want to be boxed into a strict male/female role.",
+    },
+    personality: ["curious", "protective"],
+    likes: ["stars", "old maps"],
+  };
+  const result = validateHwCard(JSON.stringify(card));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.card.name, "Arrax");
+  assert.equal(result.card.identity?.gender, "Intersex");
+  assert.equal(result.card.identity?.genderIdentity, "Boy-aligned");
+  assert.deepEqual(result.card.likes, ["stars", "old maps"]);
+});
+
+test("HW-Card round-trips through import and compile", () => {
+  const card = {
+    spec: "HW-Card",
+    spec_version: "1.0",
+    type: "persona",
+    name: "Arrax",
+    identity: {
+      gender: "Intersex",
+      genderIdentity: "Boy-aligned",
+      pronouns: "Context-dependent",
+      presentation: "Mostly masculine",
+      sex: "Intersex",
+      notes: "Does not want to be boxed into a strict male/female role.",
+    },
+    personality: ["curious", "protective"],
+    likes: ["stars"],
+  };
+  const json = serializeHwCard(card);
+  const imported = parsePersonaImport(json);
+  assert.equal(imported.ok, true);
+  if (!imported.ok) return;
+  assert.equal(imported.personas.length, 1);
+  const persona = imported.personas[0];
+  assert.equal(persona.name, "Arrax");
+  assert.equal(persona.identity?.gender, "Intersex");
+  assert.equal(persona.identity?.genderIdentity, "Boy-aligned");
+  assert.equal(persona.identity?.pronouns, "Context-dependent");
+  const compiled = compilePlayerPersona(persona);
+  assert.ok(compiled.includes("Gender: Intersex"));
+  assert.ok(compiled.includes("Gender identity: Boy-aligned"));
+  assert.ok(compiled.includes("Pronouns: Context-dependent"));
+  assert.ok(compiled.includes("Presentation: Mostly masculine"));
+  assert.ok(compiled.includes("Sex: Intersex"));
+  assert.ok(compiled.includes("Identity notes: Does not want to be boxed into a strict male/female role."));
+});
+
+test("HW-Card library round-trips", () => {
+  const cards = [
+    { spec: "HW-Card", spec_version: "1.0", type: "persona", name: "A" },
+    { spec: "HW-Card", spec_version: "1.0", type: "persona", name: "B" },
+  ];
+  const json = JSON.stringify({
+    spec: "HW-Card",
+    spec_version: "1.0",
+    type: "library",
+    personas: cards,
+  });
+  const result = parsePersonaImport(json);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.personas.length, 2);
+});
+
+test("HW-Card preserves extensions through validation", () => {
+  const card = {
+    spec: "HW-Card",
+    spec_version: "1.0",
+    type: "persona",
+    name: "Arrax",
+    extensions: { futureField: "keep-me", nested: { a: 1 } },
+  };
+  const result = validateHwCard(JSON.stringify(card));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.card.extensions?.futureField, "keep-me");
+  assert.deepEqual(result.card.extensions?.nested, { a: 1 });
+});
+
+test("oversized HW-Card imports are rejected", () => {
+  const big = JSON.stringify({
+    spec: "HW-Card",
+    spec_version: "1.0",
+    type: "persona",
+    name: "x",
+    description: "a".repeat(200 * 1024),
+  });
+  const result = parsePersonaImport(big);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.error, /too large/i);
+});
+
+test("migrateHwCard is identity for v1.0", () => {
+  const card = {
+    spec: "HW-Card",
+    spec_version: "1.0",
+    type: "persona",
+    name: "x",
+    extensions: { keep: true },
+  };
+  const parsed = validateHwCard(JSON.stringify(card));
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const migrated = migrateHwCard(parsed.card);
+  assert.equal(migrated.spec_version, "1.0");
+  assert.equal(migrated.extensions?.keep, true);
 });

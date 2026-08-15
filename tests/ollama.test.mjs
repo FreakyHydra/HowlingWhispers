@@ -342,7 +342,7 @@ test("NovelAI impersonation extends a short player turn to the immersive floor a
   assert.ok(payload.reply.includes("I came here to say what I actually mean"));
   assert.ok(payload.reply.trim().split(/\s+/).length >= 70, `expected >=70 words, got ${payload.reply.trim().split(/\s+/).length}`);
   assert.equal(calls.length, 2);
-  assert.match(calls[0].body.prompt, /PRIVATE DIRECTION \(MANDATORY\)/);
+  assert.match(calls[0].body.prompt, /PRIVATE DIRECTION PRIORITY/);
   assert.match(calls[0].body.prompt, /Say I am angry about the cubs/);
   assert.match(calls[1].body.prompt, /<\|system\|>\nContinue the existing first-person player turn/);
   assert.match(calls[1].body.prompt, /Say I am angry about the cubs/);

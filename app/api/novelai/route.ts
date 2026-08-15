@@ -255,7 +255,13 @@ export async function POST(request: Request) {
       : Response.json({ error: "The local model returned an empty reply." }, { status: 502 });
   }
   const playerName = getDisplayName(limitedString(body.playerName, 100));
-  const playerPersona = limitedString(body.playerPersona, 2000);
+  const playerPersonaInput = body.playerPersona;
+  let playerPersona: string | undefined;
+  if (typeof playerPersonaInput === "string") {
+    playerPersona = limitedString(playerPersonaInput, 2000);
+  } else if (playerPersonaInput && typeof playerPersonaInput === "object") {
+    playerPersona = JSON.stringify(playerPersonaInput);
+  }
 
   const apiToken = limitedString(body.apiToken, 4096);
   const provider: StoryProvider = body.provider === "local" || body.provider === "device"
@@ -279,6 +285,9 @@ export async function POST(request: Request) {
   const autopilotPov: "first" | "third" | "narrator" =
     body.autopilotPov === "first" || body.autopilotPov === "narrator" ? body.autopilotPov : "third";
   const impersonationPrompt = limitedString(body.impersonationPrompt, 1200);
+  if (isImpersonation) {
+    console.log("[impersonation-debug] received impersonationPrompt:", JSON.stringify(impersonationPrompt));
+  }
   const doStream = body.stream === true;
   const character = isConnectionTest ? null : parseCharacter(body.character);
   const messages = isConnectionTest ? [] : parseMessages(body.messages);
@@ -386,6 +395,11 @@ export async function POST(request: Request) {
   const prompt = isConnectionTest
     ? `Reply with exactly this text and nothing else: ${CONNECTION_TEST_RESPONSE}`
     : compiled!.prompt;
+  if (isImpersonation) {
+    console.log("[impersonation-debug] compiled prompt includes direction:", prompt.includes(impersonationPrompt));
+    console.log("[impersonation-debug] prompt length:", prompt.length);
+    console.log("[impersonation-debug] direction substring:", impersonationPrompt.slice(0, 100));
+  }
   const generationLength = isAutonomousBeat ? "quick" : replyLength;
   const maxTokens = isAutonomousBeat ? AUTOPILOT_MAX_TOKENS : REPLY_LENGTHS[replyLength].maxTokens;
   const targetSpeaker: TargetSpeaker = isImpersonation ? "player" : "character";
@@ -894,6 +908,23 @@ async function nonStreamReply(
     });
 
   let upstream = await generate(prompt);
+  if (outputKind === "player") {
+    const sentBody = JSON.parse(JSON.stringify({
+      model,
+      prompt: prompt,
+      max_tokens: isTest ? 32 : maxTokens,
+      temperature: isTest ? 0.1 : temperature,
+      top_p: 1,
+      frequency_penalty: 0,
+      presence_penalty: 0,
+      stream: false,
+      stop: stopSequences,
+      ...(rerollSeed !== undefined && !isTest ? { seed: rerollSeed } : {}),
+    }));
+    console.log("[impersonation-debug] NovelAI request body prompt length:", sentBody.prompt.length);
+    console.log("[impersonation-debug] NovelAI request body includes direction:", sentBody.prompt.includes(playerDirection));
+    console.log("[impersonation-debug] NovelAI request body direction sample:", playerDirection.slice(0, 100));
+  }
   clearTimeout(timeout);
 
   if (!upstream.ok) {
@@ -909,6 +940,10 @@ async function nonStreamReply(
   const metadataOut: { metadata?: StoryMetadata | null } = {};
   let prepared = isTest ? rawReply.trim().slice(0, 200)
     : cleanReply(rawReply, outputName, playerName, proseFormat, outputKind, autopilot, metadataOut);
+  if (outputKind === "player") {
+    console.log("[impersonation-debug] raw reply:", rawReply.slice(0, 500));
+    console.log("[impersonation-debug] cleaned reply:", prepared.slice(0, 500));
+  }
 
   const enforcePlayerFloor = !isTest && outputKind === "player" && !autopilot;
   const playerFloor = IMPERSONATION_MIN_WORDS[replyLength];
