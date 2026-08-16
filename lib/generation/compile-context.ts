@@ -13,6 +13,7 @@ import {
   type LivingCastEntry,
 } from "./living-cast.ts";
 import { renderAutonomousBlock, renderAutonomyInstruction, type AutonomousAgent } from "./autonomous-cast.ts";
+import { getXiaolongCompatibilityInstructions } from "./xiaolong-compatibility.ts";
 
 export type ContextMode = "character" | "balanced" | "story";
 export type GenerationProvider = "local" | "novelai";
@@ -148,11 +149,17 @@ export function compileContext(input: CompileContextInput): CompiledContext {
   const loreSelection = selectWorldLore(input, searchableContext, matureCanonEnabled, inputBudget);
 
   const safetyBlock = renderSafety(input.character);
-  const staticParts = input.kind === "roleplay"
+  const baseStaticParts = input.kind === "roleplay"
     ? roleplayInstructions(input, safetyBlock)
     : input.kind === "autopilot"
       ? autopilotInstructions(input, safetyBlock)
       : impersonationInstructions(input, safetyBlock);
+
+  const xiaolongCompatibility = input.provider === "novelai" && input.model === "xialong-v1"
+    ? getXiaolongCompatibilityInstructions(input.character.identity.name, input.playerName)
+    : [];
+
+  const staticParts = [...xiaolongCompatibility, ...baseStaticParts];
   const canonBlock = selectedSections.map(({ section }) => renderSection(section.title, section.content)).join("\n\n");
   const loreBlock = loreSelection.entries.map(({ entry }) => renderLoreEntry(entry)).join("\n\n");
   const personaBlock = renderPlayerPersona(input.playerPersona);
