@@ -229,6 +229,14 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
 
   const [showPanelControls, setShowPanelControls] = useState(false);
 
+  const PANEL_LABELS: Record<string, string> = {
+    scene: "Scene",
+    connection: "Connection",
+    memory: "Memory",
+    "context-inspector": "Context Inspector",
+    "living-cast": "Living Cast",
+  };
+
   function renderText(text: string, forceAction = false) {
     if (forceAction) {
       return <span style={{ color: textStyle.action, fontStyle: "italic" }}>{text}</span>;
@@ -766,7 +774,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
               {panelOrder.map((panelId, index) => (
                 <div key={panelId} className="panel-control-item">
                   <label className="toggle-row">
-                    <span className="setting-name-row">{panelId.replace(/-/g, " ")}</span>
+                    <span className="setting-name-row">{PANEL_LABELS[panelId] ?? panelId}</span>
                     <span className="switch">
                       <input
                         type="checkbox"
@@ -808,203 +816,221 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
             </div>
           )}
         </div>
-        <section className="context-rail-card context-card" style={{ order: panelOrder.indexOf("scene") }}>
-          <div className="card-title">
-            <p className="eyebrow">Scene</p>
-            <button aria-label="Choose another scene" onClick={() => setView("scenes")}>✎</button>
-          </div>
-          <div className="scene-summary">
-            <div
-              className="scene-orb"
-              style={
-                {
-                  "--thumb": activeScene.background
-                    ? `url("${activeScene.background}")`
-                    : "linear-gradient(145deg, #2b1c1e, #0c0c0e)",
-                } as React.CSSProperties
-              }
-            />
-            <div>
-              <h2>{activeScene.title}</h2>
-              <p>☁ {activeScene.weather}</p>
-            </div>
-          </div>
-        </section>
-
-        <section className="context-rail-card context-card memory-card" style={{ order: panelOrder.indexOf("memory") }}>
-          <div className="card-title">
-            <p className="eyebrow">{activeSession?.sandbox ? "Sandbox" : "Memory"}</p>
-            {!activeSession?.sandbox && <button aria-label="Add memory">＋</button>}
-          </div>
-          {activeSession?.sandbox ? (
-            <div className="sandbox-context-note">
-              <span aria-hidden="true">◇</span>
-              <p>Preset memories are off. Only this conversation becomes context.</p>
-            </div>
-          ) : (
-            <ul>
-              {selected.memories.map((memory, index) => (
-                <li key={memory}>
-                  <span aria-hidden="true">{index === 0 ? "◉" : "▱"}</span>
-                  <p>{memory}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="context-rail-card context-card living-cast-card" style={{ order: panelOrder.indexOf("living-cast") }}>
-          <div className="card-title">
-            <p className="eyebrow">Living Cast</p>
-            <span aria-hidden="true">◈</span>
-          </div>
-          {(() => {
-            const castMembers = activeSession?.livingCast?.length
-              ? activeSession.livingCast
-              : createCast({ id: selected.id, name: selected.name });
-            const pending = activeMessages.length > 0
-              ? detectPendingInteraction(activeMessages, castMembers, selected.name, activePlayerName)
-              : null;
-            return (
-              <details open={castMembers.length > 1}>
-                <summary>
-                  <span>{castMembers.length} {castMembers.length === 1 ? "member" : "members"} in the scene</span>
-                  {pending?.kind === "cast" && pending.targetName
-                    ? <small>Pending: {pending.targetName} was asked</small>
-                    : <small>No open direct question</small>}
-                </summary>
-                <ul className="living-cast-list">
-                  {castMembers.map((member) => (
-                    <li key={member.id} className={`cast-entry cast-${member.presence}`}>
-                      <div className="cast-entry-line">
-                        <span className="cast-name">{member.name}</span>
-                        <span className="cast-tags">
-                          {member.primary && <span className="cast-tag cast-tag-primary">Primary</span>}
-                          <span className="cast-tag">{member.origin}</span>
-                          <span className="cast-tag cast-tag-presence">{member.presence}</span>
-                        </span>
-                      </div>
-                      {member.notes.slice(0, 2).map((note, noteIndex) => (
-                        <p className="cast-note" key={noteIndex}>{note}</p>
-                      ))}
-                    </li>
-                  ))}
-                </ul>
-                {pending?.kind === "cast" && pending.targetName && (
-                  <p className="cast-pending-note">
-                    {pending.asker} asked {pending.targetName} a question. {pending.targetName} has not responded yet.
-                  </p>
-                )}
-              </details>
-            );
-          })()}
-        </section>
-
-        <section className="context-rail-card context-card context-inspector-card" style={{ order: panelOrder.indexOf("context-inspector") }}>
-          <div className="card-title">
-            <p className="eyebrow">Peek Context</p>
-            <span aria-hidden="true">⌁</span>
-          </div>
-          {activeContextManifest ? (
-            <details>
-              <summary>
-                <span>{activeContextManifest.estimatedInputTokens.toLocaleString()} estimated tokens</span>
-                <small>{activeContextManifest.includedLore.length} lore entries active</small>
-              </summary>
-              <div className="context-inspector-body">
-                <dl>
-                  <div><dt>Context window</dt><dd>{activeContextManifest.contextWindow.toLocaleString()}</dd></div>
-                  <div><dt>Input budget</dt><dd>{activeContextManifest.inputBudget.toLocaleString()}</dd></div>
-                  <div><dt>Recent messages</dt><dd>{activeContextManifest.includedMessages} kept · {activeContextManifest.omittedMessages} omitted</dd></div>
-                  <div><dt>Character revision</dt><dd>{activeContextManifest.characterRevision}</dd></div>
-                  <div><dt>World revision</dt><dd>{activeContextManifest.worldRevision ?? "None"}</dd></div>
-                </dl>
-                <div className="context-inspector-group">
-                  <strong>Active character canon</strong>
-                  <div className="context-receipts">
-                    {activeContextManifest.includedSections.map((id) => <span key={id}>{id}</span>)}
+        {panelOrder.map((panelId) => {
+          if (panelVisibility[panelId] === false) return null;
+          switch (panelId) {
+            case "scene":
+              return (
+                <section key={panelId} className="context-rail-card context-card">
+                  <div className="card-title">
+                    <p className="eyebrow">Scene</p>
+                    <button aria-label="Choose another scene" onClick={() => setView("scenes")}>✎</button>
                   </div>
-                </div>
-                <div className="context-inspector-group">
-                  <strong>Active world lore</strong>
-                  {activeContextManifest.includedLore.length > 0 ? (
+                  <div className="scene-summary">
+                    <div
+                      className="scene-orb"
+                      style={
+                        {
+                          "--thumb": activeScene.background
+                            ? `url("${activeScene.background}")`
+                            : "linear-gradient(145deg, #2b1c1e, #0c0c0e)",
+                        } as React.CSSProperties
+                      }
+                    />
+                    <div>
+                      <h2>{activeScene.title}</h2>
+                      <p>☁ {activeScene.weather}</p>
+                    </div>
+                  </div>
+                </section>
+              );
+            case "memory":
+              return (
+                <section key={panelId} className="context-rail-card context-card memory-card">
+                  <div className="card-title">
+                    <p className="eyebrow">{activeSession?.sandbox ? "Sandbox" : "Memory"}</p>
+                    {!activeSession?.sandbox && <button aria-label="Add memory">＋</button>}
+                  </div>
+                  {activeSession?.sandbox ? (
+                    <div className="sandbox-context-note">
+                      <span aria-hidden="true">◇</span>
+                      <p>Preset memories are off. Only this conversation becomes context.</p>
+                    </div>
+                  ) : (
                     <ul>
-                      {activeContextManifest.includedLore.map((entry) => (
-                        <li key={entry.id}><span>{entry.title}</span><small>{entry.reason}</small></li>
+                      {selected.memories.map((memory, index) => (
+                        <li key={memory}>
+                          <span aria-hidden="true">{index === 0 ? "◉" : "▱"}</span>
+                          <p>{memory}</p>
+                        </li>
                       ))}
                     </ul>
-                  ) : <p>No world lore was included in this reply.</p>}
-                </div>
-                <p className="context-omission-note">
-                  {activeContextManifest.omittedLore.filter((entry) => entry.reason === "inactive").length} inactive lore entries and {activeContextManifest.omittedLore.filter((entry) => entry.reason === "budget").length} budget-limited entries stayed out.
-                </p>
-              </div>
-            </details>
-          ) : (
-            <p className="context-inspector-empty">Generate a reply to see exactly which canon, lore, and recent history reached the model.</p>
-          )}
-        </section>
-
-        <section className="context-rail-card context-card connection-card" style={{ order: panelOrder.indexOf("connection") }}>
-          <div className="card-title">
-            <p className="eyebrow">Connection</p>
-            <span aria-hidden="true">♡</span>
-          </div>
-          <div className="provider-status">
-            <span
-              className={
-                connected
-                  ? "online"
-                  : providerState === "testing"
-                    ? "testing"
-                  : providerState === "ready"
-                    ? "ready"
-                    : providerState === "error"
-                      ? "error"
-                      : "offline"
-              }
-            />
-            <div>
-              <p>
-                {providerLabel}{" "}
-                {connected
-                  ? "verified working"
-                  : providerState === "testing"
-                    ? "testing"
-                  : providerState === "ready"
-                    ? storyProvider === "novelai" ? "token entered" : "ready to test"
-                    : providerState === "error"
-                      ? "needs attention"
-                      : "not connected"}
-              </p>
-              <button onClick={() => setView("settings")}>Open settings</button>
-            </div>
-          </div>
-          <p className="model-note">
-            {configured
-              ? `${activeModel.label} · ${activeReplyLength.label}`
-              : `No model selected · ${activeReplyLength.label}`}
-          </p>
-          <div className="pulse-heading">
-            <span>Relationship</span>
-            <strong>{deriveRelationshipLabel(relationshipScore)}</strong>
-            {relationshipDelta !== null && relationshipDelta !== 0 && (
-              <span
-                className={`relationship-tick ${relationshipDelta > 0 ? "positive" : "negative"}`}
-                aria-label={relationshipDelta > 0 ? `Gained ${relationshipDelta}` : `Lost ${-relationshipDelta}`}
-              >
-                {relationshipDelta > 0 ? `+${relationshipDelta}` : `${relationshipDelta}`}
-              </span>
-            )}
-          </div>
-          <div
-            className="bond-meter"
-            aria-label={`Relationship meter at ${relationshipMeterPercent(relationshipScore)}%`}
-          >
-            <span style={{ width: `${relationshipMeterPercent(relationshipScore)}%` }} />
-            <i style={{ left: `${relationshipMeterPercent(relationshipScore)}%` }}>♡</i>
-          </div>
-        </section>
+                  )}
+                </section>
+              );
+            case "living-cast":
+              return (
+                <section key={panelId} className="context-rail-card context-card living-cast-card">
+                  <div className="card-title">
+                    <p className="eyebrow">Living Cast</p>
+                    <span aria-hidden="true">◈</span>
+                  </div>
+                  {(() => {
+                    const castMembers = activeSession?.livingCast?.length
+                      ? activeSession.livingCast
+                      : createCast({ id: selected.id, name: selected.name });
+                    const pending = activeMessages.length > 0
+                      ? detectPendingInteraction(activeMessages, castMembers, selected.name, activePlayerName)
+                      : null;
+                    return (
+                      <details open={castMembers.length > 1}>
+                        <summary>
+                          <span>{castMembers.length} {castMembers.length === 1 ? "member" : "members"} in the scene</span>
+                          {pending?.kind === "cast" && pending.targetName
+                            ? <small>Pending: {pending.targetName} was asked</small>
+                            : <small>No open direct question</small>}
+                        </summary>
+                        <ul className="living-cast-list">
+                          {castMembers.map((member) => (
+                            <li key={member.id} className={`cast-entry cast-${member.presence}`}>
+                              <div className="cast-entry-line">
+                                <span className="cast-name">{member.name}</span>
+                                <span className="cast-tags">
+                                  {member.primary && <span className="cast-tag cast-tag-primary">Primary</span>}
+                                  <span className="cast-tag">{member.origin}</span>
+                                  <span className="cast-tag cast-tag-presence">{member.presence}</span>
+                                </span>
+                              </div>
+                              {member.notes.slice(0, 2).map((note, noteIndex) => (
+                                <p className="cast-note" key={noteIndex}>{note}</p>
+                              ))}
+                            </li>
+                          ))}
+                        </ul>
+                        {pending?.kind === "cast" && pending.targetName && (
+                          <p className="cast-pending-note">
+                            {pending.asker} asked {pending.targetName} a question. {pending.targetName} has not responded yet.
+                          </p>
+                        )}
+                      </details>
+                    );
+                  })()}
+                </section>
+              );
+            case "context-inspector":
+              return (
+                <section key={panelId} className="context-rail-card context-card context-inspector-card">
+                  <div className="card-title">
+                    <p className="eyebrow">Peek Context</p>
+                    <span aria-hidden="true">⌁</span>
+                  </div>
+                  {activeContextManifest ? (
+                    <details>
+                      <summary>
+                        <span>{activeContextManifest.estimatedInputTokens.toLocaleString()} estimated tokens</span>
+                        <small>{activeContextManifest.includedLore.length} lore entries active</small>
+                      </summary>
+                      <div className="context-inspector-body">
+                        <dl>
+                          <div><dt>Context window</dt><dd>{activeContextManifest.contextWindow.toLocaleString()}</dd></div>
+                          <div><dt>Input budget</dt><dd>{activeContextManifest.inputBudget.toLocaleString()}</dd></div>
+                          <div><dt>Recent messages</dt><dd>{activeContextManifest.includedMessages} kept · {activeContextManifest.omittedMessages} omitted</dd></div>
+                          <div><dt>Character revision</dt><dd>{activeContextManifest.characterRevision}</dd></div>
+                          <div><dt>World revision</dt><dd>{activeContextManifest.worldRevision ?? "None"}</dd></div>
+                        </dl>
+                        <div className="context-inspector-group">
+                          <strong>Active character canon</strong>
+                          <div className="context-receipts">
+                            {activeContextManifest.includedSections.map((id) => <span key={id}>{id}</span>)}
+                          </div>
+                        </div>
+                        <div className="context-inspector-group">
+                          <strong>Active world lore</strong>
+                          {activeContextManifest.includedLore.length > 0 ? (
+                            <ul>
+                              {activeContextManifest.includedLore.map((entry) => (
+                                <li key={entry.id}><span>{entry.title}</span><small>{entry.reason}</small></li>
+                              ))}
+                            </ul>
+                          ) : <p>No world lore was included in this reply.</p>}
+                        </div>
+                        <p className="context-omission-note">
+                          {activeContextManifest.omittedLore.filter((entry) => entry.reason === "inactive").length} inactive lore entries and {activeContextManifest.omittedLore.filter((entry) => entry.reason === "budget").length} budget-limited entries stayed out.
+                        </p>
+                      </div>
+                    </details>
+                  ) : (
+                    <p className="context-inspector-empty">Generate a reply to see exactly which canon, lore, and recent history reached the model.</p>
+                  )}
+                </section>
+              );
+            case "connection":
+              return (
+                <section key={panelId} className="context-rail-card context-card connection-card">
+                  <div className="card-title">
+                    <p className="eyebrow">Connection</p>
+                    <span aria-hidden="true">♡</span>
+                  </div>
+                  <div className="provider-status">
+                    <span
+                      className={
+                        connected
+                          ? "online"
+                          : providerState === "testing"
+                            ? "testing"
+                          : providerState === "ready"
+                            ? "ready"
+                            : providerState === "error"
+                              ? "error"
+                              : "offline"
+                      }
+                    />
+                    <div>
+                      <p>
+                        {providerLabel}{" "}
+                        {connected
+                          ? "verified working"
+                          : providerState === "testing"
+                            ? "testing"
+                          : providerState === "ready"
+                            ? storyProvider === "novelai" ? "token entered" : "ready to test"
+                            : providerState === "error"
+                              ? "needs attention"
+                              : "not connected"}
+                      </p>
+                      <button onClick={() => setView("settings")}>Open settings</button>
+                    </div>
+                  </div>
+                  <p className="model-note">
+                    {configured
+                      ? `${activeModel.label} · ${activeReplyLength.label}`
+                      : `No model selected · ${activeReplyLength.label}`}
+                  </p>
+                  <div className="pulse-heading">
+                    <span>Relationship</span>
+                    <strong>{deriveRelationshipLabel(relationshipScore)}</strong>
+                    {relationshipDelta !== null && relationshipDelta !== 0 && (
+                      <span
+                        className={`relationship-tick ${relationshipDelta > 0 ? "positive" : "negative"}`}
+                        aria-label={relationshipDelta > 0 ? `Gained ${relationshipDelta}` : `Lost ${-relationshipDelta}`}
+                      >
+                        {relationshipDelta > 0 ? `+${relationshipDelta}` : `${relationshipDelta}`}
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className="bond-meter"
+                    aria-label={`Relationship meter at ${relationshipMeterPercent(relationshipScore)}%`}
+                  >
+                    <span style={{ width: `${relationshipMeterPercent(relationshipScore)}%` }} />
+                    <i style={{ left: `${relationshipMeterPercent(relationshipScore)}%` }}>♡</i>
+                  </div>
+                </section>
+              );
+            default:
+              return null;
+          }
+        })}
       </aside>}
       {props.pendingDeleteMessage && (
         <div
