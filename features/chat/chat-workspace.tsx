@@ -216,6 +216,15 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
     autopilotSeed,
     setAutopilotSeed,
     beginAutopilot,
+    livingCastEnabled,
+    livingCastConfig,
+    panelOrder,
+    panelVisibility,
+    onPanelOrderChange,
+    onPanelVisibilityChange,
+    onInviteCharacter,
+    onRemoveCharacter,
+    onConfigureLivingCast,
   } = props;
 
   const [showPanelControls, setShowPanelControls] = useState(false);
