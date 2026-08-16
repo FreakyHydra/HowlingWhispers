@@ -16,7 +16,128 @@ export function ChangelogView(props: ChangelogViewProps) {
       </header>
 
           <div className="changelog-list">
-            <article className="changelog-entry featured latest">
+            <article className="changelog-entry milestone latest">
+              <span className="changelog-mark">🏆</span>
+              <div>
+                <span className="changelog-version">Version 0.8.0 · Echoes Remembered</span>
+                <div className="milestone-badge">MILESTONE · CONTEXT ENGINE</div>
+                <h2>Echoes Remembered</h2>
+                <blockquote className="milestone-quote">The story no longer has to forget what mattered.</blockquote>
+                <p><strong>Howling Whispers gains a real Context Engine.</strong></p>
+                <p>This release introduces the foundation for persistent narrative memory and direct model steering. For the first time, Howling Whispers can properly separate:</p>
+                <p><strong>what happened</strong> from <strong>what the model should do now</strong> from <strong>what belongs to the world</strong></p>
+                <p>That distinction is a major step toward longer, more consistent roleplay sessions and the systems still to come.</p>
+
+                <h3>🧠 Memory Has a Home</h3>
+                <p>Persistent story facts now have a dedicated place instead of being stuffed into personas or unrelated fields.</p>
+                <p>Memory can hold:</p>
+                <ul>
+                  <li>important past events</li>
+                  <li>injuries</li>
+                  <li>relationship history</li>
+                  <li>promises</li>
+                  <li>secrets</li>
+                  <li>boundaries</li>
+                  <li>experience/history facts</li>
+                  <li>persistent world state</li>
+                </ul>
+                <p>Memory is treated as long-term story truth, separate from temporary scene steering.</p>
+
+                <h3>✒️ Author&apos;s Note / Scene Direction</h3>
+                <p>Author&apos;s Note now provides strong short-range guidance for the current scene.</p>
+                <p>Use it for:</p>
+                <ul>
+                  <li>scene tone</li>
+                  <li>pacing</li>
+                  <li>emotional atmosphere</li>
+                  <li>behavioral emphasis</li>
+                  <li>temporary writing direction</li>
+                  <li>romance pacing</li>
+                  <li>future generated scene-steering systems</li>
+                </ul>
+                <p>Temporary scene instructions no longer need to masquerade as permanent memory.</p>
+
+                <h3>📚 NovelAI Lorebook Compatibility</h3>
+                <p>Howling Whispers now uses the <strong>NovelAI <code>.lorebook</code> format directly</strong>.</p>
+                <p>Lorebooks can be:</p>
+                <ul>
+                  <li>imported</li>
+                  <li>created</li>
+                  <li>enabled or disabled</li>
+                  <li>used during context compilation</li>
+                  <li>exported again as NovelAI-compatible lorebooks</li>
+                </ul>
+                <p>Preserve original lorebook structure wherever possible so imported books are not unnecessarily flattened or damaged.</p>
+
+                <h3>🔮 Context Is Now Part of Generation</h3>
+                <p>Memory, Author&apos;s Notes, and active Lorebook entries are wired into the actual generation pipeline.</p>
+                <p>The context flow now supports:</p>
+                <ol>
+                  <li>System Instructions</li>
+                  <li>Model Compatibility</li>
+                  <li>Character</li>
+                  <li>Persona</li>
+                  <li>Memory</li>
+                  <li>Author&apos;s Note</li>
+                  <li>Lorebooks</li>
+                  <li>Living Cast</li>
+                  <li>Relationship / Story State</li>
+                  <li>Recent Conversation</li>
+                </ol>
+                <p>This is not cosmetic metadata. It affects what the model actually receives.</p>
+
+                <h3>👁️ Active Context & Debugging</h3>
+                <p>The new Context system can track what was actually eligible or included in generation:</p>
+                <ul>
+                  <li>active Memory</li>
+                  <li>active Author&apos;s Notes</li>
+                  <li>active Lorebooks</li>
+                  <li>triggered lore entries</li>
+                  <li>omitted lore</li>
+                  <li>token usage</li>
+                  <li>context budget</li>
+                  <li>included recent history</li>
+                </ul>
+                <p>This gives us a foundation for debugging model behavior instead of guessing.</p>
+
+                <h3>💾 Context Survives</h3>
+                <p>Context data is now persistent and integrated into backups.</p>
+                <p>Memory, Author&apos;s Notes, and Lorebooks are treated as real user data rather than temporary UI state.</p>
+
+                <h3>🐉 Built for What Comes Next</h3>
+                <p>This milestone lays the foundation for future systems including:</p>
+                <ul>
+                  <li>automatic memory extraction</li>
+                  <li>richer long-term relationship memory</li>
+                  <li>generated scene direction</li>
+                  <li>Adult Romance Engine context</li>
+                  <li>more advanced model/debug inspection</li>
+                </ul>
+                <p>Hard invariant rules such as player-persona ownership and Xiaolong compatibility remain separate from temporary scene direction.</p>
+
+                <h3>🛠 Under the Hood</h3>
+                <p>This release introduced an entire Context subsystem, including:</p>
+                <ul>
+                  <li>context data model</li>
+                  <li>storage</li>
+                  <li>NovelAI lorebook parsing and serialization</li>
+                  <li>import/export</li>
+                  <li>compiler integration</li>
+                  <li>NovelAI API wiring</li>
+                  <li>backup integration</li>
+                  <li>Context UI</li>
+                  <li>dedicated context tests</li>
+                </ul>
+
+                <div className="milestone-why">
+                  <h3>Why this matters</h3>
+                  <p>Before 0.8.0, Howling Whispers had context scattered across several systems.</p>
+                  <p>After 0.8.0, context becomes a first-class part of the engine.</p>
+                  <p><strong>Memory remembers. Lore awakens. Context finally becomes something you can control.</strong></p>
+                </div>
+              </div>
+            </article>
+            <article className="changelog-entry featured">
               <span className="changelog-mark">◐</span>
               <div>
               <span className="changelog-version">Version 0.7.3 · The Living Stage: Second Act</span>

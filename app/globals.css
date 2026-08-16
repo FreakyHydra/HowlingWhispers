@@ -1825,6 +1825,88 @@ a:focus-visible {
   border-color: rgba(227, 138, 121, 0.44);
 }
 
+.changelog-entry.milestone {
+  background:
+    linear-gradient(120deg, rgba(69, 184, 179, 0.14), transparent 50%),
+    linear-gradient(120deg, rgba(36, 27, 20, 0.98), rgba(10, 9, 12, 0.98));
+  border-color: rgba(69, 184, 179, 0.55);
+  box-shadow: 0 0 40px rgba(69, 184, 179, 0.14);
+  padding: 32px 36px;
+  gap: 28px;
+}
+
+.changelog-entry.milestone .changelog-mark {
+  border-color: var(--rune);
+  color: var(--rune);
+  font-size: 26px;
+  height: 56px;
+  width: 56px;
+}
+
+.milestone-badge {
+  display: inline-block;
+  background: linear-gradient(120deg, rgba(69, 184, 179, 0.22), rgba(183, 101, 63, 0.18));
+  border: 1px solid rgba(69, 184, 179, 0.45);
+  border-radius: 6px;
+  color: var(--rune);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  padding: 6px 12px;
+  text-transform: uppercase;
+  margin: 8px 0 12px;
+}
+
+.milestone-quote {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-style: italic;
+  color: var(--cream);
+  margin: 0 0 16px;
+  opacity: 0.9;
+  border-left: 2px solid rgba(69, 184, 179, 0.45);
+  padding-left: 16px;
+}
+
+.changelog-entry.milestone h3 {
+  color: var(--rune);
+  font-size: 17px;
+  margin-top: 24px;
+}
+
+.changelog-entry.milestone ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.changelog-entry.milestone ol li {
+  margin-bottom: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.milestone-why {
+  margin-top: 24px;
+  padding: 20px;
+  background: rgba(69, 184, 179, 0.06);
+  border: 1px solid rgba(69, 184, 179, 0.2);
+  border-radius: 8px;
+}
+
+.milestone-why h3 {
+  margin-top: 0;
+  color: var(--rune);
+}
+
+.milestone-why p {
+  margin: 0 0 8px;
+}
+
+.milestone-why p:last-child {
+  margin-bottom: 0;
+}
+
+
 .changelog-mark {
   align-items: center;
   border: 1px solid var(--copper);
