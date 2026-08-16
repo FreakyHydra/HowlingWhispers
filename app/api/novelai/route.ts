@@ -12,6 +12,7 @@ import {
   type RoleplayMessage,
   type StoryPreferences,
 } from "../../../lib/generation/compile-context.ts";
+import { parseContextInput } from "../../../lib/context/import-export.ts";
 import { parseStoryMetadata, type StoryMetadata } from "../../../lib/generation/story-metadata.ts";
 import { formatPlayerTurn } from "../../../lib/generation/player-turn.ts";
 import {
@@ -239,6 +240,8 @@ export async function POST(request: Request) {
   if (!isRecord(body)) {
     return Response.json({ error: "The story request was malformed." }, { status: 400 });
   }
+  const contextInput = parseContextInput(body.contextInput);
+
   if (body.action === "finalize-device") {
     const rawReply = limitedString(body.rawReply, 50_000);
     const outputName = limitedString(body.outputName, 120);
@@ -391,6 +394,7 @@ export async function POST(request: Request) {
       cast: livingCast,
       speaker: castSpeaker?.name,
       autonomy: autonomousAgentsToArray(autonomyPulse),
+      contextInput,
     });
   const prompt = isConnectionTest
     ? `Reply with exactly this text and nothing else: ${CONNECTION_TEST_RESPONSE}`
@@ -1170,6 +1174,7 @@ function providerError(status: number): string {
   if (status >= 500) return "NovelAI is temporarily unavailable.";
   return "NovelAI could not generate this reply.";
 }
+
 
 function limitedString(v: unknown, max: number): string {
   return typeof v === "string" ? v.trim().slice(0, max) : "";

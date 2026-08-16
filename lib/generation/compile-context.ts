@@ -14,6 +14,8 @@ import {
 } from "./living-cast.ts";
 import { renderAutonomousBlock, renderAutonomyInstruction, type AutonomousAgent } from "./autonomous-cast.ts";
 import { getXiaolongCompatibilityInstructions } from "./xiaolong-compatibility.ts";
+import type { ContextInput } from "../context/types.ts";
+import { selectHWLorebooks, renderMemoryBlock, renderAuthorNoteBlock, renderHWLorebookBlock, type HWLoreSelection } from "../context/compile.ts";
 
 export type ContextMode = "character" | "balanced" | "story";
 export type GenerationProvider = "local" | "novelai";
@@ -52,6 +54,7 @@ export type CompileContextInput = {
   cast?: LivingCastEntry[];
   speaker?: string;
   autonomy?: AutonomousAgent[];
+  contextInput?: ContextInput;
 };
 
 export function freshRerollSeed(): number {
@@ -73,6 +76,10 @@ export type ContextManifest = {
   includedMessages: number;
   omittedMessages: number;
   matureCanonEnabled: boolean;
+  includedMemories: number;
+  includedAuthorNotes: number;
+  includedHWLore: Array<{ id: string; title: string; reason: string }>;
+  omittedHWLore: Array<{ id: string; title: string; reason: string }>;
 };
 
 export type CompiledContext = { prompt: string; manifest: ContextManifest };
@@ -147,6 +154,9 @@ export function compileContext(input: CompileContextInput): CompiledContext {
   }
 
   const loreSelection = selectWorldLore(input, searchableContext, matureCanonEnabled, inputBudget);
+  const hwLoreSelection: HWLoreSelection = input.contextInput?.lorebooks?.length
+    ? selectHWLorebooks(input.contextInput.lorebooks, searchableContext, inputBudget)
+    : { entries: [], omitted: [] };
 
   const safetyBlock = renderSafety(input.character);
   const baseStaticParts = input.kind === "roleplay"
@@ -164,6 +174,9 @@ export function compileContext(input: CompileContextInput): CompiledContext {
   const loreBlock = loreSelection.entries.map(({ entry }) => renderLoreEntry(entry)).join("\n\n");
   const personaBlock = renderPlayerPersona(input.playerPersona);
   const stateBlock = renderState(input);
+  const memoryBlock = renderMemoryBlock(input.contextInput?.memories ?? []);
+  const authorNoteBlock = renderAuthorNoteBlock(input.contextInput?.authorNotes ?? []);
+  const hwLoreBlock = renderHWLorebookBlock(hwLoreSelection);
   const speakerEntry = input.speaker?.trim()
     ? findCastEntryByName(input.cast ?? [], input.speaker)
     : null;
@@ -203,7 +216,10 @@ export function compileContext(input: CompileContextInput): CompiledContext {
     ...staticPartsForSpeaker,
     canonBlock,
     loreBlock,
+    hwLoreBlock,
     personaBlock,
+    memoryBlock,
+    authorNoteBlock,
     stateBlock,
     castBlock,
     autonomyBlock,
@@ -218,7 +234,10 @@ export function compileContext(input: CompileContextInput): CompiledContext {
     staticParts: staticPartsForSpeaker,
     canonBlock,
     loreBlock,
+    hwLoreBlock,
     personaBlock,
+    memoryBlock,
+    authorNoteBlock,
     stateBlock,
     castBlock,
     autonomyBlock,
@@ -250,6 +269,10 @@ export function compileContext(input: CompileContextInput): CompiledContext {
       includedMessages: history.count,
       omittedMessages: input.messages.length - history.count,
       matureCanonEnabled,
+      includedMemories: (input.contextInput?.memories ?? []).filter((m) => m.enabled).length,
+      includedAuthorNotes: (input.contextInput?.authorNotes ?? []).filter((n) => n.enabled).length,
+      includedHWLore: hwLoreSelection.entries.map((e) => ({ id: String(e.entry.id ?? ""), title: e.entry.displayName ?? "Untitled", reason: e.reason })),
+      omittedHWLore: hwLoreSelection.omitted,
     },
   };
 }
@@ -328,6 +351,9 @@ type PromptParts = {
   playerLabel: string;
   kind: CompileContextInput["kind"];
   playerDirection?: string;
+  hwLoreBlock: string;
+  memoryBlock: string;
+  authorNoteBlock: string;
 };
 
 function buildLegacyPrompt(parts: PromptParts): string {
@@ -349,6 +375,9 @@ function buildLegacyPrompt(parts: PromptParts): string {
     "</authoritative-character-canon>",
     "",
     ...(parts.loreBlock ? ["<relevant-world-lore>", parts.loreBlock, "</relevant-world-lore>", ""] : []),
+    ...(parts.hwLoreBlock ? ["<relevant-world-lore>", parts.hwLoreBlock, "</relevant-world-lore>", ""] : []),
+    ...(parts.memoryBlock ? [parts.memoryBlock, ""] : []),
+    ...(parts.authorNoteBlock ? [parts.authorNoteBlock, ""] : []),
     ...(parts.personaBlock ? [parts.personaBlock, ""] : []),
     ...(parts.castBlock ? [parts.castBlock, ""] : []),
     ...(parts.autonomyBlock ? [parts.autonomyBlock, ""] : []),
@@ -371,6 +400,9 @@ function buildNovelAiPrompt(parts: PromptParts): string {
       parts.canonBlock,
       "</authoritative-character-canon>",
       ...(parts.loreBlock ? ["", "<relevant-world-lore>", parts.loreBlock, "</relevant-world-lore>"] : []),
+      ...(parts.memoryBlock ? ["", parts.memoryBlock] : []),
+      ...(parts.authorNoteBlock ? ["", parts.authorNoteBlock] : []),
+      ...(parts.hwLoreBlock ? ["", "<hw-lorebook>", parts.hwLoreBlock, "</hw-lorebook>"] : []),
       ...(parts.personaBlock ? ["", parts.personaBlock] : []),
       ...(parts.castBlock ? ["", parts.castBlock] : []),
       ...(parts.autonomyBlock ? ["", parts.autonomyBlock] : []),

@@ -1,4 +1,5 @@
 // Portable private-data backup format for The Howling Whispers.
+import type { ContextLibrary } from "../context/types.ts";
 //
 // A backup is a self-contained JSON document that captures everything the user
 // owns locally (characters they made or imported, conversations, relationship
@@ -217,6 +218,7 @@ export type BackupData = {
   /** Persistent relationship state keyed by "characterId::personaId". */
   relationships?: BackupRelationshipState;
   memoryCards?: Record<string, BackupMemoryCard>;
+  contextLibrary?: ContextLibrary;
 };
 
 export type BackupPayload = {
@@ -267,6 +269,7 @@ export type BackupSource = {
   preferences: BackupPreferences;
   relationships: BackupRelationshipState;
   memoryCards?: Record<string, MemoryCard>;
+  contextLibrary?: ContextLibrary;
 };
 
 /**
@@ -338,6 +341,7 @@ export function buildBackupPayload(
       preferences: sanitizePreferences(source.preferences),
       relationships: sanitizeRelationships(source.relationships ?? {}),
       memoryCards: sanitizeMemoryCards(source.memoryCards ?? {}),
+      contextLibrary: sanitizeContextLibrary(source.contextLibrary),
     },
   };
 }
@@ -605,6 +609,37 @@ function sanitizeMemoryCards(value: unknown): Record<string, BackupMemoryCard> {
   }
   return out;
 }
+function sanitizeContextLibrary(value: unknown): import("../context/types.ts").ContextLibrary {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { memories: [], authorNotes: [], lorebooks: [] };
+  }
+  const obj = value as Record<string, unknown>;
+  const memories = Array.isArray(obj.memories)
+    ? obj.memories.filter((m): m is import("../context/types.ts").MemoryEntry => (
+        m && typeof m === "object" &&
+        typeof (m as Record<string, unknown>).id === "string" &&
+        typeof (m as Record<string, unknown>).text === "string" &&
+        typeof (m as Record<string, unknown>).enabled === "boolean"
+      ))
+    : [];
+  const authorNotes = Array.isArray(obj.authorNotes)
+    ? obj.authorNotes.filter((n): n is import("../context/types.ts").AuthorNoteEntry => (
+        n && typeof n === "object" &&
+        typeof (n as Record<string, unknown>).id === "string" &&
+        typeof (n as Record<string, unknown>).text === "string" &&
+        typeof (n as Record<string, unknown>).enabled === "boolean"
+      ))
+    : [];
+  const lorebooks = Array.isArray(obj.lorebooks)
+    ? obj.lorebooks.filter((l): l is import("../context/types.ts").LorebookRecord => (
+        l && typeof l === "object" &&
+        typeof (l as Record<string, unknown>).id === "string" &&
+        typeof (l as Record<string, unknown>).name === "string" &&
+        typeof (l as Record<string, unknown>).enabled === "boolean"
+      ))
+    : [];
+  return { memories, authorNotes, lorebooks };
+}
 
 function sanitizePreferences(value: unknown): BackupPreferences {
   if (!value || typeof value !== "object") return {};
@@ -708,6 +743,7 @@ export function validatePayload(value: unknown): BackupPayload | null {
        preferences: sanitizePreferences(data.preferences),
       relationships: sanitizeRelationships(data.relationships),
       memoryCards: sanitizeMemoryCards(data.memoryCards),
+      contextLibrary: sanitizeContextLibrary(data.contextLibrary),
     },
   };
 }

@@ -7877,3 +7877,135 @@ a:focus-visible {
 .context-rail-card {
   /* ensures order property works */
 }
+.context-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+.context-panel-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 14px;
+  opacity: 0.7;
+}
+.context-panel-btn:hover {
+  opacity: 1;
+}
+.context-create-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--theme-surface, #1a1a1a);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  padding: 4px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.context-create-menu button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.context-create-menu button:hover {
+  background: rgba(255,255,255,0.05);
+}
+.context-active-list p {
+  margin: 2px 0;
+  font-size: 11px;
+}
+.context-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.context-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 4px;
+}
+.context-badge {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.1);
+  text-transform: uppercase;
+}
+.context-delete-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  opacity: 0.6;
+  padding: 0 4px;
+}
+.context-delete-btn:hover {
+  opacity: 1;
+}
+.context-add-btn {
+  background: none;
+  border: 1px dashed rgba(255,255,255,0.2);
+  color: inherit;
+  cursor: pointer;
+  padding: 4px;
+  font-size: 11px;
+  border-radius: 4px;
+}
+.context-add-btn:hover {
+  border-color: rgba(255,255,255,0.4);
+}
+.context-expand-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 10px;
+  opacity: 0.7;
+  text-decoration: underline;
+  padding: 2px 0;
+}
+.context-debug {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+}
+.context-debug strong {
+  font-size: 11px;
+}
+.context-receipts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.context-receipts span {
+  font-size: 10px;
+  padding: 1px 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+}
+.context-omission-note {
+  font-size: 10px;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+.context-inspector-empty {
+  font-size: 11px;
+  opacity: 0.7;
+}

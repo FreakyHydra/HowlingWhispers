@@ -54,6 +54,10 @@ import {
 import { compilePlayerPersona } from "../lib/personas/compile";
 import type { PlayerPersona } from "../lib/personas/schema";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
+import { readContextLibrary, writeContextLibrary, type ContextLibrary } from "../lib/context/storage.ts";
+import type { ContextInput } from "../lib/context/types.ts";
+import type { MemoryEntry, AuthorNoteEntry } from "../lib/context/types.ts";
+import { importMemory, importAuthorNote, decodeLorebookFile, exportMemory, exportAuthorNotes, exportLorebook } from "../lib/context/import-export.ts";
 import { formatPlayerTurn } from "../lib/generation/player-turn.ts";
 import type { AutonomousAgent } from "../lib/generation/autonomous-cast.ts";
 import {
@@ -1518,13 +1522,14 @@ export default function DreamboundApp() {
     () => readSession<boolean>("showContextRail", true),
   );
   const [livingCastConfig, setLivingCastConfig] = useState<LivingCastConfig>(() => readLivingCastConfig());
-  const [panelOrder, setPanelOrder] = useState<string[]>(() => readSession<string[]>("panelOrder", ["scene", "memory", "living-cast", "context-inspector", "connection"]));
-  const [panelVisibility, setPanelVisibility] = useState<Record<string, boolean>>(() => readSession<Record<string, boolean>>("panelVisibility", { scene: true, memory: true, "living-cast": true, "context-inspector": true, connection: true }));
+  const [panelOrder, setPanelOrder] = useState<string[]>(() => readSession<string[]>("panelOrder", ["scene", "memory", "context", "living-cast", "context-inspector", "connection"]));
+  const [panelVisibility, setPanelVisibility] = useState<Record<string, boolean>>(() => readSession<Record<string, boolean>>("panelVisibility", { scene: true, memory: true, context: true, "living-cast": true, "context-inspector": true, connection: true }));
   const [showLivingCastConfig, setShowLivingCastConfig] = useState(false);
   const [showInvitePicker, setShowInvitePicker] = useState(false);
   const [contextManifests, setContextManifests] = useState<Record<string, ContextManifest>>(
     () => readSession<Record<string, ContextManifest>>("contextManifests", {}),
   );
+  const [contextLibrary, setContextLibrary] = useState<ContextLibrary>(() => readContextLibrary());
 
   // ----- Private-data backups ------------------------------------------
   const [localBackupMsg, setLocalBackupMsg] = useState("");
@@ -1857,6 +1862,10 @@ export default function DreamboundApp() {
   useEffect(() => {
     writeSession("contextManifests", contextManifests);
   }, [contextManifests]);
+
+  useEffect(() => {
+    writeContextLibrary(contextLibrary);
+  }, [contextLibrary]);
 
   useEffect(() => {
     writeLivingCastConfig(livingCastConfig);
@@ -2774,6 +2783,11 @@ export default function DreamboundApp() {
             : activeSession?.playerRoleContext || activeSession?.playerRole || "",
           contextMode: "balanced",
           matureContentRequested: storyProvider === "local" && activeModel.adult === true,
+        },
+        contextInput: {
+          memories: contextLibrary.memories,
+          authorNotes: contextLibrary.authorNotes,
+          lorebooks: contextLibrary.lorebooks,
         },
         messages: conversation.slice(-30).map(({ sender, text, speaker }) => ({ sender, text, speaker })),
     };
@@ -3883,6 +3897,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
          playerName: playerProfile.name,
          relationships,
          memoryCards,
+         contextLibrary,
          preferences: {
           storyProvider,
           model: selectedModel,
@@ -3959,6 +3974,10 @@ function updateCharacter(id: string, updates: Partial<Character>) {
 
     if (data.memoryCards && typeof data.memoryCards === "object") {
       setRawMemoryCards((current) => ({ ...current, ...data.memoryCards }));
+    }
+
+    if (data.contextLibrary && typeof data.contextLibrary === "object") {
+      setContextLibrary(data.contextLibrary as ContextLibrary);
     }
 
     if (data.player.name.trim()) {
@@ -4740,6 +4759,91 @@ function updateCharacter(id: string, updates: Partial<Character>) {
     );
   }
 
+  function createContextEntry(kind: "memory" | "author-note") {
+    const now = Date.now();
+    if (kind === "memory") {
+      setContextLibrary((current) => ({
+        ...current,
+        memories: [...current.memories, {
+          id: `memory-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+          text: "",
+          enabled: true,
+          source: "manual",
+          createdAt: now,
+          updatedAt: now,
+        }],
+      }));
+    } else {
+      setContextLibrary((current) => ({
+        ...current,
+        authorNotes: [...current.authorNotes, {
+          id: `note-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+          text: "",
+          enabled: true,
+          createdAt: now,
+          updatedAt: now,
+        }],
+      }));
+    }
+  }
+
+  function updateContextEntry(kind: "memory" | "author-note", id: string, patch: Partial<MemoryEntry | AuthorNoteEntry>) {
+    setContextLibrary((current) => ({
+      ...current,
+      [kind === "memory" ? "memories" : "authorNotes"]: current[kind === "memory" ? "memories" : "authorNotes"].map((entry) =>
+        entry.id === id ? { ...entry, ...patch, updatedAt: Date.now() } : entry,
+      ),
+    }));
+  }
+
+  function deleteContextEntry(kind: "memory" | "author-note", id: string) {
+    setContextLibrary((current) => ({
+      ...current,
+      [kind === "memory" ? "memories" : "authorNotes"]: current[kind === "memory" ? "memories" : "authorNotes"].filter((entry) => entry.id !== id),
+    }));
+  }
+
+  function addLorebook(record: import("../lib/context/types.ts").LorebookRecord) {
+    setContextLibrary((current) => ({
+      ...current,
+      lorebooks: [...current.lorebooks, record],
+    }));
+  }
+
+  function removeLorebook(id: string) {
+    setContextLibrary((current) => ({
+      ...current,
+      lorebooks: current.lorebooks.filter((book) => book.id !== id),
+    }));
+  }
+
+  function updateLorebook(id: string, patch: Partial<import("../lib/context/types.ts").LorebookRecord>) {
+    setContextLibrary((current) => ({
+      ...current,
+      lorebooks: current.lorebooks.map((book) => book.id === id ? { ...book, ...patch, updatedAt: Date.now() } : book),
+    }));
+  }
+
+  function importContextFile(file: File, kind: "memory" | "author-note" | "lorebook") {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result ?? "");
+      if (kind === "memory") {
+        const entries = importMemory(text);
+        setContextLibrary((current) => ({ ...current, memories: [...current.memories, ...entries] }));
+      } else if (kind === "author-note") {
+        const entries = importAuthorNote(text);
+        setContextLibrary((current) => ({ ...current, authorNotes: [...current.authorNotes, ...entries] }));
+      } else {
+        const record = decodeLorebookFile(text);
+        if (record) {
+          setContextLibrary((current) => ({ ...current, lorebooks: [...current.lorebooks, record] }));
+        }
+      }
+    };
+    reader.readAsText(file);
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -4857,6 +4961,40 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           </button>
         </div>
       </header>
+
+      <input
+        type="file"
+        id="context-memory-import"
+        accept=".json,text/plain"
+        style={{ display: "none" }}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void importContextFile(file, "memory");
+          event.target.value = "";
+        }}
+      />
+      <input
+        type="file"
+        id="context-note-import"
+        accept=".json,text/plain"
+        style={{ display: "none" }}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void importContextFile(file, "author-note");
+          event.target.value = "";
+        }}
+      />
+      <input
+        type="file"
+        id="context-lorebook-import"
+        accept=".lorebook,.json"
+        style={{ display: "none" }}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void importContextFile(file, "lorebook");
+          event.target.value = "";
+        }}
+      />
 
       {(view === "home" || view === "scenes" || isCreating || editingCharacter || downloadingCharacter || confirmDeleteCharacter) && (
         <CharacterArea
@@ -5328,6 +5466,15 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           updateActiveSessionPersona={updateActiveSessionPersona}
           playerProfile={playerProfile}
           clearActiveSessionPersona={clearActiveSessionPersona}
+          contextLibrary={contextLibrary}
+          setContextLibrary={setContextLibrary}
+          createContextEntry={createContextEntry}
+          updateContextEntry={updateContextEntry}
+          deleteContextEntry={deleteContextEntry}
+          addLorebook={addLorebook}
+          removeLorebook={removeLorebook}
+          updateLorebook={updateLorebook}
+          importContextFile={importContextFile}
         />
       )}
 

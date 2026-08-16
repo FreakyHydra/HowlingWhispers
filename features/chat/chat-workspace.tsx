@@ -7,6 +7,8 @@ import type { LivingCastEntry, PlayerPersona } from "../../lib/generation/living
 import type { LivingCastConfig } from "../../lib/living-cast/config.ts";
 import { createCast, detectPendingInteraction } from "../../lib/generation/living-cast";
 import { relationshipMeterPercent } from "../../lib/relationships/index.ts";
+import { ContextPanel } from "../context/context-panel.tsx";
+import type { ContextLibrary } from "../../lib/context/types.ts";
 
 export interface ChatWorkspaceProps {
   showCharacterRail: boolean;
@@ -131,6 +133,15 @@ export interface ChatWorkspaceProps {
   updateActiveSessionPersona: (patch: Partial<{ playerName: string; playerPersona: string }>) => void;
   playerProfile: { name: string; persona: string };
   clearActiveSessionPersona: () => void;
+  contextLibrary: ContextLibrary;
+  setContextLibrary: (value: ContextLibrary) => void;
+  createContextEntry: (kind: "memory" | "author-note") => void;
+  updateContextEntry: (kind: "memory" | "author-note", id: string, patch: Record<string, unknown>) => void;
+  deleteContextEntry: (kind: "memory" | "author-note", id: string) => void;
+  addLorebook: (record: import("../../lib/context/types.ts").LorebookRecord) => void;
+  removeLorebook: (id: string) => void;
+  updateLorebook: (id: string, patch: Record<string, unknown>) => void;
+  importContextFile: (file: File, kind: "memory" | "author-note" | "lorebook") => void;
 }
 
 export function ChatWorkspace(props: ChatWorkspaceProps) {
@@ -225,6 +236,15 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
     onInviteCharacter,
     onRemoveCharacter,
     onConfigureLivingCast,
+    contextLibrary,
+    setContextLibrary,
+    createContextEntry,
+    updateContextEntry,
+    deleteContextEntry,
+    addLorebook,
+    removeLorebook,
+    updateLorebook,
+    importContextFile,
   } = props;
 
   const [showPanelControls, setShowPanelControls] = useState(false);
@@ -235,6 +255,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
     memory: "Memory",
     "context-inspector": "Context Inspector",
     "living-cast": "Living Cast",
+    context: "Context",
   };
 
   function renderText(text: string, forceAction = false) {
@@ -964,6 +985,23 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
                   )}
                 </section>
               );
+            case "context":
+               return (
+                 <section key={panelId} className="context-rail-card context-card">
+                   <ContextPanel
+                     contextLibrary={contextLibrary}
+                     setContextLibrary={setContextLibrary}
+                     createContextEntry={createContextEntry}
+                     updateContextEntry={updateContextEntry}
+                     deleteContextEntry={deleteContextEntry}
+                     addLorebook={addLorebook}
+                     removeLorebook={removeLorebook}
+                     updateLorebook={updateLorebook}
+                     onImportFile={importContextFile}
+                     activeContextManifest={activeContextManifest}
+                   />
+                 </section>
+               );
             case "connection":
               return (
                 <section key={panelId} className="context-rail-card context-card connection-card">
