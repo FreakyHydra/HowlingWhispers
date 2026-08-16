@@ -19,29 +19,34 @@ export function ChangelogView(props: ChangelogViewProps) {
             <article className="changelog-entry featured latest">
               <span className="changelog-mark">◐</span>
               <div>
-              <span className="changelog-version">Version 0.7.1 · The Black Memory</span>
-              <h2>The Black Memory</h2>
+              <span className="changelog-version">Version 0.7.2 · The Living Stage</span>
+              <h2>The Living Stage</h2>
               <p>
-                The player remembers now. Personas now own private Memory Cards, relationship state
-                follows the active identity across scenes, and the Character Hub displays the real
-                relationship meter. Backups preserve Memory Cards and relationship history.
+                More than one voice can enter the scene. Living Cast is now a configurable add-on that lets
+                you explicitly invite saved Characters into an active roleplay, with Round Robin and Smart
+                Participation modes, separate dialogue bubbles for each active Character, and optional Narrator
+                bubbles for multi-character scenes.
               </p>
               <ul>
-                <li>Personas behave as persistent player identities</li>
-                <li>Every Persona owns a non-transferable Memory Card</li>
-                <li>Relationship state follows the Persona, not the scene</li>
-                <li>Character Hub shows relationship label, meter, and Memory Card status</li>
-                <li>Selected-character layout restored with Resume Latest, Quick Start, Curated Scenes, Common Scenes, and Older Chats</li>
-                <li>Memory Injector groundwork added for future context selection</li>
-                <li>Backups include Memory Cards and preserve Persona ↔ Card ownership</li>
+                <li>Living Cast is now a configurable Add-on</li>
+                <li>invite existing Characters into an active roleplay</li>
+                <li>Primary and invited Characters are clearly separated</li>
+                <li>Round Robin multi-character conversations</li>
+                <li>Smart Participation lets Characters step in only when relevant</li>
+                <li>active Characters receive their own dialogue bubbles</li>
+                <li>shared narration can appear in a dedicated Narrator bubble</li>
+                <li>Narrator activates only for multi-character scenes</li>
+                <li>Living Cast follows individual roleplay sessions</li>
+                <li>panel visibility and ordering can be customized from chat</li>
+                <li>automatic random-word cast discovery is removed from the V1 workflow</li>
               </ul>
               </div>
             </article>
             <article className="changelog-entry featured">
               <div className="changelog-mark">◐</div>
               <div>
-                <span>Version 0.7.0 · Relationship System V1</span>
-                <h2>Relationship System V1</h2>
+                <span>Version 0.7.1 · The Black Memory</span>
+                <h2>The Black Memory</h2>
                 <p>
                   A persistent, provider-neutral relationship system replaces the fixed character
                   bond with score-driven state tied to your active persona.
@@ -64,8 +69,8 @@ export function ChangelogView(props: ChangelogViewProps) {
             <article className="changelog-entry featured hotfix-card">
              <div className="changelog-mark">◐</div>
              <div>
-               <span>Version 0.6.1 · Howling Add-ons, Common Scenes &amp; Story Improvements</span>
-               <h2>Howling Add-ons, Common Scenes &amp; story improvements</h2>
+               <span>Version 0.7.0 · Relationship System V1</span>
+               <h2>Relationship System V1</h2>
                <p>
                   This release adds a data-only add-on system, reusable Common Scenes with runtime template variables, and fixes to reply-length enforcement, Living Cast initialization, pronoun handling, and navigation.
                </p>

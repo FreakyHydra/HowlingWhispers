@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.7.2 — The Living Stage
+
+◐ "More than one voice can enter the scene."
+
+### What's new
+
+- Living Cast is now a configurable Add-on
+- invite existing Characters into an active roleplay
+- Primary and invited Characters are clearly separated
+- Round Robin multi-character conversations
+- Smart Participation lets Characters step in only when relevant
+- active Characters receive their own dialogue bubbles
+- shared narration can appear in a dedicated Narrator bubble
+- Narrator activates only for multi-character scenes
+- Living Cast follows individual roleplay sessions
+- panel visibility and ordering can be customized from chat
+- automatic random-word cast discovery is removed from the V1 workflow
+
+### What changed
+
+- Living Cast moved from general Settings to the Add-ons page
+- cast membership is now explicit: only Characters invited from the Character Library participate
+- old automatic word-detection cast entries are discarded on migration
+- \`autoNpcReplies\` setting migrated to \`livingCastConfig.enabled\`
+- generation context uses explicit invited cast instead of heuristic detection
+- relationship scoring is keyed per invited Character, not just the Primary
+- context rail gains a panel-layout cog with visibility toggles and reorder controls
+- add-ons page shows a Configure button for the built-in Living Cast module
+
+### Quality
+
+307/307 tests passed · lint clean · build validated.
+
 ## 0.7.1 — The Black Memory
 
 ◐ "The player remembers now."

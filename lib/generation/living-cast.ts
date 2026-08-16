@@ -7,7 +7,7 @@
 // roleplay model consumes. The same pure logic runs client-side (to persist
 // state per session) and server-side (to render the authoritative prompt block).
 
-export type CastOrigin = "player" | "permanent" | "temporary";
+export type CastOrigin = "player" | "permanent" | "temporary" | "invited";
 export type CastPresence = "active" | "mentioned" | "absent";
 
 export type LivingCastEntry = {
@@ -302,6 +302,14 @@ export function createCast(
   return entries;
 }
 
+export function resetCast(
+  primaryCharacter: { id: string; name: string },
+  playerName?: string,
+  now = Date.now(),
+): LivingCastEntry[] {
+  return createCast(primaryCharacter, playerName, now);
+}
+
 /** Bounded, defensive parse of cast entries. */
 export function sanitizeCast(
   value: unknown,
@@ -321,7 +329,7 @@ export function sanitizeCast(
     const singleToken = !/\s/.test(name);
     if (singleToken && STOPWORDS.has(name.toLocaleLowerCase("en-US"))) continue;
     const origin: CastOrigin =
-      entry.origin === "player" || entry.origin === "permanent" || entry.origin === "temporary"
+      entry.origin === "player" || entry.origin === "permanent" || entry.origin === "temporary" || entry.origin === "invited"
         ? entry.origin
         : "temporary";
     const presence: CastPresence =
@@ -631,6 +639,7 @@ const ORIGIN_LABEL: Record<CastOrigin, string> = {
   player: "Player",
   permanent: "Permanent",
   temporary: "Temporary",
+  invited: "Invited",
 };
 
 /** Compact cast roster for the roleplay prompt. */

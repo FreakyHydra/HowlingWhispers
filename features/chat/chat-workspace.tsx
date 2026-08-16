@@ -1,8 +1,10 @@
 "use client";
 
 import React from "react";
+import { useState } from "react";
 import type { Character, Message, SceneDefinition, StorySession } from "../app/dreambound-app";
 import type { LivingCastEntry, PlayerPersona } from "../../lib/generation/living-cast";
+import type { LivingCastConfig } from "../../lib/living-cast/config.ts";
 import { createCast, detectPendingInteraction } from "../../lib/generation/living-cast";
 import { relationshipMeterPercent } from "../../lib/relationships/index.ts";
 
@@ -44,7 +46,7 @@ export interface ChatWorkspaceProps {
   isReplying: boolean;
   chatError: string;
   configured: boolean;
-  setView: (view: "home" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas") => void;
+  setView: (view: "home" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas" | "living-cast") => void;
   setChatError: (error: string) => void;
   autopilotControlsCollapsed: boolean;
   setAutopilotControlsCollapsed: (collapsed: boolean) => void;
@@ -62,7 +64,6 @@ export interface ChatWorkspaceProps {
   stopGeneration: () => void;
   isImpersonating: boolean;
   activePlayerName: string;
-  autoNpcReplies: boolean;
   activeContextManifest: {
     estimatedInputTokens: number;
     includedLore: Array<{ id: string; title: string; reason: string }>;
@@ -75,6 +76,15 @@ export interface ChatWorkspaceProps {
     includedSections: string[];
     omittedLore: Array<{ id: string; title: string; reason: string }>;
   } | undefined;
+  livingCastEnabled: boolean;
+  livingCastConfig: LivingCastConfig;
+  panelOrder: string[];
+  panelVisibility: Record<string, boolean>;
+  onPanelOrderChange: (order: string[]) => void;
+  onPanelVisibilityChange: (visibility: Record<string, boolean>) => void;
+  onInviteCharacter: () => void;
+  onRemoveCharacter: (characterId: string) => void;
+  onConfigureLivingCast: () => void;
   connected: boolean;
   providerState: "disconnected" | "ready" | "testing" | "connected" | "error";
   providerLabel: string;
@@ -166,7 +176,6 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
     stopGeneration,
     isImpersonating,
     activePlayerName,
-    autoNpcReplies,
     activeContextManifest,
     connected,
     providerState,
@@ -208,6 +217,8 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
     setAutopilotSeed,
     beginAutopilot,
   } = props;
+
+  const [showPanelControls, setShowPanelControls] = useState(false);
 
   function renderText(text: string, forceAction = false) {
     if (forceAction) {
@@ -730,7 +741,65 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
       </section>
 
       {showContextRail && <aside className="context-rail" aria-label="Story context">
-        <section className="context-card">
+        <div className="context-rail-controls">
+          <button
+            className="context-rail-cog"
+            type="button"
+            onClick={() => setShowPanelControls((v) => !v)}
+            aria-label="Panel layout"
+            title="Panel layout"
+          >
+            ⚙
+          </button>
+          {showPanelControls && (
+            <div className="panel-controls-dropdown">
+              <p className="eyebrow">Panels</p>
+              {panelOrder.map((panelId, index) => (
+                <div key={panelId} className="panel-control-item">
+                  <label className="toggle-row">
+                    <span className="setting-name-row">{panelId.replace(/-/g, " ")}</span>
+                    <span className="switch">
+                      <input
+                        type="checkbox"
+                        checked={panelVisibility[panelId] !== false}
+                        onChange={(e) => {
+                          const next = { ...panelVisibility, [panelId]: e.target.checked };
+                          onPanelVisibilityChange(next);
+                        }}
+                      />
+                      <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
+                    </span>
+                  </label>
+                  <div className="panel-reorder-buttons">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (index === 0) return;
+                        const next = [...panelOrder];
+                        [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                        onPanelOrderChange(next);
+                      }}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (index === panelOrder.length - 1) return;
+                        const next = [...panelOrder];
+                        [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                        onPanelOrderChange(next);
+                      }}
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <section className="context-rail-card context-card" style={{ order: panelOrder.indexOf("scene") }}>
           <div className="card-title">
             <p className="eyebrow">Scene</p>
             <button aria-label="Choose another scene" onClick={() => setView("scenes")}>✎</button>
@@ -753,7 +822,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
           </div>
         </section>
 
-        <section className="context-card memory-card">
+        <section className="context-rail-card context-card memory-card" style={{ order: panelOrder.indexOf("memory") }}>
           <div className="card-title">
             <p className="eyebrow">{activeSession?.sandbox ? "Sandbox" : "Memory"}</p>
             {!activeSession?.sandbox && <button aria-label="Add memory">＋</button>}
@@ -775,7 +844,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
           )}
         </section>
 
-        <section className="context-card living-cast-card">
+        <section className="context-rail-card context-card living-cast-card" style={{ order: panelOrder.indexOf("living-cast") }}>
           <div className="card-title">
             <p className="eyebrow">Living Cast</p>
             <span aria-hidden="true">◈</span>
@@ -815,7 +884,6 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
                 {pending?.kind === "cast" && pending.targetName && (
                   <p className="cast-pending-note">
                     {pending.asker} asked {pending.targetName} a question. {pending.targetName} has not responded yet.
-                    {autoNpcReplies ? " Automatic side-character reply is on." : " Automatic side-character replies are off."}
                   </p>
                 )}
               </details>
@@ -823,7 +891,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
           })()}
         </section>
 
-        <section className="context-card context-inspector-card">
+        <section className="context-rail-card context-card context-inspector-card" style={{ order: panelOrder.indexOf("context-inspector") }}>
           <div className="card-title">
             <p className="eyebrow">Peek Context</p>
             <span aria-hidden="true">⌁</span>
@@ -868,7 +936,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
           )}
         </section>
 
-        <section className="context-card connection-card">
+        <section className="context-rail-card context-card connection-card" style={{ order: panelOrder.indexOf("connection") }}>
           <div className="card-title">
             <p className="eyebrow">Connection</p>
             <span aria-hidden="true">♡</span>

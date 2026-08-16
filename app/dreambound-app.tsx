@@ -79,6 +79,12 @@ import {
   matchesName,
   type LivingCastEntry,
 } from "../lib/generation/living-cast.ts";
+import { readLivingCastConfig, writeLivingCastConfig, DEFAULT_LIVING_CAST_CONFIG } from "../lib/living-cast/config.ts";
+import { createParticipantSelector, RoundRobinSelector } from "../lib/living-cast/participant-selector.ts";
+import { inviteCharacter, removeInvitedCharacter, resetCast, isInvitedCharacter } from "../lib/living-cast/invitation.ts";
+import type { LivingCastConfig } from "../lib/living-cast/config.ts";
+import { LivingCastConfig as LivingCastConfigView } from "../features/living-cast/living-cast-config.tsx";
+import { CharacterInvitePicker } from "../features/living-cast/character-invite-picker.tsx";
 import { isNewerVersion } from "../lib/version.mjs";
 import { legacyCharacterToWorldLore } from "../lib/worlds/schema.ts";
 import { resolveBuiltinWorldLore } from "../lib/worlds/builtins.ts";
@@ -221,6 +227,7 @@ export type StorySession = {
   playerPersona?: string;
   playerPersonaId?: string;
   livingCast?: LivingCastEntry[];
+  livingCastRoundRobinIndex?: number;
   autonomousCast?: AutonomousAgent[];
 };
 
@@ -262,7 +269,7 @@ type Viewpoint = "user" | "character" | "roving";
 type StoryTense = "present" | "past";
 type TokenStorageMode = "tab" | "computer";
 type UpdateState = "idle" | "checking" | "current" | "available" | "unconfigured" | "error";
-export type AppView = "home" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas";
+export type AppView = "home" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas" | "living-cast";
 export type ProviderState =
   | "disconnected"
   | "ready"
@@ -1445,9 +1452,6 @@ export default function DreamboundApp() {
   const [storyTense, setStoryTense] = useState<StoryTense>(
     () => readSession<StoryTense>("storyTense", "present"),
   );
-  const [autoNpcReplies, setAutoNpcReplies] = useState<boolean>(
-    () => readSession("autoNpcReplies", true),
-  );
   const [providerState, setProviderState] =
     useState<ProviderState>(() => readSession<ProviderState>("provider", "disconnected"));
   const [isReplying, setIsReplying] = useState(false);
@@ -1513,6 +1517,11 @@ export default function DreamboundApp() {
   const [showContextRail, setShowContextRail] = useState(
     () => readSession<boolean>("showContextRail", true),
   );
+  const [livingCastConfig, setLivingCastConfig] = useState<LivingCastConfig>(() => readLivingCastConfig());
+  const [panelOrder, setPanelOrder] = useState<string[]>(() => readSession<string[]>("panelOrder", ["scene", "memory", "living-cast", "context-inspector", "connection"]));
+  const [panelVisibility, setPanelVisibility] = useState<Record<string, boolean>>(() => readSession<Record<string, boolean>>("panelVisibility", { scene: true, memory: true, "living-cast": true, "context-inspector": true, connection: true }));
+  const [showLivingCastConfig, setShowLivingCastConfig] = useState(false);
+  const [showInvitePicker, setShowInvitePicker] = useState(false);
   const [contextManifests, setContextManifests] = useState<Record<string, ContextManifest>>(
     () => readSession<Record<string, ContextManifest>>("contextManifests", {}),
   );
@@ -1816,10 +1825,6 @@ export default function DreamboundApp() {
   ]);
 
   useEffect(() => {
-    writeSession("autoNpcReplies", autoNpcReplies);
-  }, [autoNpcReplies]);
-
-  useEffect(() => {
     writeSession("sessions", sessions);
     writeSession("currentSessionId", currentSessionId);
   }, [sessions, currentSessionId]);
@@ -1841,8 +1846,29 @@ export default function DreamboundApp() {
   }, [relationships]);
 
   useEffect(() => {
+    const oldAutoNpc = readSession<boolean | null>("autoNpcReplies", null);
+    if (oldAutoNpc !== null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLivingCastConfig((prev) => ({ ...prev, enabled: oldAutoNpc }));
+      localStorage.removeItem("dreambound_autoNpcReplies");
+    }
+  }, []);
+
+  useEffect(() => {
     writeSession("contextManifests", contextManifests);
   }, [contextManifests]);
+
+  useEffect(() => {
+    writeLivingCastConfig(livingCastConfig);
+  }, [livingCastConfig]);
+
+  useEffect(() => {
+    writeSession("panelOrder", panelOrder);
+  }, [panelOrder]);
+
+  useEffect(() => {
+    writeSession("panelVisibility", panelVisibility);
+  }, [panelVisibility]);
 
   useEffect(() => {
     const trimmed: Record<string, Message[]> = {};
@@ -1851,6 +1877,38 @@ export default function DreamboundApp() {
     }
     writeSession("messages", trimmed);
   }, [messages]);
+
+  const BUILTIN_LIVING_CAST_ADDON = useMemo<InstalledAddon>(() => ({
+    manifest: {
+      format: "howling-addon",
+      formatVersion: 1,
+      id: "howling-living-cast",
+      name: "Living Cast",
+      version: "1.0.0",
+      description: "Multi-character roleplay and cast management.",
+      author: "The Howling Whispers",
+      content: {},
+    },
+    enabled: livingCastConfig.enabled,
+    // eslint-disable-next-line react-hooks/purity
+    installedAt: Date.now(),
+    // eslint-disable-next-line react-hooks/purity
+    updatedAt: Date.now(),
+  }), [livingCastConfig.enabled]);
+
+  useEffect(() => {
+    if (!installedAddons.some((a) => a.manifest.id === "howling-living-cast")) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setInstalledAddons((prev) => [...prev, BUILTIN_LIVING_CAST_ADDON]);
+    }
+  }, [installedAddons, BUILTIN_LIVING_CAST_ADDON]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setInstalledAddons((prev) =>
+      prev.map((a) => (a.manifest.id === "howling-living-cast" ? { ...a, enabled: livingCastConfig.enabled } : a)),
+    );
+  }, [livingCastConfig.enabled]);
 
   const authHeaders: Record<string, string> = { "Content-Type": "application/json" };
 
@@ -1923,18 +1981,9 @@ export default function DreamboundApp() {
       playerName: string;
     },
   ) {
-    const baselineCast = overrides.livingCast?.length
-      ? overrides.livingCast
-      : createCast({ id: overrides.characterId, name: overrides.characterName }, overrides.playerName);
-    const detection = detectLivingCast({
-      messages: conversation,
-      cast: baselineCast,
-      primary: { id: overrides.characterId, name: overrides.characterName },
-      playerName: overrides.playerName,
-    });
     setSessions((current) => current.map((session) =>
       session.messageKey === messageKey
-        ? { ...session, updatedAt: Date.now(), livingCast: detection.cast }
+        ? { ...session, updatedAt: Date.now() }
         : session,
     ));
   }
@@ -2660,9 +2709,9 @@ export default function DreamboundApp() {
     const requestSignal = controller.signal;
     const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
     const effectivePlayerPersona = activePersona ?? (activeSession?.playerPersona?.trim() || compiledActivePersona || playerProfile.persona).trim();
-    const sessionCast = activeSession?.livingCast?.length
-      ? activeSession.livingCast
-      : createCast({ id: selected.id, name: selected.name }, effectivePlayerName);
+    const sessionCast = livingCastConfig.enabled
+      ? (activeSession?.livingCast?.length ? activeSession.livingCast : resetCast({ id: selected.id, name: selected.name }, effectivePlayerName))
+      : [];
     const resolvedSceneTitle = resolveStoryTemplate(activeScene.title, { charName: selected.name, userName: effectivePlayerName });
     const resolvedSceneWeather = resolveStoryTemplate(`${activeScene.weather}. ${activeScene.subtitle}`, { charName: selected.name, userName: effectivePlayerName });
     const requestBody = {
@@ -2956,21 +3005,32 @@ export default function DreamboundApp() {
     return "";
   }
 
+  function advanceRoundRobinCursor(sessionId: string) {
+    setSessions((current) =>
+      current.map((session) =>
+        session.id === sessionId
+          ? { ...session, livingCastRoundRobinIndex: ((session.livingCastRoundRobinIndex ?? 0) + 1) % (session.livingCast?.length ?? 1), updatedAt: Date.now() }
+          : session,
+      ),
+    );
+  }
+
   function scoreCharacterReply(
     messageId: number,
     replyText: string,
     conversation: Message[],
+    characterId?: string,
   ): void {
     const personaId = activeRelationshipPersonaId;
     const playerName = activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim();
     const previousScore = effectiveScore(
       relationshipsRef.current,
-      selected.id,
+      characterId ?? selected.id,
       personaId,
       selected.bond,
     );
     const result = (heuristicRelationshipScorer as RelationshipScorer).evaluate({
-      characterId: selected.id,
+      characterId: characterId ?? selected.id,
       personaId,
       playerName,
       characterName: selected.name,
@@ -2985,7 +3045,7 @@ export default function DreamboundApp() {
     }
     const next: RelationshipState = { ...relationshipsRef.current };
     commitEvent(next, {
-      characterId: selected.id,
+      characterId: characterId ?? selected.id,
       personaId,
       turnId: characterTurnId(messageId),
       delta: result.delta,
@@ -3060,17 +3120,23 @@ export default function DreamboundApp() {
     const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
     const baselineCast = activeSession?.livingCast?.length
       ? activeSession.livingCast
-      : createCast({ id: selected.id, name: selected.name }, effectivePlayerName);
-    const detection = detectLivingCast({
-      messages: conversation,
-      cast: baselineCast,
-      primary: { id: selected.id, name: selected.name },
-      playerName: effectivePlayerName,
-    });
-    const castSpeaker = autoNpcReplies && detection.autoSpeakerName
-      ? detection.cast.find((entry) => entry.id === detection.autoSpeakerId)
-      : null;
-    const respondAs = castSpeaker?.name;
+      : resetCast({ id: selected.id, name: selected.name }, effectivePlayerName);
+
+    let respondAs: string | undefined;
+    if (livingCastConfig.enabled && mode === "Speak" && activeSession) {
+      const selector = createParticipantSelector(
+        livingCastConfig.participationMode,
+        baselineCast,
+        selected.name,
+      );
+      const nextSpeaker = selector.next(conversation);
+      if (nextSpeaker) {
+        respondAs = nextSpeaker.name;
+        if (livingCastConfig.participationMode === "round-robin") {
+          advanceRoundRobinCursor(activeSession.id);
+        }
+      }
+    }
 
     setMessages((current) => ({
       ...current,
@@ -3110,7 +3176,14 @@ export default function DreamboundApp() {
         livingCast: activeSession?.livingCast ?? [],
         playerName: effectivePlayerName,
       });
-      void scoreCharacterReply(replyMessage.id, replyMessage.text, [...conversation, replyMessage]);
+      const invitedSpeaker = respondAs
+        ? baselineCast.find((entry) => entry.name === respondAs)
+        : null;
+      if (invitedSpeaker && livingCastConfig.enabled) {
+        scoreCharacterReply(replyMessage.id, replyMessage.text, [...conversation, replyMessage], invitedSpeaker.id);
+      } else {
+        scoreCharacterReply(replyMessage.id, replyMessage.text, [...conversation, replyMessage]);
+      }
       if (activeSession) {
         setSessions((current) => current.map((session) =>
           session.id === activeSession.id ? { ...session, updatedAt: Date.now() } : session,
@@ -4708,7 +4781,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           </button>
         </nav>
         <div className="current-scene">
-          <span aria-hidden="true">{view === "chat" ? "♜" : view === "scenes" ? "◈" : view === "changelog" ? "◇" : view === "settings" ? "⚙" : view === "archive" ? "☍" : view === "personas" ? "👤" : view === "addons" ? "◈" : "✦"}</span>
+          <span aria-hidden="true">{view === "chat" ? "♜" : view === "scenes" ? "◈" : view === "changelog" ? "◇" : view === "settings" ? "⚙" : view === "archive" ? "☍" : view === "personas" ? "👤" : view === "addons" ? "◈" : view === "living-cast" ? "🎭" : "✦"}</span>
           <span>
             {view === "chat"
               ? activeScene.title
@@ -4724,7 +4797,9 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                         ? "Persona Library"
                         : view === "addons"
                           ? "Howling Add-ons"
-                          : "Choose a character"}
+                          : view === "living-cast"
+                            ? "Living Cast"
+                            : "Choose a character"}
           </span>
           <span aria-hidden="true">›</span>
         </div>
@@ -4894,7 +4969,6 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           initiative={initiative}
           viewpoint={viewpoint}
           storyTense={storyTense}
-          autoNpcReplies={autoNpcReplies}
           savedAt={savedAt}
           hasNovelAiToken={hasNovelAiToken}
           playerProfile={playerProfile}
@@ -4939,7 +5013,6 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           setInitiative={setInitiative}
           setViewpoint={setViewpoint}
           setStoryTense={setStoryTense}
-          setAutoNpcReplies={setAutoNpcReplies}
           setSavedAt={setSavedAt}
           setTextStyle={setTextStyle}
           updatePlayerProfile={updatePlayerProfile}
@@ -5050,13 +5123,26 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                       </span>
                     </div>
                     <div className="addon-card-actions">
-                      <button
-                        className="outline-button"
-                        type="button"
-                        onClick={() => toggleAddonEnabled(addon.manifest.id)}
-                      >
-                        {addon.enabled ? "Disable" : "Enable"}
-                      </button>
+                      {addon.manifest.id === "howling-living-cast" ? (
+                        <button
+                          className="outline-button"
+                          type="button"
+                          onClick={() => {
+                            setShowLivingCastConfig(true);
+                            setView("living-cast");
+                          }}
+                        >
+                          Configure
+                        </button>
+                      ) : (
+                        <button
+                          className="outline-button"
+                          type="button"
+                          onClick={() => toggleAddonEnabled(addon.manifest.id)}
+                        >
+                          {addon.enabled ? "Disable" : "Enable"}
+                        </button>
+                      )}
                       <button
                         className="outline-button"
                         type="button"
@@ -5090,6 +5176,27 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             </div>
           )}
         </section>
+      )}
+
+      {view === "living-cast" && showLivingCastConfig && (
+        <LivingCastConfigView
+          config={livingCastConfig}
+          onConfigChange={setLivingCastConfig}
+          onResetCast={() => {
+            if (!activeSession) return;
+            const reset = resetCast({ id: selected.id, name: selected.name }, activePlayerName);
+            setSessions((current) => current.map((s) => s.id === activeSession.id ? ({ ...s, livingCast: reset as LivingCastEntry[], livingCastRoundRobinIndex: undefined } as StorySession) : s));
+          }}
+          cast={activeSession?.livingCast ?? resetCast({ id: selected.id, name: selected.name }, activePlayerName)}
+          onInvite={() => setShowInvitePicker(true)}
+          onRemove={(characterId: string) => {
+            if (!activeSession) return;
+            const updatedCast = removeInvitedCharacter(activeSession.livingCast ?? [], characterId);
+            setSessions((current) => current.map((s) => s.id === activeSession.id ? ({ ...s, livingCast: updatedCast as LivingCastEntry[], livingCastRoundRobinIndex: undefined } as StorySession) : s));
+          }}
+          characters={characters.map((c) => ({ id: c.id, name: c.name }))}
+          onBack={() => setShowLivingCastConfig(false)}
+        />
       )}
 
       {view === "archive" && (
@@ -5154,7 +5261,19 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           stopGeneration={stopGeneration}
           isImpersonating={isImpersonating}
           activePlayerName={activePlayerName}
-          autoNpcReplies={autoNpcReplies}
+          livingCastEnabled={livingCastConfig.enabled}
+          livingCastConfig={livingCastConfig}
+          panelOrder={panelOrder}
+          panelVisibility={panelVisibility}
+          onPanelOrderChange={setPanelOrder}
+          onPanelVisibilityChange={setPanelVisibility}
+          onInviteCharacter={() => setShowInvitePicker(true)}
+          onRemoveCharacter={(characterId: string) => {
+            if (!activeSession) return;
+            const updatedCast = removeInvitedCharacter(activeSession.livingCast ?? [], characterId);
+            setSessions((current) => current.map((s) => s.id === activeSession.id ? ({ ...s, livingCast: updatedCast as LivingCastEntry[], livingCastRoundRobinIndex: undefined } as StorySession) : s));
+          }}
+          onConfigureLivingCast={() => setShowLivingCastConfig(true)}
           activeContextManifest={activeContextManifest}
           connected={connected}
           providerState={providerState}
@@ -5226,6 +5345,21 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           onAddPersona={(persona) => setPersonas((current) => [...current, persona])}
           onPick={(persona) => commitPersonaStart(persona)}
           onCancel={() => setPendingPersonaStart(null)}
+        />
+      )}
+
+      {showInvitePicker && activeSession && (
+        <CharacterInvitePicker
+          characters={characters.map((c) => ({ id: c.id, name: c.name, role: c.role, image: portraitUrl(c) }))}
+          invitedIds={activeSession.livingCast?.map((e) => e.id) ?? []}
+          onInvite={(characterId: string) => {
+            const character = characters.find((c) => c.id === characterId);
+            if (!character || !activeSession) return;
+            const updatedCast = inviteCharacter(activeSession.livingCast ?? [], characterId, character.name);
+            setSessions((current) => current.map((s) => s.id === activeSession.id ? { ...s, livingCast: updatedCast as LivingCastEntry[] } : s));
+            setShowInvitePicker(false);
+          }}
+          onCancel={() => setShowInvitePicker(false)}
         />
       )}
 

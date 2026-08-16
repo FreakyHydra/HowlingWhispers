@@ -66,7 +66,6 @@ export interface SettingsPageProps {
   initiative: Initiative;
   viewpoint: Viewpoint;
   storyTense: StoryTense;
-  autoNpcReplies: boolean;
   savedAt: string;
   hasNovelAiToken: boolean;
   playerProfile: { name: string };
@@ -121,7 +120,6 @@ export interface SettingsPageProps {
   setInitiative: (value: Initiative) => void;
   setViewpoint: (value: Viewpoint) => void;
   setStoryTense: (value: StoryTense) => void;
-  setAutoNpcReplies: (value: boolean) => void;
   setSavedAt: (value: string) => void;
   setTextStyle: (updater: (style: TextStyle) => TextStyle) => void;
   updatePlayerProfile: (patch: { name?: string; persona?: string }) => void;
@@ -170,7 +168,6 @@ export function SettingsPage(props: SettingsPageProps) {
     initiative,
     viewpoint,
     storyTense,
-    autoNpcReplies,
     savedAt,
     hasNovelAiToken,
     playerProfile,
@@ -215,7 +212,6 @@ export function SettingsPage(props: SettingsPageProps) {
     setInitiative,
     setViewpoint,
     setStoryTense,
-    setAutoNpcReplies,
     setSavedAt,
     setTextStyle,
     updatePlayerProfile,
@@ -745,44 +741,6 @@ export function SettingsPage(props: SettingsPageProps) {
                   </div>
                 </fieldset>
 
-                <fieldset className="story-control-fieldset">
-                  <legend>Living Cast</legend>
-                  <p>
-                    Track who is present in each conversation and let named side
-                    characters answer when they are directly asked, instead of
-                    making you impersonate them.
-                  </p>
-                  <label className="toggle-row">
-                    <span>
-                      <span className="setting-name-row">
-                        Automatic side-character replies
-                        <InfoTip label="Automatic side-character replies">
-                          <p className="help-popover__intro">
-                            When a scene introduces other characters (for example
-                            Melody entering with you), and the main character asks
-                            one of them a direct question, the system answers as
-                            that character automatically. Turn this off if you
-                            prefer to control every side character yourself.
-                          </p>
-                        </InfoTip>
-                      </span>
-                      <small>
-                        Uses the conversation&apos;s Living Cast, not an extra AI call.
-                        The Living Cast panel in the chat context rail shows who is
-                        present and what is pending.
-                      </small>
-                    </span>
-                    <span className="switch">
-                      <input
-                        id="auto-npc-replies"
-                        type="checkbox"
-                        checked={autoNpcReplies}
-                        onChange={(event) => setAutoNpcReplies(event.target.checked)}
-                      />
-                      <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
-                    </span>
-                  </label>
-                </fieldset>
 
                 <div className="settings-actions">
                   {storyProvider === "novelai" && <button
