@@ -7,31 +7,91 @@
 ### What's new
 
 - Living Cast is now a configurable Add-on
-- invite existing Characters into an active roleplay
-- Primary and invited Characters are clearly separated
-- Round Robin multi-character conversations
-- Smart Participation lets Characters step in only when relevant
-- active Characters receive their own dialogue bubbles
-- shared narration can appear in a dedicated Narrator bubble
-- Narrator activates only for multi-character scenes
-- Living Cast follows individual roleplay sessions
-- panel visibility and ordering can be customized from chat
-- automatic random-word cast discovery is removed from the V1 workflow
+- explicit Character invitation from the Character Library into an active roleplay
+- Primary and invited Characters are clearly separated in the cast list
+- Round Robin and Smart Participation mode selection added
+- context rail panel layout controls (visibility toggles, reorder buttons)
+- automatic random-word cast discovery removed from the V1 workflow
 
 ### What changed
 
-- Living Cast moved from general Settings to the Add-ons page
-- cast membership is now explicit: only Characters invited from the Character Library participate
-- old automatic word-detection cast entries are discarded on migration
-- \`autoNpcReplies\` setting migrated to \`livingCastConfig.enabled\`
-- generation context uses explicit invited cast instead of heuristic detection
-- relationship scoring is keyed per invited Character, not just the Primary
-- context rail gains a panel-layout cog with visibility toggles and reorder controls
-- add-ons page shows a Configure button for the built-in Living Cast module
+- Living Cast moved from general Settings to the Add-ons page as a built-in module
+- cast membership is now explicit: only Characters invited through the UI participate
+- old heuristic detection entries are discarded on migration; only valid Character Library IDs survive
+- `autoNpcReplies` setting migrated to `livingCastConfig.enabled`
+- generation sends explicit invited cast to the API instead of relying on name detection
+- relationship scoring accepts per-character identity for invited Characters
+- context rail gains a panel-layout cog
+
+### Foundation notes
+
+This release ships the Living Cast domain, UI, and integration foundation.
+Multi-character bubble handling, Narrator generation path, Round Robin cursor persistence,
+Smart Participation edge cases, and full manual verification are slated for 0.7.3.
 
 ### Quality
 
 307/307 tests passed · lint clean · build validated.
+
+## 0.7.3 — The Living Stage: Second Act
+
+Planned fixes and completion work:
+
+### Living Cast
+- Fix Round Robin so the saved session cursor is actually used across turns.
+- Verify Round Robin rotates through the active cast instead of repeatedly selecting the first eligible Character.
+- Fix Smart Participation edge cases discovered during live multi-character testing.
+- Confirm disabled Living Cast fully stops cast participation logic.
+
+### Character identity
+- Add a stable Character ID to generated Character messages instead of relying only on the speaker display name.
+- Preserve speaker identity correctly across reload, resume, backup, restore, edit, delete, and reroll.
+- Make invited Character relationship scoring use the invited Character's actual Character data instead of Primary Character data.
+
+### Relationships
+- Verify each invited Character uses the correct Persona ↔ Character relationship.
+- Prevent relationship state from bleeding between cast members.
+- Verify reroll, edit, delete, and rewind remain mathematically consistent in multi-character roleplay.
+
+### Multi-character output
+- Complete proper multi-character bubble handling.
+- Ensure meaningful dialogue from one Character does not get written inside another Character's bubble.
+- Decide and implement the correct multi-bubble generation path rather than relying on a single-speaker reply pretending to cover the entire cast.
+
+### Narrator
+- Add the actual Narrator generation path for multi-character scenes.
+- Narrator should only become available with 2+ active Characters.
+- Narrator should appear only when useful, not every turn.
+- Narrator handles shared scene description and should not control active Characters.
+
+### Testing
+- Add missing integration coverage for:
+  - invited Character relationship scoring
+  - Round Robin persistence across turns
+  - multi-character rerolls
+  - delete/rewind relationship reconciliation
+  - disabled Living Cast behavior
+  - separate Character speaker identity
+  - Narrator availability
+  - session cast isolation
+
+### Manual sandbox verification
+- Invite a second Character.
+- Test Round Robin across several turns.
+- Test Smart Participation.
+- Confirm each Character gets the correct bubble.
+- Confirm Narrator behavior.
+- Confirm relationships remain separate.
+- Reload and resume the roleplay.
+- Verify cast persistence.
+- Open another roleplay and confirm cast does not leak between sessions.
+- Hide/show/reorder panels.
+- Disable Living Cast and confirm it actually stops.
+
+### Changelog correction
+- Keep 0.7.2 as the release that introduced The Living Stage foundation.
+- 0.7.3 documents the stabilization and completion work rather than claiming those unfinished parts were already fully working in 0.7.2.
+
 
 ## 0.7.1 — The Black Memory
 

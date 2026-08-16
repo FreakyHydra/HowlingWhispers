@@ -19,37 +19,32 @@ export function ChangelogView(props: ChangelogViewProps) {
             <article className="changelog-entry featured latest">
               <span className="changelog-mark">◐</span>
               <div>
-              <span className="changelog-version">Version 0.7.2 · The Living Stage</span>
-              <h2>The Living Stage</h2>
+              <span className="changelog-version">Version 0.7.3 · The Living Stage: Second Act</span>
+              <h2>The Living Stage: Second Act</h2>
               <p>
-                More than one voice can enter the scene. Living Cast is now a configurable add-on that lets
-                you explicitly invite saved Characters into an active roleplay, with Round Robin and Smart
-                Participation modes, separate dialogue bubbles for each active Character, and optional Narrator
-                bubbles for multi-character scenes.
+                Stabilization and completion pass for the Living Stage foundation.
               </p>
               <ul>
-                <li>Living Cast is now a configurable Add-on</li>
-                <li>invite existing Characters into an active roleplay</li>
-                <li>Primary and invited Characters are clearly separated</li>
-                <li>Round Robin multi-character conversations</li>
-                <li>Smart Participation lets Characters step in only when relevant</li>
-                <li>active Characters receive their own dialogue bubbles</li>
-                <li>shared narration can appear in a dedicated Narrator bubble</li>
-                <li>Narrator activates only for multi-character scenes</li>
-                <li>Living Cast follows individual roleplay sessions</li>
-                <li>panel visibility and ordering can be customized from chat</li>
-                <li>automatic random-word cast discovery is removed from the V1 workflow</li>
+                <li>Round Robin cursor persistence and rotation fixes</li>
+                <li>Smart Participation edge-case improvements</li>
+                <li>Disabled Living Cast behavior verification</li>
+                <li>Stable Character ID on generated Character messages</li>
+                <li>Per-character relationship scoring for invited Characters</li>
+                <li>Multi-character bubble handling improvements</li>
+                <li>Narrator generation path for multi-character scenes</li>
+                <li>Expanded integration test coverage</li>
               </ul>
               </div>
             </article>
             <article className="changelog-entry featured">
               <div className="changelog-mark">◐</div>
               <div>
-                <span>Version 0.7.1 · The Black Memory</span>
-                <h2>The Black Memory</h2>
+                <span>Version 0.7.2 · The Living Stage</span>
+                <h2>The Living Stage</h2>
                 <p>
-                  A persistent, provider-neutral relationship system replaces the fixed character
-                  bond with score-driven state tied to your active persona.
+                  Living Cast foundation shipped as a configurable Add-on. Explicit Character invitation,
+                  Round Robin and Smart Participation modes, panel layout controls, and the removal of
+                  automatic random-word cast discovery.
                 </p>
                 <ul>
                   <li>Relationship score (-1000..10000) tracked per (character, persona), saved across sessions</li>
@@ -69,8 +64,8 @@ export function ChangelogView(props: ChangelogViewProps) {
             <article className="changelog-entry featured hotfix-card">
              <div className="changelog-mark">◐</div>
              <div>
-               <span>Version 0.7.0 · Relationship System V1</span>
-               <h2>Relationship System V1</h2>
+               <span>Version 0.7.1 · The Black Memory</span>
+               <h2>The Black Memory</h2>
                <p>
                   This release adds a data-only add-on system, reusable Common Scenes with runtime template variables, and fixes to reply-length enforcement, Living Cast initialization, pronoun handling, and navigation.
                </p>
