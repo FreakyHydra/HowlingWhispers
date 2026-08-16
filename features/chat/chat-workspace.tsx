@@ -7,7 +7,7 @@ import type { LivingCastEntry, PlayerPersona } from "../../lib/generation/living
 import type { LivingCastConfig } from "../../lib/living-cast/config.ts";
 import { createCast, detectPendingInteraction } from "../../lib/generation/living-cast";
 import { relationshipMeterPercent } from "../../lib/relationships/index.ts";
-import { ContextPanel } from "../context/context-panel.tsx";
+import { ContextWorkspace } from "../context/context-workspace.tsx";
 import type { ContextLibrary } from "../../lib/context/types.ts";
 
 export interface ChatWorkspaceProps {
@@ -142,6 +142,8 @@ export interface ChatWorkspaceProps {
   removeLorebook: (id: string) => void;
   updateLorebook: (id: string, patch: Record<string, unknown>) => void;
   importContextFile: (file: File, kind: "memory" | "author-note" | "lorebook") => void;
+  showContextWorkspace: boolean;
+  setShowContextWorkspace: (visible: boolean) => void;
 }
 
 export function ChatWorkspace(props: ChatWorkspaceProps) {
@@ -245,6 +247,8 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
     removeLorebook,
     updateLorebook,
     importContextFile,
+    showContextWorkspace,
+    setShowContextWorkspace,
   } = props;
 
   const [showPanelControls, setShowPanelControls] = useState(false);
@@ -706,6 +710,14 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
           )}
           {(!activeSession?.autopilot || activeSession?.autopilotPaused) && !autopilotControlsCollapsed && (
             <div className="composer">
+              <button
+                className="icon-button context-launch-button"
+                aria-label="Open context"
+                title="Context manager"
+                onClick={() => setShowContextWorkspace(true)}
+              >
+                📖
+              </button>
               <>
                 <label htmlFor="story-input" className="sr-only">
                   Message {selected.name}
@@ -988,18 +1000,20 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
             case "context":
                return (
                  <section key={panelId} className="context-rail-card context-card">
-                   <ContextPanel
-                     contextLibrary={contextLibrary}
-                     setContextLibrary={setContextLibrary}
-                     createContextEntry={createContextEntry}
-                     updateContextEntry={updateContextEntry}
-                     deleteContextEntry={deleteContextEntry}
-                     addLorebook={addLorebook}
-                     removeLorebook={removeLorebook}
-                     updateLorebook={updateLorebook}
-                     onImportFile={importContextFile}
-                     activeContextManifest={activeContextManifest}
-                   />
+                   <div className="card-title">
+                     <p className="eyebrow">Context</p>
+                     <span aria-hidden="true">📖</span>
+                   </div>
+                   <div className="context-summary">
+                     <p>Memory: {contextLibrary.memories.filter((m) => m.enabled).length} active</p>
+                     <p>Notes: {contextLibrary.authorNotes.filter((n) => n.enabled).length} active</p>
+                     <p>Lorebooks: {contextLibrary.lorebooks.filter((l) => l.enabled).length}</p>
+                     <p className="context-summary-tokens">
+                       {contextLibrary.memories.reduce((s, m) => s + (m.enabled ? Math.ceil(m.text.length / 4) : 0), 0) +
+                        contextLibrary.authorNotes.reduce((s, n) => s + (n.enabled ? Math.ceil(n.text.length / 4) : 0), 0)} tokens
+                     </p>
+                     <button className="context-open-btn" onClick={() => setShowContextWorkspace(true)}>Open Context</button>
+                   </div>
                  </section>
                );
             case "connection":
@@ -1330,6 +1344,21 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
           </section>
         </div>
       )}
+       {showContextWorkspace && (
+         <ContextWorkspace
+           contextLibrary={contextLibrary}
+           setContextLibrary={setContextLibrary}
+           createContextEntry={createContextEntry}
+           updateContextEntry={updateContextEntry}
+           deleteContextEntry={deleteContextEntry}
+           addLorebook={addLorebook}
+           removeLorebook={removeLorebook}
+           updateLorebook={updateLorebook}
+           onImportFile={importContextFile}
+           onClose={() => setShowContextWorkspace(false)}
+           activeContextManifest={activeContextManifest}
+         />
+       )}
       {props.showPersonaModal && props.activeSession && (
         <div
           className="modal-backdrop"

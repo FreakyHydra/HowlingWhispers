@@ -1138,6 +1138,49 @@ function writeTab<T>(key: string, value: T) {
   } catch { /* ignore */ }
 }
 
+const KNOWN_PANELS = [
+  "scene",
+  "memory",
+  "context",
+  "living-cast",
+  "context-inspector",
+  "connection",
+] as const;
+
+function normalizePanelOrder(raw: unknown): string[] {
+  const persisted = Array.isArray(raw)
+    ? raw.filter((id): id is string => typeof id === "string" && KNOWN_PANELS.includes(id as typeof KNOWN_PANELS[number]))
+    : [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const panel of persisted) {
+    if (!seen.has(panel)) {
+      seen.add(panel);
+      normalized.push(panel);
+    }
+  }
+  for (const panel of KNOWN_PANELS) {
+    if (!seen.has(panel)) {
+      seen.add(panel);
+      normalized.push(panel);
+    }
+  }
+  return normalized;
+}
+
+function normalizePanelVisibility(raw: unknown): Record<string, boolean> {
+  const persisted = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const normalized: Record<string, boolean> = {};
+  for (const panel of KNOWN_PANELS) {
+    if (panel in persisted) {
+      normalized[panel] = persisted[panel] === true;
+    } else {
+      normalized[panel] = true;
+    }
+  }
+  return normalized;
+}
+
 function readStoredToken(): string {
   return readSession<string>("naiToken", "") || readTab<string>("naiToken", "");
 }
@@ -1469,6 +1512,7 @@ export default function DreamboundApp() {
   const [chatError, setChatError] = useState("");
   const [showShare, setShowShare] = useState(false);
   const [showPersonaModal, setShowPersonaModal] = useState(false);
+  const [showContextWorkspace, setShowContextWorkspace] = useState(false);
   type PendingPersonaStart =
     | { kind: "scene"; characterId: string; scene: SceneDefinition }
     | { kind: "sandbox"; characterId: string }
@@ -1522,8 +1566,8 @@ export default function DreamboundApp() {
     () => readSession<boolean>("showContextRail", true),
   );
   const [livingCastConfig, setLivingCastConfig] = useState<LivingCastConfig>(() => readLivingCastConfig());
-  const [panelOrder, setPanelOrder] = useState<string[]>(() => readSession<string[]>("panelOrder", ["scene", "memory", "context", "living-cast", "context-inspector", "connection"]));
-  const [panelVisibility, setPanelVisibility] = useState<Record<string, boolean>>(() => readSession<Record<string, boolean>>("panelVisibility", { scene: true, memory: true, context: true, "living-cast": true, "context-inspector": true, connection: true }));
+  const [panelOrder, setPanelOrder] = useState<string[]>(() => normalizePanelOrder(readSession<string[]>("panelOrder", [])));
+  const [panelVisibility, setPanelVisibility] = useState<Record<string, boolean>>(() => normalizePanelVisibility(readSession<Record<string, boolean>>("panelVisibility", {})));
   const [showLivingCastConfig, setShowLivingCastConfig] = useState(false);
   const [showInvitePicker, setShowInvitePicker] = useState(false);
   const [contextManifests, setContextManifests] = useState<Record<string, ContextManifest>>(
@@ -5460,6 +5504,8 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           copyChatImage={copyChatImage}
           downloadChatImageFromButton={downloadChatImageFromButton}
           showPersonaModal={showPersonaModal}
+          showContextWorkspace={showContextWorkspace}
+          setShowContextWorkspace={setShowContextWorkspace}
           personas={personas}
           applySessionPersona={applySessionPersona}
           sessionPersonaSnapshot={sessionPersonaSnapshot}
