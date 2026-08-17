@@ -371,6 +371,8 @@ export async function POST(request: Request) {
       character: character!.canonical,
       worldLore: character!.worldLore,
       relationship: character!.relationship,
+      relationshipContextInstruction: body.character?.relationshipContextInstruction,
+      relationshipNote: body.character?.relationshipNote,
       playerRole: character!.playerRole,
       scene: character!.scene,
       sceneId: character!.sceneId,

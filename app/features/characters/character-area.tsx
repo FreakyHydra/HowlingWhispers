@@ -1,7 +1,7 @@
 "use client";
 
-import type React from "react";
-import type { ComponentType } from "react";
+import React, { type ComponentType } from "react";
+import { useState } from "react";
 import type { Character, SceneDefinition, StoryEditor, CommonScene, Message } from "../dreambound-app";
 import type { AgeCategory } from "../../lib/characters/canonical";
 import type { OllamaModelInfo } from "../../lib/ollama";
@@ -84,6 +84,9 @@ export interface CharacterAreaProps {
 
 export function CharacterArea(props: CharacterAreaProps) {
   const { Portrait } = props;
+  const [characterTab, setCharacterTab] = useState<"curated" | "custom">("curated");
+  const curatedCharacters = props.characters.filter((character) => !props.isUserOwnedCharacter(character));
+  const customCharacters = props.characters.filter((character) => props.isUserOwnedCharacter(character));
   return (
     <>
       {props.view === "home" && (
@@ -132,7 +135,26 @@ export function CharacterArea(props: CharacterAreaProps) {
               <p className="eyebrow">Your characters</p>
               <h2>Begin a new roleplay</h2>
             </div>
-            <span className="home-section-count">{props.characters.length} souls waiting</span>
+            <span className="home-section-count">
+              {characterTab === "curated"
+                ? `${curatedCharacters.length} curated souls`
+                : `${customCharacters.length} custom souls`}
+            </span>
+          </div>
+
+          <div className="character-tabs">
+            <button
+              className={characterTab === "curated" ? "active" : ""}
+              onClick={() => setCharacterTab("curated")}
+            >
+              Curated
+            </button>
+            <button
+              className={characterTab === "custom" ? "active" : ""}
+              onClick={() => setCharacterTab("custom")}
+            >
+              Custom
+            </button>
           </div>
 
           <div className="character-backup-bar">
@@ -155,7 +177,7 @@ export function CharacterArea(props: CharacterAreaProps) {
           </div>
 
           <div className="character-gallery">
-            {props.characters.map((character) => {
+            {(characterTab === "curated" ? curatedCharacters : customCharacters).map((character) => {
               const characterTheme = props.scenesFor(character)[0].theme;
               return (
                 <article
@@ -253,32 +275,6 @@ export function CharacterArea(props: CharacterAreaProps) {
                 </article>
               );
             })}
-            <article
-              className="home-character home-character-teaser"
-              aria-label="Valerie Whiteclaw, coming soon"
-              style={
-                {
-                  "--card-image": `url("/assets/Heather/valerie-whiteclaw-teaser.png")`,
-                  "--character-accent": "#c8a94f",
-                  "--card-position": "center",
-                } as React.CSSProperties
-              }
-            >
-              <div className="home-character-wash" />
-              <span className="home-character-teaser-badge">Coming soon</span>
-              <div className="home-character-copy">
-                <span className="home-character-status">
-                  <i />
-                  A new scent on the wind
-                </span>
-                <h3>Valerie Whiteclaw</h3>
-                <p>Heather&apos;s daughter · The pack&apos;s future</p>
-                <small className="home-character-teaser-tagline">
-                  Coming to a forest near you.
-                </small>
-                <small className="home-character-credit">Character by Gigasad</small>
-              </div>
-            </article>
             <button className="new-character-card" onClick={() => props.setIsCreating(true)}>
               <span aria-hidden="true">＋</span>
               <strong>Awaken someone new</strong>

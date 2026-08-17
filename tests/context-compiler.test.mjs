@@ -578,3 +578,63 @@ test("they/them pronouns are preserved and not replaced", () => {
   assert.match(result.prompt, /Ally uses they\/them pronouns\./);
   assert.doesNotMatch(result.prompt, /she\/he/);
 });
+
+test("relationship context instruction is injected when provided", () => {
+  const instruction = "The current Relationship Status describes how this character relates to the player persona. Treat the persona in a manner consistent with that relationship, while interpreting and expressing it through the character's own personality, traits, history, current mood, boundaries, and circumstances. Relationship Status is context, not a command: it must not force affection, agreement, obedience, intimacy, forgiveness, or any specific behavior.";
+  const result = compile(adultCharacter(), {
+    relationshipContextInstruction: instruction,
+  });
+  assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
+  assert.match(result.prompt, /The current Relationship Status describes how this character relates to the player persona/);
+  assert.match(result.prompt, /Relationship Status is context, not a command/);
+});
+
+test("relationship context instruction is absent when not provided", () => {
+  const result = compile(adultCharacter());
+  assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
+  assert.doesNotMatch(result.prompt, /The current Relationship Status describes how this character relates to the player persona/);
+  assert.doesNotMatch(result.prompt, /Relationship Status is context, not a command/);
+});
+
+test("relationship context instruction is injected in sandbox mode", () => {
+  const instruction = "The current Relationship Status describes how this character relates to the player persona.";
+  const result = compile(adultCharacter(), {
+    relationshipContextInstruction: instruction,
+    sandbox: true,
+  });
+  assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
+  assert.match(result.prompt, /The current Relationship Status describes how this character relates to the player persona/);
+});
+
+test("relationship note is injected when provided", () => {
+  const result = compile(adultCharacter(), {
+    relationshipContextInstruction: "Relationship context instruction.",
+    relationshipNote: "She trusts him deeply but is still angry about what happened yesterday.",
+  });
+  assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
+  assert.match(result.prompt, /Relationship context instruction\./);
+  assert.match(result.prompt, /Relationship note: She trusts him deeply but is still angry about what happened yesterday\./);
+});
+
+test("relationship note is absent when empty", () => {
+  const result = compile(adultCharacter(), {
+    relationshipNote: "",
+  });
+  assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
+  assert.doesNotMatch(result.prompt, /Relationship note:/);
+});
+
+test("relationship note is absent when not provided", () => {
+  const result = compile(adultCharacter());
+  assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
+  assert.doesNotMatch(result.prompt, /Relationship note:/);
+});
+
+test("relationship note is injected in sandbox mode", () => {
+  const result = compile(adultCharacter(), {
+    relationshipNote: "A custom note.",
+    sandbox: true,
+  });
+  assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
+  assert.match(result.prompt, /Relationship note: A custom note\./);
+});

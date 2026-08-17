@@ -121,9 +121,6 @@ export function ContextWorkspace(props: ContextWorkspaceProps) {
             ))}
           </div>
           <div className="context-workspace-toolbar">
-            <button className="outline-button" onClick={() => createContextEntry("memory")}>+ Memory</button>
-            <button className="outline-button" onClick={() => createContextEntry("author-note")}>+ Note</button>
-            <button className="outline-button" onClick={() => handleImport("lorebook")}>Import Lorebook</button>
             <button className="outline-button" onClick={exportAll}>Export All</button>
           </div>
         </div>
@@ -136,12 +133,20 @@ export function ContextWorkspace(props: ContextWorkspaceProps) {
                 <div key={entry.id} className="context-entry-card">
                   <div className="context-entry-header">
                     <label className="toggle-row">
-                      <input
-                        type="checkbox"
-                        checked={entry.enabled}
-                        onChange={(e) => updateContextEntry("memory", entry.id, { enabled: e.target.checked })}
-                      />
-                      <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
+                      <span className="switch">
+                        <input
+                          type="checkbox"
+                          checked={entry.enabled}
+                          onChange={(e) => updateContextEntry("memory", entry.id, { enabled: e.target.checked })}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              e.target.click();
+                            }
+                          }}
+                        />
+                        <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
+                      </span>
                     </label>
                     <span className={`context-source-badge ${entry.source}`}>{entry.source === "auto-generated" ? "Auto-generated" : "Manual"}</span>
                     <span className="context-token-count">{estimateTokens(entry.text)} tokens</span>
@@ -167,12 +172,20 @@ export function ContextWorkspace(props: ContextWorkspaceProps) {
                 <div key={entry.id} className="context-entry-card">
                   <div className="context-entry-header">
                     <label className="toggle-row">
-                      <input
-                        type="checkbox"
-                        checked={entry.enabled}
-                        onChange={(e) => updateContextEntry("author-note", entry.id, { enabled: e.target.checked })}
-                      />
-                      <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
+                      <span className="switch">
+                        <input
+                          type="checkbox"
+                          checked={entry.enabled}
+                          onChange={(e) => updateContextEntry("author-note", entry.id, { enabled: e.target.checked })}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              e.target.click();
+                            }
+                          }}
+                        />
+                        <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
+                      </span>
                     </label>
                     <span className="context-token-count">{estimateTokens(entry.text)} tokens</span>
                     <button className="context-delete-btn" onClick={() => deleteContextEntry("author-note", entry.id)}>Delete</button>
@@ -200,16 +213,36 @@ export function ContextWorkspace(props: ContextWorkspaceProps) {
           {tab === "lorebooks" && (
             <div className="context-tab-panel">
               <input ref={lorebookInputRef} type="file" accept=".lorebook,.json" style={{ display: "none" }} onChange={handleFileChange("lorebook")} />
-              {contextLibrary.lorebooks.map((book) => (
+                <div className="context-workspace-toolbar">
+                  <button className="outline-button" onClick={() => addLorebook({
+                    id: `lorebook-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+                    name: "New Lorebook",
+                    enabled: true,
+                    raw: { lorebookVersion: 3, entries: [] },
+                    parsed: { lorebookVersion: 3, entries: [] },
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  })}>+ Lorebook</button>
+                  <button className="outline-button" onClick={() => handleImport("lorebook")}>Import Lorebook</button>
+                </div>
+                {contextLibrary.lorebooks.map((book) => (
                 <div key={book.id} className="context-lorebook-card">
                   <div className="context-entry-header">
                     <label className="toggle-row">
-                      <input
-                        type="checkbox"
-                        checked={book.enabled}
-                        onChange={(e) => updateLorebook(book.id, { enabled: e.target.checked })}
-                      />
-                      <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
+                      <span className="switch">
+                        <input
+                          type="checkbox"
+                          checked={book.enabled}
+                          onChange={(e) => updateLorebook(book.id, { enabled: e.target.checked })}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              e.target.click();
+                            }
+                          }}
+                        />
+                        <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
+                      </span>
                     </label>
                     <strong>{book.name}</strong>
                     <span className="context-token-count">{(book.parsed?.entries?.length ?? 0)} entries</span>
@@ -235,16 +268,24 @@ export function ContextWorkspace(props: ContextWorkspaceProps) {
                         <div key={String(entry.id ?? idx)} className="context-entry-card">
                           <div className="context-entry-header">
                             <label className="toggle-row">
-                              <input
-                                type="checkbox"
-                                checked={entry.enabled}
-                                onChange={(e) => {
-                                  const newEntries = [...(book.parsed?.entries ?? [])];
-                                  newEntries[idx] = { ...newEntries[idx], enabled: e.target.checked };
-                                  updateLorebook(book.id, { parsed: { ...book.parsed, entries: newEntries } });
-                                }}
-                              />
-                              <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
+                              <span className="switch">
+                                <input
+                                  type="checkbox"
+                                  checked={entry.enabled}
+                                  onChange={(e) => {
+                                    const newEntries = [...(book.parsed?.entries ?? [])];
+                                    newEntries[idx] = { ...newEntries[idx], enabled: e.target.checked };
+                                    updateLorebook(book.id, { parsed: { ...book.parsed, entries: newEntries } });
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      e.target.click();
+                                    }
+                                  }}
+                                />
+                                <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
+                              </span>
                             </label>
                             <input
                               type="text"

@@ -43,6 +43,7 @@ export function loadRelationships(): RelationshipState {
         score,
         updatedAt: typeof record.updatedAt === "number" ? record.updatedAt : 0,
         events,
+        note: typeof record.note === "string" ? record.note : undefined,
       };
     }
     return state;

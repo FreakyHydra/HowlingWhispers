@@ -57,6 +57,7 @@ export type RelationshipRecord = {
   score: number;
   updatedAt: number;
   events: RelationshipEvent[];
+  note?: string;
 };
 
 export type RelationshipState = Record<string, RelationshipRecord>;

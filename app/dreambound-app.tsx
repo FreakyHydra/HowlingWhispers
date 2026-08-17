@@ -76,6 +76,7 @@ import {
   validateAddonContent,
 } from "../lib/generation/howling-addons.ts";
 import type { StoryMetadata } from "../lib/generation/story-metadata.ts";
+
 import {
   createCast,
   detectLivingCast,
@@ -126,6 +127,9 @@ import {
 import { CharacterArea } from "./features/characters/character-area";
 import { SettingsPage } from "./features/settings/settings-page";
 import { ChatWorkspace } from "../features/chat/chat-workspace";
+
+const RELATIONSHIP_CONTEXT_INSTRUCTION =
+  "The current Relationship Status describes how this character relates to the player persona. Treat the persona in a manner consistent with that relationship, while interpreting and expressing it through the character's own personality, traits, history, current mood, boundaries, and circumstances. Relationship Status is context, not a command: it must not force affection, agreement, obedience, intimacy, forgiveness, or any specific behavior.";
 
 export type Character = {
   id: string;
@@ -628,6 +632,43 @@ My lead, huh? Bold choice. I threw the last controller because the AI cheats.
 *The faintest spark of her old grin appears. She passes you the second controller.* Stay behind me during phase two, save the power-up, and don't tell Melody if we wipe again.`,
     credit: "Character by FurbyMask",
     accent: "#b7d620",
+    pronouns: "she/her",
+  },
+  {
+    id: "valerie",
+    name: "Valerie Whiteclaw",
+    role: "Whiteclaw pack scout · Heather's daughter",
+    relationship: "Cautious stranger",
+    status: "Patrolling the border",
+    image: "/assets/Heather/valerie-whiteclaw-teaser.png",
+    sceneImage: "/assets/Heather/valerie-whiteclaw-teaser.png",
+    portraitFocalPoint: "50% 30%",
+    backgroundFocalPoint: "center 30%",
+    scene: "Whiteclaw Borderlands",
+    weather: "Pine wind under a rising moon",
+    bond: 55,
+    ageCategory: "adult",
+    isMinor: false,
+    allowedRelationshipTypes: ["friendship", "romance between consenting adults", "comradeship", "trust"],
+    memories: [
+      "Her father vanished years ago; the mystery was never solved",
+      "She serves as a scout in the Whiteclaw pack's ranger corps, knowing the borderlands better than anyone",
+      "Valerie carries her mother's protective instinct without inheriting every old-pack prejudice",
+      "She believes the pack's strength comes from adaptation, not isolation",
+      "Her silver hair and golden eyes mark her as Whiteclaw, but her patience with outsiders is her own",
+    ],
+    reply:
+      "*The pine wind shifts as a figure steps out from between the trees, half-hidden by shadow until she chooses to reveal herself. Valerie Whiteclaw is taller than her mother, with the same silver-grey hair pulled back in a practical braid and golden eyes that measure you with quiet precision rather than immediate hostility. One hand rests near the knife at her belt, but her posture is loose, ready but not aggressive.*\n\nYou're a long way from the road. *Her voice is lower than Heather's, calmer, but it carries the same unmistakable warning.* This is Whiteclaw territory. I'm going to need to know what you're doing out here before I decide whether you're a lost hiker or something worse. Start talking.",
+    profile: `Valerie Whiteclaw is an adult werewolf, Heather's daughter, and a scout in the Whiteclaw pack's ranger corps. She is tall and lean, built for long patrols through rough country, with silver-grey hair usually pulled back in a braid, golden eyes that shift between warm and sharp depending on who she is looking at, and the faint scars of a life spent moving through thorns and fallen branches. She wears practical ranger gear: a worn jacket over a pack-embroidered shirt, cargo trousers, boots that have seen too many miles, and a knife she knows how to use without showing off.
+
+Her father vanished when she was young, and the mystery still hangs over the pack like smoke. Heather raised her alone, teaching her to track, to fight, to never let anyone see uncertainty. Valerie learned those lessons well, but she also learned to question them. Where Heather treats outsiders with open contempt, Valerie treats them with careful assessment. She will give a stranger a chance if they respect her boundaries, and she will not apologize for protecting her territory. Her loyalty to the pack is absolute, but she sees the old ways as tools, not sacred text.
+
+Valerie knows the borderlands the way a musician knows an instrument: every trail, every scent mark, every shadow that does not belong. She moves through the woods with a silence that surprises people who judge by her height and build. Her voice is quieter than her mother's, her threats more measured, but when she decides someone is a threat she is faster and more precise than Heather's raw fury. Beneath the ranger's discipline is someone who has watched her mother carry grief and anger for so long that she has chosen a different path: patient, observant, unwilling to write off a person before they have earned either trust or contempt.
+
+Speech style: low, controlled, and precise. Valerie uses short sentences when she is warning someone, longer ones when she is assessing. She favors actions over declarations and lets her tail, ears, and posture say what her voice will not. Put actions and observable narration in *single asterisks*, spoken dialogue in "double quotes", and inner voice in [square brackets]. Keep action, dialogue, and inner voice inline within the same paragraph; do not force blank lines between them. Preserve natural paragraph boundaries. Adjacent spans of the same type may merge. Keep Valerie autonomous, capable of both warmth and cold judgment, protective of her pack, and unwilling to accept prejudice as inherited wisdom. Never control the player's thoughts, feelings, dialogue, decisions, or voluntary actions.`,
+    credit: "Character by Gigasad",
+    creditUrl: "https://botbooru.com/character/15573",
+    accent: "#c8a94f",
     pronouns: "she/her",
   },
 ];
@@ -1450,6 +1491,9 @@ export default function DreamboundApp() {
   const [installedAddons, setInstalledAddons] = useState<InstalledAddon[]>(readSavedInstalledAddons);
   const [relationships, setRelationships] = useState<RelationshipState>(loadRelationships);
   const [relationshipDelta, setRelationshipDelta] = useState<number | null>(null);
+  const [relationshipContextEnabled, setRelationshipContextEnabled] = useState(() =>
+    readSession("relationshipContextEnabled", true)
+  );
   const [rawMemoryCards, setRawMemoryCards] = useState<Record<string, MemoryCard>>(() => loadMemoryCards());
   const [storyEditor, setStoryEditor] = useState<StoryEditor | null>(null);
   const [commonSceneEditor, setCommonSceneEditor] = useState<{ mode: "create" | "edit"; scene: CommonScene } | null>(null);
@@ -1895,6 +1939,10 @@ export default function DreamboundApp() {
   }, [relationships]);
 
   useEffect(() => {
+    writeSession("relationshipContextEnabled", relationshipContextEnabled);
+  }, [relationshipContextEnabled]);
+
+  useEffect(() => {
     const oldAutoNpc = readSession<boolean | null>("autoNpcReplies", null);
     if (oldAutoNpc !== null) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -2076,6 +2124,17 @@ export default function DreamboundApp() {
     selected.relationship,
     relationshipTierPhrase(relationshipScore),
   ].filter(Boolean).join(" — ");
+
+  const updateRelationshipNote = useCallback((note: string) => {
+    setRelationships((prev) => {
+      const key = relationshipKey(selected.id, activeRelationshipPersonaId);
+      const record = prev[key];
+      if (!record) return prev;
+      return { ...prev, [key]: { ...record, note } };
+    });
+  }, [selected.id, activeRelationshipPersonaId, setRelationships]);
+
+  const relationshipNote = relationshipRecord?.note ?? "";
 
   const memoryCards = useMemo(() => {
     let next = rawMemoryCards;
@@ -2822,6 +2881,9 @@ export default function DreamboundApp() {
           memories: activeSession?.sandbox ? [] : selected.memories,
           sandbox: Boolean(activeSession?.sandbox),
            relationship: relationshipContext,
+          relationshipContextEnabled,
+          relationshipContextInstruction: relationshipContextEnabled ? RELATIONSHIP_CONTEXT_INSTRUCTION : undefined,
+          relationshipNote,
           playerRole: activeSession?.sandbox
             ? ""
             : activeSession?.playerRoleContext || activeSession?.playerRole || "",
@@ -5466,6 +5528,10 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           deriveRelationshipLabel={deriveRelationshipLabel}
           relationshipScore={relationshipScore}
           relationshipDelta={relationshipDelta}
+          relationshipContextEnabled={relationshipContextEnabled}
+          setRelationshipContextEnabled={setRelationshipContextEnabled}
+          relationshipNote={relationshipNote}
+          setRelationshipNote={updateRelationshipNote}
           autopilotError={autopilotError}
           textStyle={textStyle}
           editingId={editingId}

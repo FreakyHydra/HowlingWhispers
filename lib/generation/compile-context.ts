@@ -37,6 +37,8 @@ export type CompileContextInput = {
   character: CanonicalCharacterV1;
   worldLore?: WorldLorebookV1 | null;
   relationship: string;
+  relationshipContextInstruction?: string;
+  relationshipNote?: string;
   playerRole?: string;
   scene: string;
   sceneId?: string;
@@ -567,6 +569,8 @@ function renderState(input: CompileContextInput): string {
     return [
       "<current-state>",
       `Relationship state: ${relationship}`,
+      ...(input.relationshipContextInstruction ? [input.relationshipContextInstruction] : []),
+      ...(input.relationshipNote ? [`Relationship note: ${input.relationshipNote}`] : []),
       playerRole,
       "Open sandbox: no location, activity, event, or memory is established beyond the conversation. Do not infer a preset scenario from character canon.",
       "</current-state>",
@@ -578,6 +582,8 @@ function renderState(input: CompileContextInput): string {
   return [
     "<current-state>",
     `Relationship state: ${relationship}`,
+    ...(input.relationshipContextInstruction ? [input.relationshipContextInstruction] : []),
+    ...(input.relationshipNote ? [`Relationship note: ${input.relationshipNote}`] : []),
     playerRole,
     `Current scene: ${input.scene}. ${input.weather}.`,
     "Established memories:",

@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { useState } from "react";
+import { useState, useRef, useLayoutEffect, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import type { Character, Message, SceneDefinition, StorySession } from "../app/dreambound-app";
 import type { LivingCastEntry, PlayerPersona } from "../../lib/generation/living-cast";
 import type { LivingCastConfig } from "../../lib/living-cast/config.ts";
@@ -96,6 +97,10 @@ export interface ChatWorkspaceProps {
   deriveRelationshipLabel: (relationshipScore: number) => string;
   relationshipScore: number;
   relationshipDelta: number | null;
+  relationshipContextEnabled: boolean;
+  setRelationshipContextEnabled: (value: boolean) => void;
+  relationshipNote: string;
+  setRelationshipNote: (value: string) => void;
   autopilotError: string;
   textStyle: { dialogue: string; action: string; narration: string; fontSize: number };
   editingId: number | null;
@@ -199,6 +204,10 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
     deriveRelationshipLabel,
     relationshipScore,
     relationshipDelta,
+    relationshipContextEnabled,
+    setRelationshipContextEnabled,
+    relationshipNote,
+    setRelationshipNote,
     autopilotError,
     textStyle,
     editingId,
@@ -252,6 +261,67 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
   } = props;
 
   const [showPanelControls, setShowPanelControls] = useState(false);
+  const [showRsSettings, setShowRsSettings] = useState(false);
+  const [rsPos, setRsPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const rsCogRef = useRef<HTMLButtonElement>(null);
+  const rsPopRef = useRef<HTMLDivElement>(null);
+
+  const placeRsPopover = useCallback(() => {
+    const trigger = rsCogRef.current;
+    const pop = rsPopRef.current;
+    if (!trigger || !pop) return;
+    const rect = trigger.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const margin = 12;
+    const gap = 8;
+    pop.style.width = "auto";
+    pop.style.maxWidth = "none";
+    const naturalWidth = pop.offsetWidth;
+    const width = Math.min(naturalWidth, viewportWidth - margin * 2);
+    pop.style.width = `${width}px`;
+    const height = pop.offsetHeight;
+
+    let left: number;
+    if (rect.right + gap + width <= viewportWidth - margin) {
+      left = rect.right + gap;
+    } else {
+      left = rect.left - gap - width;
+      if (left < margin) left = margin;
+    }
+
+    let top = rect.top;
+    if (top + height > viewportHeight - margin) {
+      top = viewportHeight - margin - height;
+    }
+    if (top < margin) top = margin;
+
+    setRsPos({ top, left, width });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!showRsSettings) return;
+    placeRsPopover();
+    const reposition = () => placeRsPopover();
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [showRsSettings, placeRsPopover]);
+
+  useEffect(() => {
+    if (!showRsSettings) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (rsCogRef.current?.contains(target)) return;
+      if (rsPopRef.current?.contains(target)) return;
+      setShowRsSettings(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showRsSettings]);
 
   const PANEL_LABELS: Record<string, string> = {
     scene: "Scene",
@@ -710,14 +780,6 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
           )}
           {(!activeSession?.autopilot || activeSession?.autopilotPaused) && !autopilotControlsCollapsed && (
             <div className="composer">
-              <button
-                className="icon-button context-launch-button"
-                aria-label="Open context"
-                title="Context manager"
-                onClick={() => setShowContextWorkspace(true)}
-              >
-                📖
-              </button>
               <>
                 <label htmlFor="story-input" className="sr-only">
                   Message {selected.name}
@@ -1058,7 +1120,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
                       ? `${activeModel.label} · ${activeReplyLength.label}`
                       : `No model selected · ${activeReplyLength.label}`}
                   </p>
-                  <div className="pulse-heading">
+                  <div className="pulse-heading rs-bar-wrapper">
                     <span>Relationship</span>
                     <strong>{deriveRelationshipLabel(relationshipScore)}</strong>
                     {relationshipDelta !== null && relationshipDelta !== 0 && (
@@ -1069,6 +1131,58 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
                         {relationshipDelta > 0 ? `+${relationshipDelta}` : `${relationshipDelta}`}
                       </span>
                     )}
+                    <button
+                      className="rs-bar-cog"
+                      type="button"
+                      ref={rsCogRef}
+                      onClick={() => setShowRsSettings((v) => !v)}
+                      aria-label="Relationship Settings"
+                      title="Relationship Settings"
+                    >
+                      ⚙
+                    </button>
+                    {showRsSettings &&
+                      createPortal(
+                        <div
+                          ref={rsPopRef}
+                          className="rs-settings-popover"
+                          role="dialog"
+                          aria-label="Relationship Settings"
+                          style={
+                            rsPos
+                              ? { position: "fixed", top: rsPos.top, left: rsPos.left, width: rsPos.width }
+                              : undefined
+                          }
+                        >
+                          <p className="eyebrow">Relationship Settings</p>
+                          <p className="setting-name-row" style={{ marginBottom: 8 }}>
+                            Relationship Status:
+                            <strong style={{ marginLeft: 6 }}>{deriveRelationshipLabel(relationshipScore)}</strong>
+                          </p>
+                          <label className="toggle-row">
+                            <span className="setting-name-row">Relationship Status influences character behavior</span>
+                            <span className="switch">
+                              <input
+                                type="checkbox"
+                                checked={relationshipContextEnabled}
+                                onChange={(e) => setRelationshipContextEnabled(e.target.checked)}
+                              />
+                              <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
+                            </span>
+                          </label>
+                          <label className="setting-name-row" style={{ marginTop: 12, display: "block" }}>
+                            Custom relationship note
+                          </label>
+                          <textarea
+                            className="rs-note-textarea"
+                            value={relationshipNote}
+                            onChange={(e) => setRelationshipNote(e.target.value)}
+                            placeholder="e.g. She trusts him deeply but is still angry about what happened yesterday."
+                            rows={3}
+                          />
+                        </div>,
+                        document.body,
+                      )}
                   </div>
                   <div
                     className="bond-meter"
