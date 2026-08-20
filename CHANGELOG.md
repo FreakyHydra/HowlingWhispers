@@ -1,5 +1,169 @@
 # Changelog
 
+## 0.9.0 — Worlds Take Shape
+
+🏆 MAJOR FEATURE RELEASE
+
+> The roleplay library is no longer just a list of characters. It is becoming a world.
+
+### ✨ Added
+
+#### Roleplay Hub
+
+- Roleplay now has three first-class content libraries: **Contacts**, **Locations**, and **Scenarios**
+- The old character-only landing area has been expanded into a broader Roleplay workspace
+- Curated and Custom content are separated where applicable
+- Content-specific headings and controls now adapt to the selected Roleplay type
+
+#### Character Factory
+
+- Added a full Character Factory for creating and editing Custom Contacts
+- Expanded character data now supports appearance, personality, voice, background, relationships, RP behavior, world lore, context notes, and related author-facing data
+- Character import/export and backup formats preserve the expanded data
+
+#### Character Traits
+
+- Added a built-in library of **111 character traits**
+- Traits can be assigned as Primary, Secondary, or Situational
+- Custom traits are supported
+- Trait data survives import/export, backups, canonical conversion, and context compilation
+
+#### Locations
+
+- Added a first-class Location domain
+- Added dedicated Location cards and Location Factory
+- Custom Locations can be created, edited, imported, exported, deleted, and persisted
+- Location data supports areas, atmosphere, features, activities, occupants, staff roles, accessibility features, tags, optional age ranges, and other generic setting information
+- Curated and Custom Locations are separated
+- Saved Locations remain library data and are not automatically injected into active RP context
+
+#### Scenarios
+
+- Added a first-class Scenario domain
+- Added dedicated Scenario cards and Scenario Factory
+- Custom Scenarios can be created, edited, imported, exported, deleted, and persisted
+- Scenarios support opening situations, starting conditions, active elements, possible hooks, atmosphere, linked Contacts, and linked Locations
+- Scenario links remain metadata only until explicit RP activation is implemented
+- Saved Scenarios are not automatically injected into active RP context
+
+#### Central Prose Quality System
+
+- Added a centralized server-side prose-quality policy
+- Roleplay and Autopilot now share one controlled prose-quality layer
+- Character voice remains authoritative over generic literary voice
+- The engine distinguishes overall writing craftsmanship from individual vocabulary, dialect, slang, rhythm, education, and personality
+- Added resistance to generic AI prose, repetitive emotional shorthand, social-media narration, journalistic narration, archetype clichés, forced slang, repetitive sentence structures, excessive summaries, stock AI phrasing, and thematic closing summaries
+- Impersonation uses a reduced player-voice policy that preserves the player's established writing style instead of applying a literary lift
+- Xialong-specific anti-slop guidance remains model-specific rather than being applied to every provider
+- Prose-policy token cost is accounted for in context budgeting
+
+### 🔄 Changed
+
+#### Characters are now Contacts
+
+- The visible Roleplay terminology now uses **Contacts**
+- Internal `Character` domain names remain unchanged to avoid an unnecessary compatibility-breaking refactor
+
+#### Roleplay Navigation
+
+- The old character-only flow has been replaced with a broader **Begin a roleplay** experience
+- Welcome copy and section headings now support Contacts, Locations, and Scenarios equally
+
+#### Roleplay Architecture
+
+- `CharacterArea` has been replaced by the broader `RoleplayArea`
+- Location and Scenario editing now live in dedicated feature components rather than expanding the main Roleplay component indefinitely
+
+#### Context UI
+
+- Context creation controls now live in their appropriate tabs
+- Memory controls remain with Memory
+- Author's Note controls remain with Author's Notes
+- Lorebook creation/import remains inside Lorebooks
+- Context toggle interaction and keyboard handling were improved
+
+#### Generation Pipeline
+
+- Generic prose guidance is now rendered once centrally instead of being duplicated across Roleplay and Autopilot
+- Character canon, world/context state, prose policy, and conversation history now follow an explicit generation hierarchy
+- Prompt budgeting includes the new prose-quality block
+
+### 🛠 Fixed
+
+#### Roleplay Black Screen
+
+- Fixed a black-screen regression after leaving the welcome screen and entering Roleplay
+- Corrected incomplete Scenario prop wiring introduced during the Roleplay-area expansion
+- Prevented `undefined.filter()` crashes during Roleplay rendering
+
+#### Location Creation
+
+- Fixed the non-working **Create a new Location** action
+- `isCreatingLocation` state is now correctly passed from the parent application into `RoleplayArea`
+- Location Factory now opens properly in create mode
+- Saving creates a Custom Location
+- Cancel closes the factory without persisting anything
+- Location creation no longer interferes with Contacts or Scenarios
+
+#### Location Integration
+
+- Fixed Location import/module wiring issues encountered during the Location rollout
+- Corrected canonical source handling and related tests
+
+#### Context Controls
+
+- Fixed Context toolbar layout regressions
+- Fixed Context toggle presentation and interaction
+- Removed redundant Context-launch UI that caused unnecessary composer/layout conflicts
+
+#### Generation Quality
+
+- Removed duplicated prose-quality instructions from Roleplay and Autopilot
+- Kept general prose guidance separate from Xialong-specific correction rules
+
+### 🗑 Removed
+
+- Removed the old character-only `CharacterArea`
+- Removed temporary prototype Location editing UI
+- Removed placeholder-only Location and Scenario experiences
+- Removed redundant Context launch controls
+- Removed duplicated generic prose guidance from multiple generation paths
+
+### 🧱 Foundation
+
+0.9.0 also prepares the architecture for future systems without activating them prematurely:
+
+- Location ↔ Contact relationships
+- Scenario activation
+- active Location and Scenario context
+- Sandbox environments
+- NPC schedules
+- world time
+- probabilistic presence
+- encounter simulation
+- future prose profiles such as Literary / Balanced / Direct
+
+These systems are not active yet.
+
+Saving a Location or Scenario does **not** silently alter the current RP prompt.
+
+### Why this matters
+
+0.8.x gave Howling Whispers memory and context.
+
+**0.9.0 gives that context somewhere to live.**
+
+Contacts are the people.  
+Locations are the places.  
+Scenarios are the situations.  
+The writing engine decides how all of it should sound.
+
+**The pieces are starting to become a world.**
+
+### Quality
+
+393/393 tests passed · lint clean · build validated.
+
 ## 0.8.0 — Echoes Remembered
 
 🏆 MILESTONE RELEASE

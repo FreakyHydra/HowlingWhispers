@@ -24,13 +24,14 @@ export interface RoleplayAreaProps {
   scenesFor: (character: Character) => SceneDefinition[];
   portraitUrl: (character: Character) => string;
   isUserOwnedCharacter: (character: Character) => boolean;
-  openSceneLibrary: (characterId: string) => void;
+  openSceneLibrary: (id: string) => void;
   setCharacterDownloadError: (error: string) => void;
   setDownloadingCharacter: (character: Character | null) => void;
   setEditingCharacter: (character: Character | null) => void;
   setConfirmDeleteCharacter: (character: Character | null) => void;
   setIsCreating: (creating: boolean) => void;
   setIsCreatingLocation: (creating: boolean) => void;
+  isCreatingLocation: boolean;
   characterBackupMsg: string;
   characterBackupError: string;
   importCharacterFile: (event: React.ChangeEvent<HTMLInputElement>) => void;
@@ -66,7 +67,7 @@ export interface RoleplayAreaProps {
   commonSceneEditor: { mode: "create" | "edit"; scene: CommonScene } | null;
   setCommonSceneEditor: (editor: { mode: "create" | "edit"; scene: CommonScene } | null) => void;
   openStoryCreator: () => void;
-  requestPersonaStart: (start: { kind: string; characterId: string }) => void;
+  requestPersonaStart: (start: { kind: string; characterId?: string; location?: import("../../lib/locations/types").Location; scene?: import("../dreambound-app").SceneDefinition }) => void;
   selectedScenes: SceneDefinition[];
   commonScenes: CommonScene[];
   addonCommonScenes: Array<CommonScene & { sourceAddonId?: string; sourceAddonName?: string }>;
@@ -81,6 +82,7 @@ export interface RoleplayAreaProps {
   relationshipScore: number;
   relationshipLabel: string;
   relationshipMeterPercent: number;
+  isLocationSession: boolean;
   activePersonaName: string | null;
   memoryCardStatus: string;
   onResumeLatest: () => void;
@@ -122,12 +124,12 @@ export function RoleplayArea(props: RoleplayAreaProps) {
   const [characterTab, setCharacterTab] = useState<"curated" | "custom">("curated");
   const [locationTab, setLocationTab] = useState<"curated" | "custom">("curated");
   const [scenarioTab, setScenarioTab] = useState<"curated" | "custom">("curated");
-  const curatedCharacters = props.characters.filter((character) => !props.isUserOwnedCharacter(character));
-  const customCharacters = props.characters.filter((character) => props.isUserOwnedCharacter(character));
-  const curatedLocations = props.locations.filter((location) => !props.isUserOwnedLocation(location));
-  const customLocations = props.locations.filter((location) => props.isUserOwnedLocation(location));
-  const curatedScenarios = props.scenarios.filter((scenario) => !props.isUserOwnedScenario(scenario));
-  const customScenarios = props.scenarios.filter((scenario) => props.isUserOwnedScenario(scenario));
+  const curatedCharacters = (props.characters ?? []).filter((character) => !props.isUserOwnedCharacter(character));
+  const customCharacters = (props.characters ?? []).filter((character) => props.isUserOwnedCharacter(character));
+  const curatedLocations = (props.locations ?? []).filter((location) => !props.isUserOwnedLocation(location));
+  const customLocations = (props.locations ?? []).filter((location) => props.isUserOwnedLocation(location));
+  const curatedScenarios = (props.scenarios ?? []).filter((scenario) => !props.isUserOwnedScenario(scenario));
+  const customScenarios = (props.scenarios ?? []).filter((scenario) => props.isUserOwnedScenario(scenario));
 
   const countLabel =
     roleplayType === "characters"
@@ -428,7 +430,7 @@ export function RoleplayArea(props: RoleplayAreaProps) {
                   <LocationCard
                     key={location.id}
                     location={location}
-                    onOpen={() => {}}
+                    onOpen={() => props.openSceneLibrary(location.id)}
                     onEdit={props.isUserOwnedLocation(location) ? (loc) => props.setEditingLocation(loc) : undefined}
                     onDelete={props.isUserOwnedLocation(location) ? (loc) => props.setConfirmDeleteLocation(loc) : undefined}
                     onExport={props.isUserOwnedLocation(location) ? (loc) => props.exportLocation(loc) : undefined}
@@ -810,15 +812,17 @@ export function RoleplayArea(props: RoleplayAreaProps) {
                 {props.activePersonaName && (
                   <p className="scene-library-persona">Playing as {props.activePersonaName}</p>
                 )}
-                <div className="relationship-meter-container">
-                  <span className="relationship-label">Relationship with {props.selected.name}</span>
-                  <strong className="relationship-score">{props.relationshipScore.toLocaleString()}</strong>
-                  <span className="relationship-label">{props.relationshipLabel}</span>
-                  <div className="bond-meter" aria-label={`Relationship meter at ${props.relationshipMeterPercent}%`}>
-                    <span style={{ width: `${props.relationshipMeterPercent}%` }} />
-                    <i style={{ left: `${props.relationshipMeterPercent}%` }}>♡</i>
+                {!props.isLocationSession && (
+                  <div className="relationship-meter-container">
+                    <span className="relationship-label">Relationship with {props.selected.name}</span>
+                    <strong className="relationship-score">{props.relationshipScore.toLocaleString()}</strong>
+                    <span className="relationship-label">{props.relationshipLabel}</span>
+                    <div className="bond-meter" aria-label={`Relationship meter at ${props.relationshipMeterPercent}%`}>
+                      <span style={{ width: `${props.relationshipMeterPercent}%` }} />
+                      <i style={{ left: `${props.relationshipMeterPercent}%` }}>♡</i>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
               <Portrait character={props.selected} image={props.portraitUrl(props.selected)} />
             </header>

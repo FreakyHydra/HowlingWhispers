@@ -19,6 +19,212 @@ export function ChangelogView(props: ChangelogViewProps) {
             <article className="changelog-entry milestone latest">
               <span className="changelog-mark">🏆</span>
               <div>
+                <span className="changelog-version">Version 0.9.0 · Worlds Take Shape</span>
+                <div className="milestone-badge">🏆 MAJOR FEATURE RELEASE</div>
+                <h2>Worlds Take Shape</h2>
+                <blockquote className="milestone-quote">The roleplay library is no longer just a list of characters. It is becoming a world.</blockquote>
+
+                <h3>✨ Added</h3>
+                <h4>Roleplay Hub</h4>
+                <ul>
+                  <li>Roleplay now has three first-class content libraries: <strong>Contacts</strong>, <strong>Locations</strong>, and <strong>Scenarios</strong></li>
+                  <li>The old character-only landing area has been expanded into a broader Roleplay workspace</li>
+                  <li>Curated and Custom content are separated where applicable</li>
+                  <li>Content-specific headings and controls now adapt to the selected Roleplay type</li>
+                </ul>
+
+                <h4>Character Factory</h4>
+                <ul>
+                  <li>Added a full Character Factory for creating and editing Custom Contacts</li>
+                  <li>Expanded character data now supports appearance, personality, voice, background, relationships, RP behavior, world lore, context notes, and related author-facing data</li>
+                  <li>Character import/export and backup formats preserve the expanded data</li>
+                </ul>
+
+                <h4>Character Traits</h4>
+                <ul>
+                  <li>Added a built-in library of <strong>111 character traits</strong></li>
+                  <li>Traits can be assigned as Primary, Secondary, or Situational</li>
+                  <li>Custom traits are supported</li>
+                  <li>Trait data survives import/export, backups, canonical conversion, and context compilation</li>
+                </ul>
+
+                <h4>Locations</h4>
+                <ul>
+                  <li>Added a first-class Location domain</li>
+                  <li>Added dedicated Location cards and Location Factory</li>
+                  <li>Custom Locations can be created, edited, imported, exported, deleted, and persisted</li>
+                  <li>Location data supports areas, atmosphere, features, activities, occupants, staff roles, accessibility features, tags, optional age ranges, and other generic setting information</li>
+                  <li>Curated and Custom Locations are separated</li>
+                  <li>Saved Locations remain library data and are not automatically injected into active RP context</li>
+                </ul>
+
+                <h4>Scenarios</h4>
+                <ul>
+                  <li>Added a first-class Scenario domain</li>
+                  <li>Added dedicated Scenario cards and Scenario Factory</li>
+                  <li>Custom Scenarios can be created, edited, imported, exported, deleted, and persisted</li>
+                  <li>Scenarios support opening situations, starting conditions, active elements, possible hooks, atmosphere, linked Contacts, and linked Locations</li>
+                  <li>Scenario links remain metadata only until explicit RP activation is implemented</li>
+                  <li>Saved Scenarios are not automatically injected into active RP context</li>
+                </ul>
+
+                <h4>Central Prose Quality System</h4>
+                <ul>
+                  <li>Added a centralized server-side prose-quality policy</li>
+                  <li>Roleplay and Autopilot now share one controlled prose-quality layer</li>
+                  <li>Character voice remains authoritative over generic literary voice</li>
+                  <li>The engine distinguishes overall writing craftsmanship from individual vocabulary, dialect, slang, rhythm, education, and personality</li>
+                  <li>Added resistance to generic AI prose, repetitive emotional shorthand, social-media narration, journalistic narration, archetype clichés, forced slang, repetitive sentence structures, excessive summaries, stock AI phrasing, and thematic closing summaries</li>
+                  <li>Impersonation uses a reduced player-voice policy that preserves the player&apos;s established writing style instead of applying a literary lift</li>
+                  <li>Xialong-specific anti-slop guidance remains model-specific rather than being applied to every provider</li>
+                  <li>Prose-policy token cost is accounted for in context budgeting</li>
+                </ul>
+
+                <h3>🔄 Changed</h3>
+                <h4>Characters are now Contacts</h4>
+                <ul>
+                  <li>The visible Roleplay terminology now uses <strong>Contacts</strong></li>
+                  <li>Internal <code>Character</code> domain names remain unchanged to avoid an unnecessary compatibility-breaking refactor</li>
+                </ul>
+
+                <h4>Roleplay Navigation</h4>
+                <ul>
+                  <li>The old character-only flow has been replaced with a broader <strong>Begin a roleplay</strong> experience</li>
+                  <li>Welcome copy and section headings now support Contacts, Locations, and Scenarios equally</li>
+                </ul>
+
+                <h4>Roleplay Architecture</h4>
+                <ul>
+                  <li><code>CharacterArea</code> has been replaced by the broader <code>RoleplayArea</code></li>
+                  <li>Location and Scenario editing now live in dedicated feature components rather than expanding the main Roleplay component indefinitely</li>
+                </ul>
+
+                <h4>Context UI</h4>
+                <ul>
+                  <li>Context creation controls now live in their appropriate tabs</li>
+                  <li>Memory controls remain with Memory</li>
+                  <li>Author&apos;s Note controls remain with Author&apos;s Notes</li>
+                  <li>Lorebook creation/import remains inside Lorebooks</li>
+                  <li>Context toggle interaction and keyboard handling were improved</li>
+                </ul>
+
+                <h4>Generation Pipeline</h4>
+                <ul>
+                  <li>Generic prose guidance is now rendered once centrally instead of being duplicated across Roleplay and Autopilot</li>
+                  <li>Character canon, world/context state, prose policy, and conversation history now follow an explicit generation hierarchy</li>
+                  <li>Prompt budgeting includes the new prose-quality block</li>
+                </ul>
+
+                <h3>🛠 Fixed</h3>
+                <h4>Roleplay Black Screen</h4>
+                <ul>
+                  <li>Fixed a black-screen regression after leaving the welcome screen and entering Roleplay</li>
+                  <li>Corrected incomplete Scenario prop wiring introduced during the Roleplay-area expansion</li>
+                  <li>Prevented <code>undefined.filter()</code> crashes during Roleplay rendering</li>
+                </ul>
+
+                <h4>Location Creation</h4>
+                <ul>
+                  <li>Fixed the non-working <strong>Create a new Location</strong> action</li>
+                  <li><code>isCreatingLocation</code> state is now correctly passed from the parent application into <code>RoleplayArea</code></li>
+                  <li>Location Factory now opens properly in create mode</li>
+                  <li>Saving creates a Custom Location</li>
+                  <li>Cancel closes the factory without persisting anything</li>
+                  <li>Location creation no longer interferes with Contacts or Scenarios</li>
+                </ul>
+
+                <h4>Location Integration</h4>
+                <ul>
+                  <li>Fixed Location import/module wiring issues encountered during the Location rollout</li>
+                  <li>Corrected canonical source handling and related tests</li>
+                </ul>
+
+                <h4>Context Controls</h4>
+                <ul>
+                  <li>Fixed Context toolbar layout regressions</li>
+                  <li>Fixed Context toggle presentation and interaction</li>
+                  <li>Removed redundant Context-launch UI that caused unnecessary composer/layout conflicts</li>
+                </ul>
+
+                <h4>Generation Quality</h4>
+                <ul>
+                  <li>Removed duplicated prose-quality instructions from Roleplay and Autopilot</li>
+                  <li>Kept general prose guidance separate from Xialong-specific correction rules</li>
+                </ul>
+
+                <h3>🗑 Removed</h3>
+                <ul>
+                  <li>Removed the old character-only <code>CharacterArea</code></li>
+                  <li>Removed temporary prototype Location editing UI</li>
+                  <li>Removed placeholder-only Location and Scenario experiences</li>
+                  <li>Removed redundant Context launch controls</li>
+                  <li>Removed duplicated generic prose guidance from multiple generation paths</li>
+                </ul>
+
+                <h3>🧱 Foundation</h3>
+                <p>0.9.0 also prepares the architecture for future systems without activating them prematurely:</p>
+                <ul>
+                  <li>Location ↔ Contact relationships</li>
+                  <li>Scenario activation</li>
+                  <li>active Location and Scenario context</li>
+                  <li>Sandbox environments</li>
+                  <li>NPC schedules</li>
+                  <li>world time</li>
+                  <li>probabilistic presence</li>
+                  <li>encounter simulation</li>
+                  <li>future prose profiles such as Literary / Balanced / Direct</li>
+                </ul>
+                <p>These systems are not active yet.</p>
+                <p>Saving a Location or Scenario does <strong>not</strong> silently alter the current RP prompt.</p>
+
+                <div className="milestone-why">
+                  <h3>Why this matters</h3>
+                  <p>0.8.x gave Howling Whispers memory and context.</p>
+                  <p><strong>0.9.0 gives that context somewhere to live.</strong></p>
+                  <p>Contacts are the people.<br />Locations are the places.<br />Scenarios are the situations.<br />The writing engine decides how all of it should sound.</p>
+                  <p><strong>The pieces are starting to become a world.</strong></p>
+                </div>
+                <h3>Quality</h3>
+                <p>393/393 tests passed · lint clean · build validated.</p>
+              </div>
+            </article>
+
+            <article className="changelog-entry featured">
+              <span className="changelog-mark">◐</span>
+              <div>
+                <span className="changelog-version">Version 0.8.1 · Scoped Author&apos;s Notes</span>
+                <h2>Scoped Author&apos;s Notes</h2>
+                <p>Author&apos;s Notes now support scoping so scene direction stays relevant to the right character and scene.</p>
+                <ul>
+                  <li><strong>Global</strong> — appears for every character and scene</li>
+                  <li><strong>This Character</strong> — only appears for the selected character</li>
+                  <li><strong>This Scene</strong> — only appears in the active scene</li>
+                </ul>
+                <p>New notes default to character-scoped with the active character pre-selected. Imported notes default to global. Existing notes without a scope are treated as global for backward compatibility.</p>
+                <p>The Context workspace and compact panel now include a scope selector with auto-fill, and compilation filtering keeps the manifest count accurate.</p>
+                <ul>
+                  <li>Scope selector with auto-fill in Context workspace and compact panel</li>
+                  <li>Character ID and scene ID passed through to context UI</li>
+                  <li>Context compilation filters notes by scope before rendering</li>
+                  <li>Author note type guards widened to allow scoping fields</li>
+                  <li>Backup sanitization accepts scoped note fields</li>
+                  <li>Import default scope set to global</li>
+                  <li>Tests for character, scene, global, disabled, and legacy notes</li>
+                </ul>
+                <h3>Persistent Radio Player</h3>
+                <ul>
+                  <li>Live radio player with compact trigger and floating controls</li>
+                  <li>Playback state persists across application views</li>
+                  <li>Welcome-screen and active-RP controls</li>
+                  <li>Play/pause and volume controls</li>
+                  <li><code>/radio/</code> dev proxy support</li>
+                </ul>
+              </div>
+            </article>
+
+            <article className="changelog-entry milestone">
+              <span className="changelog-mark">🏆</span>
+              <div>
                 <span className="changelog-version">Version 0.8.0 · Echoes Remembered</span>
                 <div className="milestone-badge">MILESTONE · CONTEXT ENGINE</div>
                 <h2>Echoes Remembered</h2>
@@ -135,30 +341,6 @@ export function ChangelogView(props: ChangelogViewProps) {
                   <p>After 0.8.0, context becomes a first-class part of the engine.</p>
                   <p><strong>Memory remembers. Lore awakens. Context finally becomes something you can control.</strong></p>
                 </div>
-              </div>
-            </article>
-                                    <article className="changelog-entry featured">
-              <span className="changelog-mark">◐</span>
-              <div>
-                <span className="changelog-version">Version 0.8.1 · Scoped Author&apos;s Notes</span>
-                <h2>Scoped Author&apos;s Notes</h2>
-                <p>Author&apos;s Notes now support scoping so scene direction stays relevant to the right character and scene.</p>
-                <ul>
-                  <li><strong>Global</strong> — appears for every character and scene</li>
-                  <li><strong>This Character</strong> — only appears for the selected character</li>
-                  <li><strong>This Scene</strong> — only appears in the active scene</li>
-                </ul>
-                <p>New notes default to character-scoped with the active character pre-selected. Imported notes default to global. Existing notes without a scope are treated as global for backward compatibility.</p>
-                <p>The Context workspace and compact panel now include a scope selector with auto-fill, and compilation filtering keeps the manifest count accurate.</p>
-                <ul>
-                  <li>Scope selector with auto-fill in Context workspace and compact panel</li>
-                  <li>Character ID and scene ID passed through to context UI</li>
-                  <li>Context compilation filters notes by scope before rendering</li>
-                  <li>Author note type guards widened to allow scoping fields</li>
-                  <li>Backup sanitization accepts scoped note fields</li>
-                  <li>Import default scope set to global</li>
-                  <li>Tests for character, scene, global, disabled, and legacy notes</li>
-                </ul>
               </div>
             </article>
             <article className="changelog-entry featured">

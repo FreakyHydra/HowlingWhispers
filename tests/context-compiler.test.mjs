@@ -638,3 +638,118 @@ test("relationship note is injected in sandbox mode", () => {
   assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
   assert.match(result.prompt, /Relationship note: A custom note\./);
 });
+
+test("prose policy appears exactly once in a roleplay prompt", () => {
+  const result = compile(adultCharacter());
+  const matches = result.prompt.match(/<prose-quality-policy>/g) || [];
+  assert.equal(matches.length, 1);
+});
+
+test("roleplay receives the full prose-quality policy", () => {
+  const result = compile(adultCharacter());
+  assert.match(result.prompt, /<prose-quality-policy>/);
+  assert.match(result.prompt, /Character voice is authoritative/);
+  assert.match(result.prompt, /Do not reduce characters to verbal stereotypes/);
+  assert.match(result.prompt, /homogenize character voices/);
+  assert.doesNotMatch(result.prompt, /<player-voice-policy>/);
+});
+
+test("autopilot receives the full prose-quality policy", () => {
+  const result = compile(adultCharacter(), { kind: "autopilot", messages: [] });
+  assert.match(result.prompt, /<prose-quality-policy>/);
+  assert.match(result.prompt, /Character voice is authoritative/);
+  assert.match(result.prompt, /homogenize character voices/);
+  assert.doesNotMatch(result.prompt, /<player-voice-policy>/);
+});
+
+test("impersonation receives the reduced player-voice policy, not the full policy", () => {
+  const result = compile(adultCharacter(), { kind: "impersonation", playerDirection: "" });
+  assert.match(result.prompt, /<player-voice-policy>/);
+  assert.match(result.prompt, /Preserve the player's established voice/);
+  assert.doesNotMatch(result.prompt, /<prose-quality-policy>/);
+  assert.doesNotMatch(result.prompt, /homogenize character voices/);
+  assert.doesNotMatch(result.prompt, /Do not reduce characters to verbal stereotypes/);
+});
+
+test("character canon appears before the prose policy", () => {
+  const result = compile(adultCharacter());
+  const canonEnd = result.prompt.indexOf("</authoritative-character-canon>");
+  const policyStart = result.prompt.indexOf("<prose-quality-policy>");
+  assert.ok(canonEnd >= 0);
+  assert.ok(policyStart > canonEnd);
+});
+
+test("current-state appears before the prose policy", () => {
+  const result = compile(adultCharacter());
+  const stateEnd = result.prompt.indexOf("</current-state>");
+  const policyStart = result.prompt.indexOf("<prose-quality-policy>");
+  assert.ok(stateEnd >= 0);
+  assert.ok(policyStart > stateEnd);
+});
+
+test("the central policy does not carry model-specific anti-slop phrasing", () => {
+  const result = compile(adultCharacter());
+  assert.doesNotMatch(result.prompt, /GROUNDED PROSE \/ ANTI-SLOP/);
+  assert.doesNotMatch(result.prompt, /silence stretched between them/);
+  assert.doesNotMatch(result.prompt, /her gaze softened/);
+});
+
+test("Xialong-specific anti-slop remains Xialong-only", () => {
+  const local = compile(adultCharacter());
+  assert.doesNotMatch(local.prompt, /GROUNDED PROSE \/ ANTI-SLOP/);
+  assert.doesNotMatch(local.prompt, /silence stretched between them/);
+
+  const xialong = compile(adultCharacter(), { provider: "novelai", model: "xialong-v1" });
+  assert.match(xialong.prompt, /GROUNDED PROSE \/ ANTI-SLOP/);
+  assert.match(xialong.prompt, /silence stretched between them/);
+});
+
+test("the duplicated prose sentence no longer appears", () => {
+  const result = compile(adultCharacter());
+  assert.doesNotMatch(result.prompt, /Avoid filler, summaries, purple prose, stock AI phrases/);
+});
+
+test("character canon and world lore data are not contaminated with prose-policy fields", () => {
+  const canonText = PEONY.sections.map((section) => section.content).join("\n");
+  const worldText = CODA_WORLD_LORE.entries.map((entry) => entry.content).join("\n");
+  assert.doesNotMatch(canonText, /prose-quality-policy|player-voice-policy/);
+  assert.doesNotMatch(worldText, /prose-quality-policy|player-voice-policy/);
+  assert.doesNotMatch(canonText, /Character voice is authoritative/);
+  assert.doesNotMatch(worldText, /homogenize character voices/);
+});
+
+test("location context is injected when location is provided", () => {
+  const location = {
+    id: "loc-test-1",
+    name: "Willowbridge Children's Day Centre",
+    type: "community centre",
+    shortDescription: "A warm, busy place for children.",
+    description: "A bright community centre with indoor and outdoor play areas.",
+    atmosphere: ["lively", "warm"],
+    features: ["climbing frame", "sensory corner", "quiet room"],
+    areas: [{ id: "area-1", name: "Garden", description: "A secure outdoor play space." }],
+    activities: ["arts", "story time", "outdoor play"],
+    occupants: ["children", "staff"],
+    staffRoles: ["playworker", "site manager"],
+    accessibilityFeatures: ["ramp", "accessible toilet"],
+    ageRange: { minimum: 0, maximum: 12 },
+    tags: ["community", "children", "day centre"],
+    source: "custom",
+  };
+  const result = compile(adultCharacter(), {
+    provider: "local",
+    model: "gemma-3-12b",
+    location,
+  });
+  assert.match(result.prompt, /Location: Willowbridge Children's Day Centre/);
+  assert.match(result.prompt, /Type: community centre/);
+  assert.match(result.prompt, /Overview: A warm, busy place for children\./);
+  assert.match(result.prompt, /Atmosphere: lively\. warm/);
+  assert.match(result.prompt, /Features: climbing frame, sensory corner, quiet room/);
+  assert.match(result.prompt, /Areas: Garden \(A secure outdoor play space\.\)/);
+  assert.match(result.prompt, /Activities: arts, story time, outdoor play/);
+  assert.match(result.prompt, /Possible occupants: children, staff/);
+  assert.match(result.prompt, /Accessibility: ramp, accessible toilet/);
+  assert.match(result.prompt, /Age range: 0–12/);
+  assert.match(result.prompt, /Tags: community, children, day centre/);
+});

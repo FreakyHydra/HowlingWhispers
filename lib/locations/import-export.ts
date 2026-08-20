@@ -42,13 +42,13 @@ export function parseLocationImport(json: string): ImportResult {
   }
 
   if (!data || typeof data !== "object") {
-    return { ok: false, error: "This file does not contain a location backup." };
+    return { ok: false, error: "This file does not contain a valid Location." };
   }
   const obj = data as Record<string, unknown>;
 
   if (obj.format === LOCATION_FORMAT) {
     if (obj.version !== LOCATION_FORMAT_VERSION) {
-      return { ok: false, error: "This Howling Whispers location backup version is not supported." };
+      return { ok: false, error: "This Howling Whispers Location file version is not supported." };
     }
     if (!isRecord(obj.location)) {
       return { ok: false, error: "The location in this file is malformed." };
@@ -60,7 +60,7 @@ export function parseLocationImport(json: string): ImportResult {
 
   if (obj.format === `${LOCATION_FORMAT}-library`) {
     if (obj.version !== LOCATION_FORMAT_VERSION) {
-      return { ok: false, error: "This Howling Whispers location-library backup version is not supported." };
+      return { ok: false, error: "This Howling Whispers Location file version is not supported." };
     }
     if (!Array.isArray(obj.locations)) {
       return { ok: false, error: "The location library file has no locations list." };
@@ -77,7 +77,15 @@ export function parseLocationImport(json: string): ImportResult {
     return { ok: true, locations };
   }
 
-  return { ok: false, error: "This file is not a Howling Whispers location backup." };
+  if (typeof obj.format === "string") {
+    return { ok: false, error: "This file is not a recognized Howling Whispers Location file." };
+  }
+
+  const location = sanitizeLocation(obj);
+  if (!location) {
+    return { ok: false, error: "This file does not contain a valid Location." };
+  }
+  return { ok: true, locations: [location] };
 }
 
 export function ensureUniqueLocationIds(

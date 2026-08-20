@@ -805,6 +805,10 @@ a:focus-visible {
   overflow: hidden;
   position: relative;
 }
+.home-character:focus-visible {
+  outline: 2px solid rgba(215, 138, 94, 0.8);
+  outline-offset: 4px;
+}
 
 .home-character::after {
   border: 1px solid rgba(215, 138, 94, 0.18);

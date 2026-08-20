@@ -685,6 +685,17 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
               </p>
             </div>
           )}
+          {activeMessages.length === 0 && activeSession?.locationId && !activeSession?.sandbox && (
+            <div className="sandbox-empty-state">
+              <span aria-hidden="true">◎</span>
+              <p className="eyebrow">Location</p>
+              <h2>{selected.name}</h2>
+              <p>
+                Write the first line, action, or piece of narration. The story begins here,
+                in this place. No one else is present yet.
+              </p>
+            </div>
+          )}
           {activeMessages.map((message, index) => {
             const isLastCharacter =
               message.sender === "character" &&
@@ -1120,77 +1131,81 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
                       ? `${activeModel.label} · ${activeReplyLength.label}`
                       : `No model selected · ${activeReplyLength.label}`}
                   </p>
-                  <div className="pulse-heading rs-bar-wrapper">
-                    <span>Relationship</span>
-                    <strong>{deriveRelationshipLabel(relationshipScore)}</strong>
-                    {relationshipDelta !== null && relationshipDelta !== 0 && (
-                      <span
-                        className={`relationship-tick ${relationshipDelta > 0 ? "positive" : "negative"}`}
-                        aria-label={relationshipDelta > 0 ? `Gained ${relationshipDelta}` : `Lost ${-relationshipDelta}`}
-                      >
-                        {relationshipDelta > 0 ? `+${relationshipDelta}` : `${relationshipDelta}`}
-                      </span>
-                    )}
-                    <button
-                      className="rs-bar-cog"
-                      type="button"
-                      ref={rsCogRef}
-                      onClick={() => setShowRsSettings((v) => !v)}
-                      aria-label="Relationship Settings"
-                      title="Relationship Settings"
-                    >
-                      ⚙
-                    </button>
-                    {showRsSettings &&
-                      createPortal(
-                        <div
-                          ref={rsPopRef}
-                          className="rs-settings-popover"
-                          role="dialog"
-                          aria-label="Relationship Settings"
-                          style={
-                            rsPos
-                              ? { position: "fixed", top: rsPos.top, left: rsPos.left, width: rsPos.width }
-                              : undefined
-                          }
+                  {!activeSession?.locationId && (
+                    <div className="pulse-heading rs-bar-wrapper">
+                      <span>Relationship</span>
+                      <strong>{deriveRelationshipLabel(relationshipScore)}</strong>
+                      {relationshipDelta !== null && relationshipDelta !== 0 && (
+                        <span
+                          className={`relationship-tick ${relationshipDelta > 0 ? "positive" : "negative"}`}
+                          aria-label={relationshipDelta > 0 ? `Gained ${relationshipDelta}` : `Lost ${-relationshipDelta}`}
                         >
-                          <p className="eyebrow">Relationship Settings</p>
-                          <p className="setting-name-row" style={{ marginBottom: 8 }}>
-                            Relationship Status:
-                            <strong style={{ marginLeft: 6 }}>{deriveRelationshipLabel(relationshipScore)}</strong>
-                          </p>
-                          <label className="toggle-row">
-                            <span className="setting-name-row">Relationship Status influences character behavior</span>
-                            <span className="switch">
-                              <input
-                                type="checkbox"
-                                checked={relationshipContextEnabled}
-                                onChange={(e) => setRelationshipContextEnabled(e.target.checked)}
-                              />
-                              <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
-                            </span>
-                          </label>
-                          <label className="setting-name-row" style={{ marginTop: 12, display: "block" }}>
-                            Custom relationship note
-                          </label>
-                          <textarea
-                            className="rs-note-textarea"
-                            value={relationshipNote}
-                            onChange={(e) => setRelationshipNote(e.target.value)}
-                            placeholder="e.g. She trusts him deeply but is still angry about what happened yesterday."
-                            rows={3}
-                          />
-                        </div>,
-                        document.body,
+                          {relationshipDelta > 0 ? `+${relationshipDelta}` : `${relationshipDelta}`}
+                        </span>
                       )}
-                  </div>
-                  <div
-                    className="bond-meter"
-                    aria-label={`Relationship meter at ${relationshipMeterPercent(relationshipScore)}%`}
-                  >
-                    <span style={{ width: `${relationshipMeterPercent(relationshipScore)}%` }} />
-                    <i style={{ left: `${relationshipMeterPercent(relationshipScore)}%` }}>♡</i>
-                  </div>
+                      <button
+                        className="rs-bar-cog"
+                        type="button"
+                        ref={rsCogRef}
+                        onClick={() => setShowRsSettings((v) => !v)}
+                        aria-label="Relationship Settings"
+                        title="Relationship Settings"
+                      >
+                        ⚙
+                      </button>
+                      {showRsSettings &&
+                        createPortal(
+                          <div
+                            ref={rsPopRef}
+                            className="rs-settings-popover"
+                            role="dialog"
+                            aria-label="Relationship Settings"
+                            style={
+                              rsPos
+                                ? { position: "fixed", top: rsPos.top, left: rsPos.left, width: rsPos.width }
+                                : undefined
+                            }
+                          >
+                            <p className="eyebrow">Relationship Settings</p>
+                            <p className="setting-name-row" style={{ marginBottom: 8 }}>
+                              Relationship Status:
+                              <strong style={{ marginLeft: 6 }}>{deriveRelationshipLabel(relationshipScore)}</strong>
+                            </p>
+                            <label className="toggle-row">
+                              <span className="setting-name-row">Relationship Status influences character behavior</span>
+                              <span className="switch">
+                                <input
+                                  type="checkbox"
+                                  checked={relationshipContextEnabled}
+                                  onChange={(e) => setRelationshipContextEnabled(e.target.checked)}
+                                />
+                                <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
+                              </span>
+                            </label>
+                            <label className="setting-name-row" style={{ marginTop: 12, display: "block" }}>
+                              Custom relationship note
+                            </label>
+                            <textarea
+                              className="rs-note-textarea"
+                              value={relationshipNote}
+                              onChange={(e) => setRelationshipNote(e.target.value)}
+                              placeholder="e.g. She trusts him deeply but is still angry about what happened yesterday."
+                              rows={3}
+                            />
+                          </div>,
+                          document.body,
+                        )}
+                    </div>
+                  )}
+                  {!activeSession?.locationId && (
+                    <div
+                      className="bond-meter"
+                      aria-label={`Relationship meter at ${relationshipMeterPercent(relationshipScore)}%`}
+                    >
+                      <span style={{ width: `${relationshipMeterPercent(relationshipScore)}%` }} />
+                      <i style={{ left: `${relationshipMeterPercent(relationshipScore)}%` }}>♡</i>
+                    </div>
+                  )}
                 </section>
               );
             default:

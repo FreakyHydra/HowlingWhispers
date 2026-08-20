@@ -241,6 +241,54 @@ export async function POST(request: Request) {
     return Response.json({ error: "The story request was malformed." }, { status: 400 });
   }
   const contextInput = parseContextInput(body.contextInput);
+  const locationId = limitedString(body.locationId, 120);
+  const location = isRecord(body.location) ? {
+    id: limitedString(body.location.id, 120),
+    name: limitedString(body.location.name, 120),
+    type: limitedString(body.location.type, 120),
+    shortDescription: limitedString(body.location.shortDescription, 400),
+    description: limitedString(body.location.description, 8000),
+    image: limitedString(body.location.image, 120),
+    areas: Array.isArray(body.location.areas)
+      ? body.location.areas.map((a: unknown) => ({
+          id: limitedString((a as Record<string, unknown>)?.id, 120),
+          name: limitedString((a as Record<string, unknown>)?.name, 120),
+          description: limitedString((a as Record<string, unknown>)?.description, 600),
+          image: limitedString((a as Record<string, unknown>)?.image, 120),
+          tags: Array.isArray((a as Record<string, unknown>)?.tags)
+            ? (a as Record<string, unknown>).tags.map((t: unknown) => limitedString(t, 60)).filter(Boolean)
+            : undefined,
+        }))
+      : undefined,
+    features: Array.isArray(body.location.features)
+      ? body.location.features.map((f: unknown) => limitedString(f, 120)).filter(Boolean)
+      : undefined,
+    activities: Array.isArray(body.location.activities)
+      ? body.location.activities.map((a: unknown) => limitedString(a, 120)).filter(Boolean)
+      : undefined,
+    atmosphere: Array.isArray(body.location.atmosphere)
+      ? body.location.atmosphere.map((a: unknown) => limitedString(a, 120)).filter(Boolean)
+      : undefined,
+    occupants: Array.isArray(body.location.occupants)
+      ? body.location.occupants.map((o: unknown) => limitedString(o, 120)).filter(Boolean)
+      : undefined,
+    staffRoles: Array.isArray(body.location.staffRoles)
+      ? body.location.staffRoles.map((s: unknown) => limitedString(s, 120)).filter(Boolean)
+      : undefined,
+    accessibilityFeatures: Array.isArray(body.location.accessibilityFeatures)
+      ? body.location.accessibilityFeatures.map((a: unknown) => limitedString(a, 120)).filter(Boolean)
+      : undefined,
+    ageRange: isRecord(body.location.ageRange)
+      ? {
+          minimum: typeof body.location.ageRange.minimum === "number" ? Math.max(0, Math.floor(body.location.ageRange.minimum)) : undefined,
+          maximum: typeof body.location.ageRange.maximum === "number" ? Math.max(0, Math.floor(body.location.ageRange.maximum)) : undefined,
+        }
+      : undefined,
+    tags: Array.isArray(body.location.tags)
+      ? body.location.tags.map((t: unknown) => limitedString(t, 60)).filter(Boolean)
+      : undefined,
+  } : null;
+  const isLocationSession = Boolean(locationId && location);
 
   if (body.action === "finalize-device") {
     const rawReply = limitedString(body.rawReply, 50_000);
@@ -327,13 +375,14 @@ export async function POST(request: Request) {
   if (provider === "device" && !isValidOllamaModelName(model)) {
     return Response.json({ error: "Enter the Ollama model installed on this computer." }, { status: 400 });
   }
-  if (!isConnectionTest && (!character || (messages.length === 0 && !isAutopilot && !isImpersonation))) {
+  if (!isConnectionTest && !isLocationSession && (!character || (messages.length === 0 && !isAutopilot && !isImpersonation))) {
     return Response.json({ error: "The character or conversation is incomplete." }, { status: 400 });
   }
   if (
     provider === "local"
     && isAdultOllamaModel(model)
     && !isConnectionTest
+    && !isLocationSession
     && (character?.canonical.safety.ageCategory !== "adult" || character.canonical.safety.isMinor !== false)
   ) {
     return Response.json({
@@ -397,6 +446,7 @@ export async function POST(request: Request) {
       speaker: castSpeaker?.name,
       autonomy: autonomousAgentsToArray(autonomyPulse),
       contextInput,
+      location: isLocationSession ? location : undefined,
     });
   const prompt = isConnectionTest
     ? `Reply with exactly this text and nothing else: ${CONNECTION_TEST_RESPONSE}`

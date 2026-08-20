@@ -308,7 +308,8 @@ function commonSceneToSceneDefinition(commonScene: CommonScene): SceneDefinition
 
 export type StorySession = {
   id: string;
-  characterId: string;
+  characterId?: string;
+  locationId?: string;
   sceneId: string;
   title: string;
   messageKey: string;
@@ -1135,18 +1136,89 @@ function scenesFor(character: Character): SceneDefinition[] {
   }];
 }
 
-function createStorySession(character: Character, scene: SceneDefinition): StorySession {
+function createLocationPlaceholder(location: Location): Character {
+  return {
+    id: `location-${location.id}`,
+    name: location.name,
+    role: location.type || "Location",
+    status: location.shortDescription || "",
+    image: location.image || "",
+    sceneImage: location.image || "",
+    scene: location.name,
+    weather: "",
+    bond: undefined,
+    memories: [],
+    reply: "",
+    profile: location.description || "",
+    accent: "#8aa4c9",
+    credit: undefined,
+    creditUrl: undefined,
+    relationship: undefined,
+    portraitFocalPoint: "center",
+    backgroundFocalPoint: "center",
+    ageCategory: "unknown",
+    isMinor: null,
+    allowedRelationshipTypes: [],
+    disallowedContent: [],
+    pronouns: undefined,
+    traits: undefined,
+    appearance: undefined,
+    personality: undefined,
+    voice: undefined,
+    background: undefined,
+    relationships: undefined,
+    rpBehavior: undefined,
+    worldLore: undefined,
+    contextNotes: undefined,
+    authorNote: undefined,
+    cardV2: undefined,
+  };
+}
+
+function isLocationPlaceholder(id: string): boolean {
+  return id.startsWith("location-");
+}
+
+function buildLocationOpening(location: Location): string {
+  const parts: string[] = [];
+  parts.push(`*${location.name}*`);
+  if (location.type) parts.push(`*A ${location.type}.*`);
+  if (location.shortDescription) parts.push(`*${location.shortDescription}*`);
+  if (location.description) parts.push(`*${location.description}*`);
+  if (location.atmosphere?.length) parts.push(`*${location.atmosphere.slice(0, 3).join(". ")}.*`);
+  if (location.features?.length) parts.push(`*Notable features: ${location.features.slice(0, 4).join(", ")}.*`);
+  if (location.areas?.length) parts.push(`*Areas of note: ${location.areas.slice(0, 3).map((a) => a.name).join(", ")}.*`);
+  if (location.activities?.length) parts.push(`*Activities possible here: ${location.activities.slice(0, 4).join(", ")}.*`);
+  parts.push("*The space is quiet. No one else is here yet.*");
+  return parts.join(" ");
+}
+
+function createLocationScene(location: Location): SceneDefinition {
+  return {
+    id: `location-scene-${location.id}`,
+    title: location.name,
+    subtitle: "",
+    status: location.shortDescription || "",
+    weather: location.shortDescription || location.type || "",
+    background: location.image || "",
+    backgroundFocalPoint: "center",
+    opening: "",
+    theme: { ...fallbackTheme, accent: "#8aa4c9", motif: "location" },
+  };
+}
+
+function createStorySession(character: Character | null, scene: SceneDefinition): StorySession {
   const now = Date.now();
   const id = `session-${now}-${Math.random().toString(36).slice(2, 7)}`;
   return {
     id,
-    characterId: character.id,
+    characterId: character?.id,
     sceneId: scene.id,
     title: scene.title,
     messageKey: id,
     createdAt: now,
     updatedAt: now,
-    livingCast: createCast({ id: character.id, name: character.name }),
+    livingCast: character ? createCast({ id: character.id, name: character.name }) : [],
   };
 }
 
@@ -1175,14 +1247,14 @@ function mergeBuiltInCharacters(saved: Character[]): Character[] {
 
 function readSavedSessions(): StorySession[] {
   return readSession<StorySession[]>("sessions", [])
-    .filter((session) => !retiredCharacterIds.has(session.characterId));
+    .filter((session) => !session.characterId || !retiredCharacterIds.has(session.characterId));
 }
 
 function readSavedMessages(): Record<string, Message[]> {
   const savedSessions = readSession<StorySession[]>("sessions", []);
   const retiredMessageKeys = new Set(
     savedSessions
-      .filter((session) => retiredCharacterIds.has(session.characterId))
+      .filter((session) => session.characterId && retiredCharacterIds.has(session.characterId))
       .map((session) => session.messageKey),
   );
   const saved = readSession<Record<string, Message[]>>("messages", initialMessages);
@@ -1561,7 +1633,18 @@ export default function DreamboundApp() {
   });
   const [selectedId, setSelectedId] = useState(() => {
     const saved = readSession<string>("selectedId", "coda");
-    return retiredCharacterIds.has(saved) ? "coda" : saved;
+    if (retiredCharacterIds.has(saved)) return "coda";
+
+    const currentId = readSession<string | null>("currentSessionId", null);
+    if (currentId) {
+      const allSessions = readSession<StorySession[]>("sessions", [])
+        .filter((session) => !session.characterId || !retiredCharacterIds.has(session.characterId));
+      const active = allSessions.find((s) => s.id === currentId);
+      if (active?.characterId) return active.characterId;
+      if (active?.locationId) return `location-${active.locationId}`;
+    }
+
+    return saved;
   });
   const [messages, setMessages] = useState(readSavedMessages);
   const [sessions, setSessions] = useState<StorySession[]>(() => {
@@ -1584,6 +1667,19 @@ export default function DreamboundApp() {
       }];
     });
   });
+  const locationPlaceholders = useMemo(() => {
+    const placeholders: Record<string, Character> = {};
+    for (const session of sessions) {
+      if (session.locationId) {
+        const location = locations.find((l) => l.id === session.locationId);
+        if (location) {
+          const placeholder = createLocationPlaceholder(location);
+          placeholders[placeholder.id] = placeholder;
+        }
+      }
+    }
+    return placeholders;
+  }, [sessions, locations]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(
     () => {
       const saved = readSession<string | null>("currentSessionId", null);
@@ -1679,6 +1775,7 @@ export default function DreamboundApp() {
     | { kind: "autopilot"; characterId: string }
     | { kind: "imported"; characterId: string }
     | { kind: "commonScene"; scene: CommonScene }
+    | { kind: "location"; location: Location }
     | null;
   const [pendingPersonaStart, setPendingPersonaStart] = useState<PendingPersonaStart>(null);
   const [autopilotPersona, setAutopilotPersona] = useState<PlayerPersona | null>(null);
@@ -2214,8 +2311,10 @@ export default function DreamboundApp() {
   }
 
   const selected = useMemo(
-    () => characters.find((character) => character.id === selectedId) ?? characters[0],
-    [characters, selectedId],
+    () => characters.find((character) => character.id === selectedId)
+      ?? locationPlaceholders[selectedId]
+      ?? characters[0],
+    [characters, selectedId, locationPlaceholders],
   );
 
   const selectedScenes = storyScenes[selected.id] ?? scenesFor(selected);
@@ -2231,6 +2330,7 @@ export default function DreamboundApp() {
   const activeSession = sessions.find((session) => session.id === currentSessionId)
     ?? sessions.find((session) => session.characterId === selected.id && session.messageKey === selected.id)
     ?? null;
+  const isLocationSession = Boolean(activeSession?.locationId);
 
   const activeRelationshipPersonaId = useMemo(
     () => effectivePersonaId(
@@ -2239,17 +2339,26 @@ export default function DreamboundApp() {
     ),
     [activePersona?.id, activeSession?.playerPersonaId],
   );
-  const relationshipKeyForSelected = relationshipKey(selected.id, activeRelationshipPersonaId);
-  const relationshipRecord = relationships[relationshipKeyForSelected];
-  const relationshipScore = relationshipRecord
-    ? relationshipRecord.score
-    : migrateBondToScore(selected.bond);
-  const relationshipContext = [
-    selected.relationship,
-    relationshipTierPhrase(relationshipScore),
-  ].filter(Boolean).join(" — ");
+  const relationshipKeyForSelected = isLocationPlaceholder(selected.id)
+    ? ""
+    : relationshipKey(selected.id, activeRelationshipPersonaId);
+  const relationshipRecord = isLocationPlaceholder(selected.id)
+    ? undefined
+    : relationships[relationshipKeyForSelected];
+  const relationshipScore = isLocationPlaceholder(selected.id)
+    ? 0
+    : relationshipRecord
+      ? relationshipRecord.score
+      : migrateBondToScore(selected.bond);
+  const relationshipContext = isLocationPlaceholder(selected.id)
+    ? ""
+    : [
+        selected.relationship,
+        relationshipTierPhrase(relationshipScore),
+      ].filter(Boolean).join(" — ");
 
   const updateRelationshipNote = useCallback((note: string) => {
+    if (isLocationPlaceholder(selected.id)) return;
     setRelationships((prev) => {
       const key = relationshipKey(selected.id, activeRelationshipPersonaId);
       const record = prev[key];
@@ -2283,7 +2392,12 @@ export default function DreamboundApp() {
 
   const activeScene = activeSession?.sandbox
     ? sandboxSceneFor(selected)
-    : selectedScenes.find((scene) => scene.id === activeSession?.sceneId) ?? selectedScenes[0];
+    : activeSession?.locationId
+      ? (() => {
+          const location = locations.find((l) => l.id === activeSession!.locationId);
+          return location ? createLocationScene(location) : selectedScenes[0];
+        })()
+      : selectedScenes.find((scene) => scene.id === activeSession?.sceneId) ?? selectedScenes[0];
   const activePlayerName = activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim();
   const sessionUsesDefaultPersona = Boolean(
     !activeSession?.playerName?.trim() && !activeSession?.playerPersona?.trim(),
@@ -2304,7 +2418,11 @@ export default function DreamboundApp() {
   const shareMessages = activeMessages.slice(-Math.max(1, Math.min(shareCount, activeMessages.length)));
   const activeTheme = activeScene.theme;
   const selectedSessions = sessions
-    .filter((session) => session.characterId === selected.id)
+    .filter((session) => {
+      if (session.characterId === selected.id) return true;
+      if (isLocationPlaceholder(selected.id) && session.locationId === selected.id.replace("location-", "")) return true;
+      return false;
+    })
     .sort((a, b) => b.updatedAt - a.updatedAt);
   const themeVariables = {
     "--theme-accent": activeTheme.accent,
@@ -2347,8 +2465,13 @@ export default function DreamboundApp() {
   const entranceFeature = entranceFeatures[entranceFeatureIndex] ?? entranceFeatures[0];
   const ollamaOriginSetting = `OLLAMA_ORIGINS=${isHydrated ? window.location.origin : "this-site-origin"}`;
 
-  function openSceneLibrary(characterId: string) {
-    setSelectedId(characterId);
+  function openSceneLibrary(id: string) {
+    const location = locations.find((l) => l.id === id);
+    if (location) {
+      setSelectedId(`location-${location.id}`);
+    } else {
+      setSelectedId(id);
+    }
     setStoryEditor(null);
     setView("scenes");
   }
@@ -2427,8 +2550,9 @@ export default function DreamboundApp() {
   }
 
   function buildSessionInitialState(
-    character: Character,
+    character: Character | null,
     scene: SceneDefinition,
+    location: Location | null = null,
     overrides: {
       sandbox?: boolean;
       autopilot?: boolean;
@@ -2444,6 +2568,7 @@ export default function DreamboundApp() {
   ): { session: StorySession; initialMessages: Message[] } {
     const session = {
       ...createStorySession(character, scene),
+      locationId: location?.id,
       ...personaSnapshot(overrides.persona),
       sandbox: overrides.sandbox,
       autopilot: overrides.autopilot,
@@ -2461,7 +2586,7 @@ export default function DreamboundApp() {
     if (overrides.seedText) {
       initialMessages.push({ id: nextId++, sender: "narrator", text: overrides.seedText });
     }
-    const charName = character.name;
+    const charName = character?.name ?? location?.name ?? "The story";
     const userName = (overrides.persona?.name.trim() || session.playerName?.trim() || playerProfile.name).trim();
     const resolvedScene = {
       ...scene,
@@ -2477,12 +2602,14 @@ export default function DreamboundApp() {
     }
 
     const effectivePlayerName = (overrides.persona?.name.trim() || session.playerName?.trim() || playerProfile.name).trim();
-    const baseCast = createCast({ id: character.id, name: character.name }, effectivePlayerName);
+    const baseCast = character
+      ? createCast({ id: character.id, name: character.name }, effectivePlayerName)
+      : createCast({ id: session.id, name: location?.name ?? "Narrator" }, effectivePlayerName);
     const detected = initialMessages.length > 0
       ? detectLivingCast({
           messages: initialMessages,
           cast: baseCast,
-          primary: { id: character.id, name: character.name },
+          primary: character ? { id: character.id, name: character.name } : { id: session.id, name: location?.name ?? "Narrator" },
           playerName: effectivePlayerName,
         })
       : { cast: baseCast, newNames: [], events: [], pending: null, autoSpeakerId: null, autoSpeakerName: null };
@@ -2515,6 +2642,7 @@ export default function DreamboundApp() {
     }
     else if (start.kind === "imported") startImported(start.characterId, persona ?? null);
     else if (start.kind === "commonScene") startCommonScene(start.scene, persona ?? null);
+    else if (start.kind === "location") startLocation(start.location, persona ?? null);
   }
 
   function startImported(characterId: string, persona?: PlayerPersona | null) {
@@ -2551,6 +2679,29 @@ export default function DreamboundApp() {
     }));
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
+    setAutopilotError("");
+    setChatError("");
+    setView("chat");
+  }
+
+  function startLocation(location: Location, persona?: PlayerPersona | null) {
+    const placeholder = createLocationPlaceholder(location);
+    const scene = createLocationScene(location);
+    const { session, initialMessages } = buildSessionInitialState(placeholder, scene, location, {
+      description: buildLocationOpening(location),
+      persona,
+    });
+    setStoryScenes((current) => ({
+      ...current,
+      [placeholder.id]: [scene],
+    }));
+    setMessages((current) => ({
+      ...current,
+      [session.messageKey]: initialMessages,
+    }));
+    setSessions((current) => [session, ...current]);
+    setCurrentSessionId(session.id);
+    setSelectedId(placeholder.id);
     setAutopilotError("");
     setChatError("");
     setView("chat");
@@ -2662,7 +2813,18 @@ export default function DreamboundApp() {
   function continueRoleplay(session: StorySession) {
     setChatError("");
     setAutopilotError("");
-    setSelectedId(session.characterId);
+    if (session.characterId) {
+      setSelectedId(session.characterId);
+    } else if (session.locationId) {
+      const location = locations.find((l) => l.id === session.locationId);
+      if (location) {
+        const placeholder = createLocationPlaceholder(location);
+        setSelectedId(placeholder.id);
+      } else {
+        setChatError(`Location "${session.locationId}" no longer exists.`);
+        return;
+      }
+    }
     setCurrentSessionId(session.id);
     setSessions((current) => current.map((item) =>
       item.id === session.id ? { ...item, updatedAt: Date.now() } : item,
@@ -2970,6 +3132,8 @@ export default function DreamboundApp() {
         livingCast: sessionCast,
         autonomousCast: activeSession?.autonomousCast ?? [],
         respondAs,
+        locationId: activeSession?.locationId,
+        location: activeSession?.locationId ? locations.find((l) => l.id === activeSession!.locationId) : undefined,
         character: {
           id: selected.id,
           name: selected.name,
@@ -3022,6 +3186,7 @@ export default function DreamboundApp() {
         },
         messages: conversation.slice(-30).map(({ sender, text, speaker }) => ({ sender, text, speaker })),
     };
+
     if (storyProvider === "device") {
       const preparedResponse = await fetch("/api/novelai", {
         method: "POST",
@@ -3266,16 +3431,18 @@ export default function DreamboundApp() {
     conversation: Message[],
     characterId?: string,
   ): void {
+    const effectiveCharacterId = characterId ?? selected.id;
+    if (isLocationPlaceholder(effectiveCharacterId)) return;
     const personaId = activeRelationshipPersonaId;
     const playerName = activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim();
     const previousScore = effectiveScore(
       relationshipsRef.current,
-      characterId ?? selected.id,
+      effectiveCharacterId,
       personaId,
       selected.bond,
     );
     const result = (heuristicRelationshipScorer as RelationshipScorer).evaluate({
-      characterId: characterId ?? selected.id,
+      characterId: effectiveCharacterId,
       personaId,
       playerName,
       characterName: selected.name,
@@ -3290,7 +3457,7 @@ export default function DreamboundApp() {
     }
     const next: RelationshipState = { ...relationshipsRef.current };
     commitEvent(next, {
-      characterId: characterId ?? selected.id,
+      characterId: effectiveCharacterId,
       personaId,
       turnId: characterTurnId(messageId),
       delta: result.delta,
@@ -3302,12 +3469,14 @@ export default function DreamboundApp() {
 
   function removeRelationshipTurns(turnIds: string[]): void {
     if (turnIds.length === 0) return;
+    if (isLocationPlaceholder(selected.id)) return;
     const next: RelationshipState = { ...relationshipsRef.current };
     removeEventsForTurns(next, selected.id, activeRelationshipPersonaId, turnIds);
     setRelationships(next);
   }
 
   function recomputeRelationshipForMessage(messageId: number, characterReply: string, conversation: Message[]): void {
+    if (isLocationPlaceholder(selected.id)) return;
     const message = conversation.find((candidate) => candidate.id === messageId);
     if (!message || message.sender !== "character") return;
     const personaId = activeRelationshipPersonaId;
@@ -4152,7 +4321,23 @@ function updateCharacter(id: string, updates: Partial<Character>) {
 
   function deleteLocation(location: Location) {
     if (!isUserOwnedLocation(location)) return;
+    const removedSessionMessageKeys = new Set(
+      sessions
+        .filter((session) => session.locationId === location.id)
+        .map((session) => session.messageKey),
+    );
     setLocations((current) => current.filter((candidate) => candidate.id !== location.id));
+    setSessions((current) => current.filter((session) => session.locationId !== location.id));
+    setMessages((current) => {
+      const next = { ...current };
+      removedSessionMessageKeys.forEach((messageKey) => delete next[messageKey]);
+      return next;
+    });
+    setStoryScenes((current) => {
+      const next = { ...current };
+      delete next[`location-${location.id}`];
+      return next;
+    });
     setEditingLocation(null);
     setConfirmDeleteLocation(null);
   }
@@ -5409,7 +5594,7 @@ Roleplay
         }}
       />
 
-      {(view === "roleplay" || view === "scenes" || isCreating || editingCharacter || downloadingCharacter || confirmDeleteCharacter) && (
+      {(view === "roleplay" || view === "scenes" || isCreating || editingCharacter || downloadingCharacter || confirmDeleteCharacter || isCreatingLocation || editingLocation || confirmDeleteLocation || isCreatingScenario || editingScenario || confirmDeleteScenario) && (
         <RoleplayArea
           view={view}
           currentUser={currentUser}
@@ -5429,12 +5614,13 @@ Roleplay
           setEditingCharacter={setEditingCharacter}
           setConfirmDeleteCharacter={setConfirmDeleteCharacter}
           setIsCreating={setIsCreating}
+          isCreating={isCreating}
           setIsCreatingLocation={setIsCreatingLocation}
+          isCreatingLocation={isCreatingLocation}
           characterBackupMsg={characterBackupMsg}
           characterBackupError={characterBackupError}
           importCharacterFile={importCharacterFile}
           exportCharacterLibrary={exportCharacterLibrary}
-          isCreating={isCreating}
           importError={importError}
           createCharacter={createCharacter}
           editingCharacter={editingCharacter}
@@ -5460,6 +5646,21 @@ Roleplay
           locationImportMsg={locationImportMsg}
           importLocationFile={importLocationFile}
           exportLocation={exportLocation}
+          scenarios={scenarios}
+          isUserOwnedScenario={isUserOwnedScenario}
+          createScenario={createScenario}
+          updateScenario={updateScenario}
+          deleteScenario={deleteScenario}
+          isCreatingScenario={isCreatingScenario}
+          setIsCreatingScenario={setIsCreatingScenario}
+          editingScenario={editingScenario}
+          setEditingScenario={setEditingScenario}
+          confirmDeleteScenario={confirmDeleteScenario}
+          setConfirmDeleteScenario={setConfirmDeleteScenario}
+          scenarioError={scenarioError}
+          scenarioImportMsg={scenarioImportMsg}
+          importScenarioFile={importScenarioFile}
+          exportScenario={exportScenario}
           selected={selected}
           themeVariables={themeVariables}
           codaWorldGuide={codaWorldGuide}
@@ -5487,6 +5688,7 @@ Roleplay
           relationshipScore={relationshipScore}
           relationshipLabel={deriveRelationshipLabel(relationshipScore)}
           relationshipMeterPercent={relationshipMeterPercent(relationshipScore)}
+          isLocationSession={isLocationSession}
           activePersonaName={activePersona?.name ?? null}
           memoryCardStatus={(() => {
             const card = getMemoryCard(memoryCards, activeRelationshipPersonaId);

@@ -46,7 +46,8 @@ export type BackupMessage = {
 
 export type BackupStorySession = {
   id: string;
-  characterId: string;
+  characterId?: string;
+  locationId?: string;
   sceneId: string;
   title: string;
   messageKey: string;
@@ -598,7 +599,8 @@ function sanitizeSessions(value: unknown): BackupStorySession[] {
     .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
     .map((s) => ({
       id: typeof s.id === "string" ? s.id : "",
-      characterId: typeof s.characterId === "string" ? s.characterId : "",
+      characterId: typeof s.characterId === "string" ? s.characterId : undefined,
+      locationId: typeof s.locationId === "string" ? s.locationId : undefined,
       sceneId: typeof s.sceneId === "string" ? s.sceneId : "",
       title: typeof s.title === "string" ? s.title : "",
       messageKey: typeof s.messageKey === "string" ? s.messageKey : "",
@@ -616,7 +618,7 @@ function sanitizeSessions(value: unknown): BackupStorySession[] {
       playerPersonaId: typeof s.playerPersonaId === "string" ? s.playerPersonaId : undefined,
       livingCast: sanitizeCast(s.livingCast),
     }))
-    .filter((s) => s.id && s.characterId);
+    .filter((s) => s.id && (s.characterId || s.locationId));
 }
 
 function sanitizeStoryScenes(value: unknown): BackupData["storyScenes"] {

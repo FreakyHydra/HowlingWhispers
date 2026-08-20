@@ -249,7 +249,46 @@ test("generic non-daycare Location works correctly", () => {
 test("portable import rejects non-location JSON", () => {
   const result = parseLocationImport('{"format":"howling-whispers-character","version":1}');
   assert.ok(!result.ok);
-  assert.ok(result.error.includes("not a Howling Whispers location"));
+  assert.ok(result.error.includes("not a recognized Howling Whispers Location file"));
+});
+
+test("portable import rejects unsupported wrapped version", () => {
+  const result = parseLocationImport(JSON.stringify({
+    format: LOCATION_FORMAT,
+    version: 99,
+    location: { id: "x", name: "X", source: "custom" },
+  }));
+  assert.ok(!result.ok);
+  assert.ok(result.error.includes("version is not supported"));
+});
+
+test("portable import rejects malformed JSON", () => {
+  const result = parseLocationImport("not json");
+  assert.ok(!result.ok);
+  assert.ok(result.error.includes("not readable JSON"));
+});
+
+test("portable import accepts plain valid Location object", () => {
+  const result = parseLocationImport(JSON.stringify({
+    id: "plain-1",
+    name: "Plain Location",
+    source: "custom",
+    type: "ruin",
+    description: "A manually created location.",
+  }));
+  assert.ok(result.ok, "plain Location import should succeed");
+  assert.equal(result.locations.length, 1);
+  assert.equal(result.locations[0].id, "plain-1");
+  assert.equal(result.locations[0].name, "Plain Location");
+  assert.equal(result.locations[0].type, "ruin");
+  assert.equal(result.locations[0].description, "A manually created location.");
+  assert.equal(result.locations[0].source, "custom");
+});
+
+test("portable import rejects malformed plain object", () => {
+  const result = parseLocationImport(JSON.stringify({ type: "ruin", description: "No id or name" }));
+  assert.ok(!result.ok);
+  assert.ok(result.error.includes("not contain a valid Location"));
 });
 
 test("portable import rejects oversized file", () => {

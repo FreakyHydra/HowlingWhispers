@@ -232,3 +232,30 @@ test("malformed relationship events are dropped during sanitize", () => {
   assert.equal(rel.events.length, 1);
   assert.equal(rel.events[0].turnId, "char-4");
 });
+
+test("location-only sessions survive backup round trip", () => {
+  const payload = build({
+    sessions: [
+      {
+        id: "session-loc-1",
+        locationId: "loc-test-1",
+        sceneId: "location-scene-loc-test-1",
+        title: "Willowbridge Children's Day Centre",
+        messageKey: "session-loc-1",
+        createdAt: 100,
+        updatedAt: 200,
+      },
+    ],
+    currentSessionId: "session-loc-1",
+  });
+  const serialized = serializeBackupPayload(payload);
+  const reparsed = parsePortableBackup(serialized);
+  assert.ok(reparsed.ok);
+  if (!reparsed.ok) return;
+  const session = reparsed.payload.data.sessions.find((s) => s.id === "session-loc-1");
+  assert.ok(session, "location session restored");
+  assert.equal(session.locationId, "loc-test-1");
+  assert.equal(session.sceneId, "location-scene-loc-test-1");
+  assert.equal(session.title, "Willowbridge Children's Day Centre");
+  assert.equal(reparsed.payload.data.currentSessionId, "session-loc-1");
+});
