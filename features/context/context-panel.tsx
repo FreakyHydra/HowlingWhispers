@@ -13,6 +13,9 @@ export interface ContextPanelProps {
   removeLorebook: (id: string) => void;
   updateLorebook: (id: string, patch: Partial<LorebookRecord>) => void;
   onImportFile: (file: File, kind: "memory" | "author-note" | "lorebook") => void;
+  activeCharacterId?: string;
+  activeSceneId?: string;
+  characters?: Array<{ id: string; name: string }>;
   activeContextManifest?: {
     estimatedInputTokens: number;
     includedLore: Array<{ id: string; title: string; reason: string }>;
@@ -42,6 +45,9 @@ export function ContextPanel(props: ContextPanelProps) {
     removeLorebook,
     updateLorebook,
     onImportFile,
+    activeCharacterId,
+    activeSceneId,
+    characters,
     activeContextManifest,
   } = props;
 
@@ -177,6 +183,32 @@ export function ContextPanel(props: ContextPanelProps) {
                 <span style={{ marginLeft: "auto", fontSize: 11, opacity: 0.7 }}>{estimateTokens(entry.text)} tok</span>
                 <button className="context-delete-btn" onClick={() => deleteContextEntry("author-note", entry.id)}>×</button>
               </div>
+              <select
+                value={entry.scope}
+                onChange={(e) => {
+                  const newScope = e.target.value as AuthorNoteEntry["scope"];
+                  const patch: Partial<AuthorNoteEntry> = { scope: newScope };
+                  if (newScope === "character") patch.characterId = activeCharacterId;
+                  else if (newScope === "global") { patch.characterId = undefined; patch.sceneId = undefined; }
+                  else if (newScope === "scene") patch.sceneId = activeSceneId;
+                  updateContextEntry("author-note", entry.id, patch);
+                }}
+                style={{ width: "100%", fontSize: 11, marginBottom: 4 }}
+              >
+                <option value="global">Global</option>
+                <option value="character">This Character</option>
+                <option value="scene">This Scene</option>
+              </select>
+              <span style={{ fontSize: 10, opacity: 0.7, marginBottom: 4, display: "block" }}>
+                {entry.scope === "character"
+                  ? (() => {
+                      const char = characters?.find((c) => c.id === entry.characterId);
+                      return `Scope: This Character${char ? ` — ${char.name}` : ""}`;
+                    })()
+                  : entry.scope === "scene"
+                    ? `Scope: This Scene${entry.sceneId ? ` — ${entry.sceneId}` : ""}`
+                    : "Scope: Global"}
+              </span>
               <textarea
                 value={entry.text}
                 onChange={(e) => updateContextEntry("author-note", entry.id, { text: e.target.value })}

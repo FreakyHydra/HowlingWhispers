@@ -3,6 +3,7 @@ import {
   type CanonicalCharacterV1,
   type CanonPriority,
 } from "../characters/canonical.ts";
+import { getTraitById } from "../characters/trait-library.ts";
 import type { WorldLorebookV1, WorldLoreEntry } from "../worlds/schema.ts";
 import {
   detectPendingInteraction,
@@ -172,12 +173,14 @@ export function compileContext(input: CompileContextInput): CompiledContext {
     : [];
 
   const staticParts = [...xiaolongCompatibility, ...baseStaticParts];
+  const traitBlock = renderTraits(input.character.traits);
   const canonBlock = selectedSections.map(({ section }) => renderSection(section.title, section.content)).join("\n\n");
   const loreBlock = loreSelection.entries.map(({ entry }) => renderLoreEntry(entry)).join("\n\n");
   const personaBlock = renderPlayerPersona(input.playerPersona);
   const stateBlock = renderState(input);
   const memoryBlock = renderMemoryBlock(input.contextInput?.memories ?? []);
-  const authorNoteBlock = renderAuthorNoteBlock(input.contextInput?.authorNotes ?? []);
+  const filteredAuthorNotes = filterAuthorNotes(input.contextInput?.authorNotes ?? [], input.character.id, input.sceneId);
+  const authorNoteBlock = renderAuthorNoteBlock(filteredAuthorNotes);
   const hwLoreBlock = renderHWLorebookBlock(hwLoreSelection);
   const speakerEntry = input.speaker?.trim()
     ? findCastEntryByName(input.cast ?? [], input.speaker)
@@ -216,6 +219,7 @@ export function compileContext(input: CompileContextInput): CompiledContext {
       : staticParts;
   const fixedTokens = estimateTokens([
     ...staticPartsForSpeaker,
+    traitBlock,
     canonBlock,
     loreBlock,
     hwLoreBlock,
@@ -234,6 +238,7 @@ export function compileContext(input: CompileContextInput): CompiledContext {
   const speakerName = speakerEntry?.name ?? characterName;
   const shared = {
     staticParts: staticPartsForSpeaker,
+    traitBlock,
     canonBlock,
     loreBlock,
     hwLoreBlock,
@@ -272,7 +277,7 @@ export function compileContext(input: CompileContextInput): CompiledContext {
       omittedMessages: input.messages.length - history.count,
       matureCanonEnabled,
       includedMemories: (input.contextInput?.memories ?? []).filter((m) => m.enabled).length,
-      includedAuthorNotes: (input.contextInput?.authorNotes ?? []).filter((n) => n.enabled).length,
+      includedAuthorNotes: filteredAuthorNotes.length,
       includedHWLore: hwLoreSelection.entries.map((e) => ({ id: String(e.entry.id ?? ""), title: e.entry.displayName ?? "Untitled", reason: e.reason })),
       omittedHWLore: hwLoreSelection.omitted,
     },
@@ -337,6 +342,7 @@ export function estimateTokens(value: string): number {
 
 type PromptParts = {
   staticParts: string[];
+  traitBlock: string;
   canonBlock: string;
   loreBlock: string;
   personaBlock: string;
@@ -372,6 +378,7 @@ function buildLegacyPrompt(parts: PromptParts): string {
   return [
     ...parts.staticParts,
     "",
+    ...(parts.traitBlock ? [parts.traitBlock, ""] : []),
     "<authoritative-character-canon>",
     parts.canonBlock,
     "</authoritative-character-canon>",
@@ -398,6 +405,7 @@ function buildNovelAiPrompt(parts: PromptParts): string {
     [
       ...parts.staticParts,
       "",
+      ...(parts.traitBlock ? [parts.traitBlock, ""] : []),
       "<authoritative-character-canon>",
       parts.canonBlock,
       "</authoritative-character-canon>",
@@ -559,6 +567,52 @@ function renderSafety(character: CanonicalCharacterV1): string {
     : "Preserve all stricter boundaries stated in canon.";
   return `Safety policy: ${ageRule} ${relationships} ${disallowed}`;
 }
+
+function renderTraits(traits: CanonicalCharacterV1["traits"]): string {
+  if (!traits || (!traits.primary.length && !traits.secondary.length && !traits.situational.length && !traits.custom?.length)) return "";
+
+  const lines: string[] = [];
+  lines.push("CHARACTER PERSONALITY TRAITS");
+
+  if (traits.primary.length) {
+    lines.push("\nCore traits:");
+    for (const id of traits.primary) {
+      const def = getTraitById(id);
+      if (def) lines.push(`• ${def.name} — ${def.description}`);
+      else lines.push(`• ${id}`);
+    }
+  }
+
+  if (traits.secondary.length) {
+    lines.push("\nSecondary traits:");
+    for (const id of traits.secondary) {
+      const def = getTraitById(id);
+      if (def) lines.push(`• ${def.name} — ${def.description}`);
+      else lines.push(`• ${id}`);
+    }
+  }
+
+  if (traits.situational.length) {
+    lines.push("\nSituational traits:");
+    for (const id of traits.situational) {
+      const def = getTraitById(id);
+      if (def) lines.push(`• ${def.name} — ${def.description}`);
+      else lines.push(`• ${id}`);
+    }
+  }
+
+  if (traits.custom?.length) {
+    lines.push("\nCustom traits:");
+    for (const t of traits.custom) {
+      lines.push(`• ${t.name} — ${t.description}`);
+    }
+  }
+
+  lines.push("\nThese are tendencies, not absolute commands. Combine them with the character's history, relationships, current emotional state, and scene context.");
+
+  return lines.join("\n");
+}
+
 
 function renderState(input: CompileContextInput): string {
   const relationship = input.relationship || "No named relationship state is established.";
@@ -739,4 +793,19 @@ function escapeAttribute(value: string): string {
 
 function escapeXml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function filterAuthorNotes(
+  notes: import("../context/types.ts").AuthorNoteEntry[],
+  characterId: string,
+  sceneId: string,
+): import("../context/types.ts").AuthorNoteEntry[] {
+  return notes.filter((note) => {
+    if (!note.enabled) return false;
+    const scope = note.scope;
+    if (!scope || scope === "global") return true;
+    if (scope === "character") return note.characterId === characterId;
+    if (scope === "scene") return note.sceneId === sceneId;
+    return true;
+  });
 }

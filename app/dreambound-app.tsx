@@ -12,6 +12,20 @@ import {
   serializeCharacter,
   serializeCharacterLibrary,
 } from "../lib/characters/import-export";
+import type { Location } from "../lib/locations/types";
+import {
+  ensureUniqueLocationIds,
+  parseLocationImport,
+  serializeLocation,
+} from "../lib/locations/import-export";
+import { sanitizeLocation } from "../lib/locations/types";
+import type { Scenario } from "../lib/scenarios/types";
+import {
+  ensureUniqueScenarioIds,
+  parseScenarioImport,
+  serializeScenario,
+} from "../lib/scenarios/import-export";
+import { newScenarioId, sanitizeScenario } from "../lib/scenarios/types";
 import {
   characterCardV2ToHowling,
   CHARACTER_CARD_V2_LIMITS,
@@ -44,6 +58,7 @@ import { PersonaLibrary } from "../components/personas/persona-library";
 import ArchiveView from "../components/archive/archive-view";
 import { archive, type ArchivePublication, type ArchiveUser } from "../lib/archive/client";
 import { PersonaPicker } from "../components/story/persona-picker";
+import RadioPlayer from "./components/radio-player";
 import {
   loadPersonas,
   savePersonas,
@@ -124,7 +139,7 @@ import {
   parseOllamaModels,
   type OllamaModelInfo,
 } from "../lib/ollama.ts";
-import { CharacterArea } from "./features/characters/character-area";
+import { RoleplayArea } from "./features/roleplay/roleplay-area";
 import { SettingsPage } from "./features/settings/settings-page";
 import { ChatWorkspace } from "../features/chat/chat-workspace";
 
@@ -156,6 +171,81 @@ export type Character = {
   disallowedContent?: string[];
   cardV2?: HowlingV2Metadata;
   pronouns?: string;
+  traits?: import("../lib/characters/traits.ts").CharacterTraits;
+  appearance?: {
+    height?: string;
+    build?: string;
+    hair?: string;
+    eyes?: string;
+    skin?: string;
+    distinguishingFeatures?: string;
+    clothing?: string;
+    generalDescription?: string;
+  };
+  personality?: {
+    likes?: string;
+    dislikes?: string;
+    habits?: string;
+    strengths?: string;
+    weaknesses?: string;
+    fears?: string;
+    values?: string;
+  };
+  voice?: {
+    speechStyle?: string;
+    vocabularyLevel?: string;
+    accentDialect?: string;
+    sentenceLength?: string;
+    humorStyle?: string;
+    swearingLevel?: string;
+    emotionalExpressiveness?: string;
+    bodyLanguage?: string;
+    mannerisms?: string;
+    rarePhrases?: string;
+    exampleDialogue?: string;
+  };
+  background?: {
+    biography?: string;
+    childhood?: string;
+    importantEvents?: string;
+    family?: string;
+    education?: string;
+    occupation?: string;
+    skills?: string;
+    secrets?: string;
+    trauma?: string;
+    currentSituation?: string;
+  };
+  relationships?: Array<{
+    characterId: string;
+    type: string;
+    description: string;
+    trust?: string;
+    affection?: string;
+    familiarity?: string;
+    notes?: string;
+  }>;
+  rpBehavior?: {
+    goals?: string;
+    motivations?: string;
+    boundaries?: string;
+    avoids?: string;
+    pursues?: string;
+    conflictBehavior?: string;
+    responseToDanger?: string;
+    responseToAffection?: string;
+    responseToStrangers?: string;
+    responseToAuthority?: string;
+  };
+  worldLore?: {
+    worldId?: string;
+    setting?: string;
+    faction?: string;
+    home?: string;
+    defaultScenario?: string;
+  };
+  contextNotes?: string;
+  authorNote?: string;
 };
 
 type VisualTheme = {
@@ -277,7 +367,7 @@ type Viewpoint = "user" | "character" | "roving";
 type StoryTense = "present" | "past";
 type TokenStorageMode = "tab" | "computer";
 type UpdateState = "idle" | "checking" | "current" | "available" | "unconfigured" | "error";
-export type AppView = "home" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas" | "living-cast";
+export type AppView = "roleplay" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas" | "living-cast";
 export type ProviderState =
   | "disconnected"
   | "ready"
@@ -713,6 +803,10 @@ const initialMessages: Record<string, Message[]> = {
 const curatedCharacterIds = new Set(initialCharacters.map((character) => character.id));
 function isUserOwnedCharacter(character: Character): boolean {
   return !curatedCharacterIds.has(character.id);
+}
+
+function isUserOwnedLocation(location: Location): boolean {
+  return location.source === "custom";
 }
 
 const handcraftedScenes: Record<string, SceneDefinition[]> = {
@@ -1448,10 +1542,22 @@ export default function DreamboundApp() {
     () => (activePersona ? compilePlayerPersona(activePersona) : ""),
     [activePersona],
   );
-  const [view, setView] = useState<AppView>(() => readSession<AppView>("view", "home"));
+  const [view, setView] = useState<AppView>(() => {
+    const saved = readSession<AppView>("view", "home");
+    if (saved === "home") return "roleplay";
+    return saved;
+  });
   const [characters, setCharacters] = useState<Character[]>(() => {
     const saved = readSession<Character[] | null>("characters", null);
     return saved && saved.length > 0 ? mergeBuiltInCharacters(saved) : initialCharacters;
+  });
+  const [locations, setLocations] = useState<Location[]>(() => {
+    const saved = readSession<Location[] | null>("locations", null);
+    return saved ? saved.map((location) => sanitizeLocation(location)).filter((location): location is Location => location !== null) : [];
+  });
+  const [scenarios, setScenarios] = useState<Scenario[]>(() => {
+    const saved = readSession<Scenario[] | null>("scenarios", null);
+    return saved ? saved.map((scenario) => sanitizeScenario(scenario)).filter((scenario): scenario is Scenario => scenario !== null) : [];
   });
   const [selectedId, setSelectedId] = useState(() => {
     const saved = readSession<string>("selectedId", "coda");
@@ -1504,10 +1610,20 @@ export default function DreamboundApp() {
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState("Dialogue");
   const [isCreating, setIsCreating] = useState(false);
+  const [isCreatingLocation, setIsCreatingLocation] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
   const [confirmDeleteCharacter, setConfirmDeleteCharacter] = useState<Character | null>(null);
   const [downloadingCharacter, setDownloadingCharacter] = useState<Character | null>(null);
   const [characterDownloadError, setCharacterDownloadError] = useState("");
+  const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+  const [confirmDeleteLocation, setConfirmDeleteLocation] = useState<Location | null>(null);
+  const [locationError, setLocationError] = useState("");
+  const [locationImportMsg, setLocationImportMsg] = useState("");
+  const [isCreatingScenario, setIsCreatingScenario] = useState(false);
+  const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
+  const [confirmDeleteScenario, setConfirmDeleteScenario] = useState<Scenario | null>(null);
+  const [scenarioError, setScenarioError] = useState("");
+  const [scenarioImportMsg, setScenarioImportMsg] = useState("");
   const [portraitUrls, setPortraitUrls] = useState<Record<string, string>>({});
   const [apiToken, setApiToken] = useState(readStoredToken);
   const [tokenStorageMode, setTokenStorageMode] =
@@ -1893,6 +2009,14 @@ export default function DreamboundApp() {
   }, [characters]);
 
   useEffect(() => {
+    writeSession("locations", locations.slice(0, 60));
+  }, [locations]);
+
+  useEffect(() => {
+    writeSession("scenarios", scenarios.slice(0, 60));
+  }, [scenarios]);
+
+  useEffect(() => {
     savePersonas(personas);
   }, [personas]);
 
@@ -2015,12 +2139,12 @@ export default function DreamboundApp() {
 
   function handleEnter() {
     setCurrentUser({ displayName: playerProfile.name.trim() });
-    setView("home");
+    setView("roleplay");
   }
 
   function handleSignOut() {
     setCurrentUser(null);
-    setView("home");
+    setView("roleplay");
   }
 
   function updatePlayerProfile(patch: Partial<{ name: string; persona: string }>) {
@@ -2862,6 +2986,7 @@ export default function DreamboundApp() {
             allowedRelationshipTypes: selected.allowedRelationshipTypes,
             disallowedContent: selected.disallowedContent,
             pronouns: selected.pronouns,
+            traits: selected.traits,
           }),
           scene: activeSession?.sandbox ? "" : resolvedSceneTitle,
           sceneId: activeSession?.sandbox ? "" : activeScene.id,
@@ -3791,7 +3916,7 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
       ),
     );
     setSelectedId(id);
-    setView("home");
+    setView("roleplay");
     requestPersonaStart({ kind: "imported", characterId: id });
   }
 
@@ -3986,7 +4111,185 @@ function updateCharacter(id: string, updates: Partial<Character>) {
     if (selectedId === character.id) {
       setSelectedId("coda");
     }
-    setView("home");
+    setView("roleplay");
+  }
+
+  const MAX_LOCATIONS = 60;
+
+  function createLocation(input: Partial<Location>) {
+    const now = new Date().toISOString();
+    const location = sanitizeLocation({
+      ...input,
+      id: `location-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      source: "custom",
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (!location) {
+      setLocationError("That location could not be created.");
+      return;
+    }
+    setLocations((current) => {
+      if (current.length >= MAX_LOCATIONS) {
+        setLocationError("You have reached the maximum number of locations.");
+        return current;
+      }
+      return [...current, location];
+    });
+    setIsCreatingLocation(false);
+  }
+
+  function updateLocation(id: string, updates: Partial<Location>) {
+    setLocations((current) => current.map((location) => {
+      if (location.id !== id || !isUserOwnedLocation(location)) return location;
+      const merged = { ...location, ...updates, id, source: "custom" as const, updatedAt: new Date().toISOString() };
+      const sanitized = sanitizeLocation(merged);
+      if (!sanitized) return location;
+      return sanitized;
+    }));
+    setEditingLocation(null);
+  }
+
+  function deleteLocation(location: Location) {
+    if (!isUserOwnedLocation(location)) return;
+    setLocations((current) => current.filter((candidate) => candidate.id !== location.id));
+    setEditingLocation(null);
+    setConfirmDeleteLocation(null);
+  }
+
+  async function handleLocationImport(file: File) {
+    setLocationError("");
+    setLocationImportMsg("");
+    try {
+      if (file.size > 256 * 1024) {
+        throw new Error("This location file is too large to import safely.");
+      }
+      const json = await file.text();
+      const result = parseLocationImport(json);
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+      const unique = ensureUniqueLocationIds(
+        result.locations.map((location) => ({ ...location, source: "custom" as const })),
+        locations.map((location) => location.id),
+      );
+      setLocations((current) => {
+        if (current.length + unique.length > MAX_LOCATIONS) {
+          throw new Error("Importing these locations would exceed the maximum number of locations.");
+        }
+        return [...current, ...unique];
+      });
+      setLocationImportMsg(`Imported ${unique.length} ${unique.length === 1 ? "location" : "locations"}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "That location file could not be read.";
+      setLocationError(message);
+    }
+  }
+
+  function importLocationFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) void handleLocationImport(file);
+    event.target.value = "";
+  }
+
+  function exportLocation(location: Location) {
+    if (!isUserOwnedLocation(location)) return;
+    downloadTextFile(
+      `howling-whispers-location-${location.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`,
+      serializeLocation(location),
+    );
+    setEditingLocation(null);
+  }
+
+  const MAX_SCENARIOS = 60;
+
+  function isUserOwnedScenario(scenario: Scenario) {
+    return scenario.source === "custom";
+  }
+
+  function createScenario(input: Partial<Scenario>) {
+    const now = new Date().toISOString();
+    const scenario = sanitizeScenario({
+      ...input,
+      id: newScenarioId(),
+      source: "custom",
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (!scenario) {
+      setScenarioError("That scenario could not be created.");
+      return;
+    }
+    setScenarios((current) => {
+      if (current.length >= MAX_SCENARIOS) {
+        setScenarioError("You have reached the maximum number of scenarios.");
+        return current;
+      }
+      return [...current, scenario];
+    });
+    setIsCreatingScenario(false);
+  }
+
+  function updateScenario(id: string, updates: Partial<Scenario>) {
+    setScenarios((current) => current.map((scenario) => {
+      if (scenario.id !== id || !isUserOwnedScenario(scenario)) return scenario;
+      const merged = { ...scenario, ...updates, id, source: "custom" as const, updatedAt: new Date().toISOString() };
+      const sanitized = sanitizeScenario(merged);
+      if (!sanitized) return scenario;
+      return sanitized;
+    }));
+    setEditingScenario(null);
+  }
+
+  function deleteScenario(scenario: Scenario) {
+    if (!isUserOwnedScenario(scenario)) return;
+    setScenarios((current) => current.filter((candidate) => candidate.id !== scenario.id));
+    setEditingScenario(null);
+    setConfirmDeleteScenario(null);
+  }
+
+  async function handleScenarioImport(file: File) {
+    setScenarioError("");
+    setScenarioImportMsg("");
+    try {
+      if (file.size > 256 * 1024) {
+        throw new Error("This scenario file is too large to import safely.");
+      }
+      const json = await file.text();
+      const result = parseScenarioImport(json);
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+      const unique = ensureUniqueScenarioIds(
+        result.scenarios.map((scenario) => ({ ...scenario, source: "custom" as const })),
+        scenarios.map((scenario) => scenario.id),
+      );
+      setScenarios((current) => {
+        if (current.length + unique.length > MAX_SCENARIOS) {
+          throw new Error("Importing these scenarios would exceed the maximum number of scenarios.");
+        }
+        return [...current, ...unique];
+      });
+      setScenarioImportMsg(`Imported ${unique.length} ${unique.length === 1 ? "scenario" : "scenarios"}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "That scenario file could not be read.";
+      setScenarioError(message);
+    }
+  }
+
+  function importScenarioFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) void handleScenarioImport(file);
+    event.target.value = "";
+  }
+
+  function exportScenario(scenario: Scenario) {
+    if (!isUserOwnedScenario(scenario)) return;
+    downloadTextFile(
+      `howling-whispers-scenario-${scenario.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`,
+      serializeScenario(scenario),
+    );
+    setEditingScenario(null);
   }
 
   // ----- Private-data backup & restore ---------------------------------------
@@ -4859,6 +5162,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
               <span aria-hidden="true">{entranceCodaLocked ? "◆" : "◇"}</span>
               {entranceCodaLocked ? "Resume rotation" : "Keep Coda"}
             </button>
+            <RadioPlayer placement="above" />
           </div>
         </aside>
       </main>
@@ -4886,6 +5190,8 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           id: `note-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
           text: "",
           enabled: true,
+          scope: "character",
+          characterId: selected.id,
           createdAt: now,
           updatedAt: now,
         }],
@@ -4955,8 +5261,8 @@ function updateCharacter(id: string, updates: Partial<Character>) {
       <header className="topbar">
         <button
           className="brand brand-button"
-          onClick={() => setView("home")}
-          aria-label="The Howling Whispers home"
+          onClick={() => setView("roleplay")}
+          aria-label="The Howling Whispers roleplay"
         >
           <span className="brand-mark" aria-hidden="true">
             ◒
@@ -4966,10 +5272,10 @@ function updateCharacter(id: string, updates: Partial<Character>) {
         <div className="top-divider" />
         <nav className="app-nav" aria-label="Primary navigation">
           <button
-            className={view === "home" ? "active" : ""}
-            onClick={() => setView("home")}
+            className={view === "roleplay" ? "active" : ""}
+            onClick={() => setView("roleplay")}
           >
-            Characters
+Roleplay
           </button>
             <button
               className={view === "personas" ? "active" : ""}
@@ -5009,10 +5315,11 @@ function updateCharacter(id: string, updates: Partial<Character>) {
                           ? "Howling Add-ons"
                           : view === "living-cast"
                             ? "Living Cast"
-                            : "Choose a character"}
+                             : "Begin a roleplay"}
           </span>
           <span aria-hidden="true">›</span>
         </div>
+        <RadioPlayer placement="below" />
         <div className="top-actions">
           <button
             className={`connection-pill ${providerState}`}
@@ -5102,8 +5409,8 @@ function updateCharacter(id: string, updates: Partial<Character>) {
         }}
       />
 
-      {(view === "home" || view === "scenes" || isCreating || editingCharacter || downloadingCharacter || confirmDeleteCharacter) && (
-        <CharacterArea
+      {(view === "roleplay" || view === "scenes" || isCreating || editingCharacter || downloadingCharacter || confirmDeleteCharacter) && (
+        <RoleplayArea
           view={view}
           currentUser={currentUser}
           setView={setView}
@@ -5122,6 +5429,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           setEditingCharacter={setEditingCharacter}
           setConfirmDeleteCharacter={setConfirmDeleteCharacter}
           setIsCreating={setIsCreating}
+          setIsCreatingLocation={setIsCreatingLocation}
           characterBackupMsg={characterBackupMsg}
           characterBackupError={characterBackupError}
           importCharacterFile={importCharacterFile}
@@ -5139,6 +5447,19 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           characterDownloadError={characterDownloadError}
           confirmDeleteCharacter={confirmDeleteCharacter}
           deleteCharacter={deleteCharacter}
+          locations={locations}
+          isUserOwnedLocation={isUserOwnedLocation}
+          createLocation={createLocation}
+          updateLocation={updateLocation}
+          deleteLocation={deleteLocation}
+          editingLocation={editingLocation}
+          setEditingLocation={setEditingLocation}
+          confirmDeleteLocation={confirmDeleteLocation}
+          setConfirmDeleteLocation={setConfirmDeleteLocation}
+          locationError={locationError}
+          locationImportMsg={locationImportMsg}
+          importLocationFile={importLocationFile}
+          exportLocation={exportLocation}
           selected={selected}
           themeVariables={themeVariables}
           codaWorldGuide={codaWorldGuide}

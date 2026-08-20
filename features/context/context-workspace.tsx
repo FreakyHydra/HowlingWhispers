@@ -16,6 +16,9 @@ export interface ContextWorkspaceProps {
   updateLorebook: (id: string, patch: Partial<LorebookRecord>) => void;
   onImportFile: (file: File, kind: "memory" | "author-note" | "lorebook") => void;
   onClose: () => void;
+  activeCharacterId?: string;
+  activeSceneId?: string;
+  characters?: Array<{ id: string; name: string }>;
   activeContextManifest?: {
     estimatedInputTokens: number;
     includedLore: Array<{ id: string; title: string; reason: string }>;
@@ -48,6 +51,9 @@ export function ContextWorkspace(props: ContextWorkspaceProps) {
     updateLorebook,
     onImportFile,
     onClose,
+    activeCharacterId,
+    activeSceneId,
+    characters,
     activeContextManifest,
   } = props;
 
@@ -189,6 +195,31 @@ export function ContextWorkspace(props: ContextWorkspaceProps) {
                     </label>
                     <span className="context-token-count">{estimateTokens(entry.text)} tokens</span>
                     <button className="context-delete-btn" onClick={() => deleteContextEntry("author-note", entry.id)}>Delete</button>
+                  </div>
+                  <div className="context-scope-row">
+                    <select
+                      value={entry.scope}
+                      onChange={(e) => {
+                        const newScope = e.target.value as AuthorNoteEntry["scope"];
+                        const patch: Partial<AuthorNoteEntry> = { scope: newScope };
+                        if (newScope === "character") patch.characterId = activeCharacterId;
+                        else if (newScope === "global") { patch.characterId = undefined; patch.sceneId = undefined; }
+                        else if (newScope === "scene") patch.sceneId = activeSceneId;
+                        updateContextEntry("author-note", entry.id, patch);
+                      }}
+                      className="context-scope-select"
+                    >
+                      <option value="global">Global</option>
+                      <option value="character">This Character</option>
+                      <option value="scene">This Scene</option>
+                    </select>
+                    <span className="context-scope-label">
+                      {entry.scope === "character" && (() => {
+                        const char = characters?.find((c) => c.id === entry.characterId);
+                        return char ? ` — ${char.name}` : "";
+                      })()}
+                      {entry.scope === "scene" && entry.sceneId ? ` — ${entry.sceneId}` : ""}
+                    </span>
                   </div>
                   <textarea
                     value={entry.text}

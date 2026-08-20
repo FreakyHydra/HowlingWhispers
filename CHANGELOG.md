@@ -65,6 +65,37 @@ Before 0.8.0, Howling Whispers had context scattered across several systems. Aft
 
 315/315 tests passed · lint clean · build validated.
 
+## 0.8.1 — Scoped Author's Notes
+
+- Author's Notes now support scoping: Global, This Character, or This Scene
+- Character-scoped notes only appear in the selected character's prompt
+- Scene-scoped notes only appear in the active scene's prompt
+- Global notes continue to appear for all characters and scenes
+- Scope selector added to the Context workspace and compact panel with auto-fill
+- New notes default to character-scoped with the active character pre-selected
+- Imported notes default to global scope
+- Backward-compatible: existing notes without a scope are treated as global
+- Context compilation filters notes by scope before rendering
+- Manifest `includedAuthorNotes` count reflects filtered results
+- Author note type guards widened to allow scoping fields
+- Backup sanitization accepts scoped note fields
+- Character ID and scene ID passed through to context UI
+- Added tests for character, scene, global, disabled, and legacy notes
+
+### Persistent Radio Player
+
+- Live radio player integrated with compact trigger and floating overlay
+- Playback state persists across routes via root `RadioProvider`
+- Trigger appears bottom-right on the welcome screen and top header on active RP scenes
+- Overlay provides play/pause, station controls, and volume
+- Dev server proxy configured for `/radio/` endpoint
+- New radio CSS for trigger, popover, animations, and placement variants
+
+### Infrastructure
+
+- Version bumped to 0.8.1 across package.json, package-lock.json, launcher, and tests
+
+
 ## 0.7.3 — The Living Stage: Second Act
 
 Planned fixes and completion work:

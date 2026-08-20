@@ -106,6 +106,7 @@ export type HowlingPortableCharacter = {
   backgroundFocalPoint?: string;
   cardV2: HowlingV2Metadata;
   pronouns?: string;
+  traits?: import("./traits.ts").CharacterTraits;
 };
 
 export type V2ExportSource = {
@@ -119,6 +120,7 @@ export type V2ExportSource = {
   cardV2?: HowlingV2Metadata;
   portableCharacterBook?: CharacterBookV2;
   pronouns?: string;
+  traits?: import("./traits.ts").CharacterTraits;
 };
 
 export type V2CanonSource = V2ExportSource & {
@@ -220,6 +222,7 @@ export function characterCardV2ToHowling(card: CharacterCardV2, id = portableId(
   ].filter(Boolean);
   const role = data.tags.slice(0, 2).join(" / ") || "Imported character";
   const pronouns = extractPronounsFromDescription(data.description);
+  const traits = parseTraitsFromExtensions(data.extensions);
   return {
     id,
     name: data.name,
@@ -252,6 +255,7 @@ export function characterCardV2ToHowling(card: CharacterCardV2, id = portableId(
       original: card,
     },
     pronouns: pronouns || undefined,
+    ...(traits ? { traits } : {}),
   };
 }
 
@@ -261,6 +265,10 @@ export function howlingCharacterToV2(character: V2ExportSource): CharacterCardV2
   const personality = character.cardV2?.personality || preserved?.personality || character.profile || character.role || "";
   const scenario = character.cardV2?.scenario || preserved?.scenario
     || [character.scene, character.weather].filter(Boolean).join(". ");
+  const extensions = preserved?.extensions ? structuredCloneSafe(preserved.extensions) : {};
+  if (character.traits) {
+    extensions.howling_traits = character.traits;
+  }
   return {
     spec: CHARACTER_CARD_V2_SPEC,
     spec_version: CHARACTER_CARD_V2_VERSION,
@@ -288,7 +296,7 @@ export function howlingCharacterToV2(character: V2ExportSource): CharacterCardV2
         || preserved?.character_version
         || "1.0"
       ).slice(0, 120),
-      extensions: preserved?.extensions ? structuredCloneSafe(preserved.extensions) : {},
+      extensions,
       ...(character.cardV2?.characterBook || preserved?.character_book || character.portableCharacterBook
         ? { character_book: character.cardV2?.characterBook || preserved?.character_book || character.portableCharacterBook }
         : {}),
@@ -325,6 +333,7 @@ export function characterCardV2ToCanon(character: V2CanonSource, revision: strin
   }
   const ageCategory = character.ageCategory ?? "unknown";
   const pronouns = character.pronouns ?? extractPronounsFromDescription(metadata.description);
+  const traits = character.traits;
   return {
     format: "howling-whispers-character",
     version: 1,
@@ -339,6 +348,7 @@ export function characterCardV2ToCanon(character: V2CanonSource, revision: strin
       disallowedContent: character.disallowedContent ?? [],
     },
     rawSources: [],
+    ...(traits ? { traits } : {}),
   };
 }
 
@@ -708,4 +718,31 @@ function concat(parts: Uint8Array[]): Uint8Array {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseTraitsFromExtensions(extensions: Record<string, unknown> | undefined): import("./traits.ts").CharacterTraits | undefined {
+  if (!extensions || typeof extensions !== "object") return undefined;
+  const raw = extensions.howling_traits;
+  if (!isRecord(raw)) return undefined;
+  const primary = Array.isArray(raw.primary)
+    ? raw.primary.filter((t): t is string => typeof t === "string").slice(0, 20)
+    : [];
+  const secondary = Array.isArray(raw.secondary)
+    ? raw.secondary.filter((t): t is string => typeof t === "string").slice(0, 20)
+    : [];
+  const situational = Array.isArray(raw.situational)
+    ? raw.situational.filter((t): t is string => typeof t === "string").slice(0, 20)
+    : [];
+  const custom = Array.isArray(raw.custom)
+    ? raw.custom.slice(0, 10).flatMap((item: unknown) => {
+        if (!isRecord(item)) return [];
+        const id = typeof item.id === "string" ? item.id.slice(0, 120) : "";
+        const name = typeof item.name === "string" ? item.name.slice(0, 80) : "";
+        const description = typeof item.description === "string" ? item.description.slice(0, 240) : "";
+        if (!id || !name) return [];
+        return [{ id, name, description }];
+      })
+    : [];
+  if (!primary.length && !secondary.length && !situational.length && !custom.length) return undefined;
+  return { primary, secondary, situational, custom };
 }

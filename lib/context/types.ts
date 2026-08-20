@@ -9,11 +9,16 @@ export type MemoryEntry = {
   updatedAt: number;
 };
 
+export type AuthorNoteScope = "character" | "scene" | "global";
+
 export type AuthorNoteEntry = {
   id: string;
   text: string;
   enabled: boolean;
   preset?: string;
+  scope: AuthorNoteScope;
+  characterId?: string;
+  sceneId?: string;
   createdAt: number;
   updatedAt: number;
 };

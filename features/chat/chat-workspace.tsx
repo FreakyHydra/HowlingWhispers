@@ -49,7 +49,7 @@ export interface ChatWorkspaceProps {
   isReplying: boolean;
   chatError: string;
   configured: boolean;
-  setView: (view: "home" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas" | "living-cast") => void;
+  setView: (view: "roleplay" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas" | "living-cast") => void;
   setChatError: (error: string) => void;
   autopilotControlsCollapsed: boolean;
   setAutopilotControlsCollapsed: (collapsed: boolean) => void;
@@ -1459,20 +1459,23 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
         </div>
       )}
        {showContextWorkspace && (
-         <ContextWorkspace
-           contextLibrary={contextLibrary}
-           setContextLibrary={setContextLibrary}
-           createContextEntry={createContextEntry}
-           updateContextEntry={updateContextEntry}
-           deleteContextEntry={deleteContextEntry}
-           addLorebook={addLorebook}
-           removeLorebook={removeLorebook}
-           updateLorebook={updateLorebook}
-           onImportFile={importContextFile}
-           onClose={() => setShowContextWorkspace(false)}
-           activeContextManifest={activeContextManifest}
-         />
-       )}
+          <ContextWorkspace
+            contextLibrary={contextLibrary}
+            setContextLibrary={setContextLibrary}
+            createContextEntry={createContextEntry}
+            updateContextEntry={updateContextEntry}
+            deleteContextEntry={deleteContextEntry}
+            addLorebook={addLorebook}
+            removeLorebook={removeLorebook}
+            updateLorebook={updateLorebook}
+            onImportFile={importContextFile}
+            onClose={() => setShowContextWorkspace(false)}
+            activeCharacterId={selected.id}
+            activeSceneId={activeSession?.sceneId}
+            characters={characters}
+            activeContextManifest={activeContextManifest}
+          />
+        )}
       {props.showPersonaModal && props.activeSession && (
         <div
           className="modal-backdrop"

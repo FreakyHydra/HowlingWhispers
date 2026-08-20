@@ -12,7 +12,7 @@ export function ChangelogView(props: ChangelogViewProps) {
           <h1>What&apos;s new</h1>
           <p>Only the changes that affect how you use The Howling Whispers.</p>
         </div>
-        <button className="outline-button" onClick={() => props.setView("home")}>← Back to characters</button>
+        <button className="outline-button" onClick={() => props.setView("roleplay")}>← Back to roleplay</button>
       </header>
 
           <div className="changelog-list">
@@ -135,6 +135,30 @@ export function ChangelogView(props: ChangelogViewProps) {
                   <p>After 0.8.0, context becomes a first-class part of the engine.</p>
                   <p><strong>Memory remembers. Lore awakens. Context finally becomes something you can control.</strong></p>
                 </div>
+              </div>
+            </article>
+                                    <article className="changelog-entry featured">
+              <span className="changelog-mark">◐</span>
+              <div>
+                <span className="changelog-version">Version 0.8.1 · Scoped Author&apos;s Notes</span>
+                <h2>Scoped Author&apos;s Notes</h2>
+                <p>Author&apos;s Notes now support scoping so scene direction stays relevant to the right character and scene.</p>
+                <ul>
+                  <li><strong>Global</strong> — appears for every character and scene</li>
+                  <li><strong>This Character</strong> — only appears for the selected character</li>
+                  <li><strong>This Scene</strong> — only appears in the active scene</li>
+                </ul>
+                <p>New notes default to character-scoped with the active character pre-selected. Imported notes default to global. Existing notes without a scope are treated as global for backward compatibility.</p>
+                <p>The Context workspace and compact panel now include a scope selector with auto-fill, and compilation filtering keeps the manifest count accurate.</p>
+                <ul>
+                  <li>Scope selector with auto-fill in Context workspace and compact panel</li>
+                  <li>Character ID and scene ID passed through to context UI</li>
+                  <li>Context compilation filters notes by scope before rendering</li>
+                  <li>Author note type guards widened to allow scoping fields</li>
+                  <li>Backup sanitization accepts scoped note fields</li>
+                  <li>Import default scope set to global</li>
+                  <li>Tests for character, scene, global, disabled, and legacy notes</li>
+                </ul>
               </div>
             </article>
             <article className="changelog-entry featured">

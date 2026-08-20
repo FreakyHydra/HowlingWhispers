@@ -95,6 +95,7 @@ function authorNoteEntryFromString(text: string): AuthorNoteEntry {
     id: `note-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     text: trimmed,
     enabled: true,
+    scope: "global",
     createdAt: now,
     updatedAt: now,
   };

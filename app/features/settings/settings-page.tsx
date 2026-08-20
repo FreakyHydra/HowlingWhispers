@@ -241,8 +241,8 @@ export function SettingsPage(props: SettingsPageProps) {
                 what The Howling Whispers remembers in this browser.
               </p>
             </div>
-            <button className="outline-button" onClick={() => setView("home")}>
-              ← Back to characters
+            <button className="outline-button" onClick={() => setView("roleplay")}>
+              ← Back to roleplay
             </button>
           </div>
 

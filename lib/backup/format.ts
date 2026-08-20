@@ -12,6 +12,7 @@ import type { ContextLibrary } from "../context/types.ts";
 // Credentials (NovelAI tokens, passwords, etc.) must never be included.
 
 import { sanitizeCast, type LivingCastEntry } from "../generation/living-cast.ts";
+import { sanitizeTraits } from "../characters/traits.ts";
 
 export const PORTABLE_BACKUP_FORMAT = "howling-whispers-backup";
 export const PORTABLE_BACKUP_VERSION = 1;
@@ -100,6 +101,81 @@ export type BackupUserCharacter = {
   allowedRelationshipTypes?: string[];
   disallowedContent?: string[];
   pronouns?: string;
+  traits?: import("../characters/traits.ts").CharacterTraits;
+  appearance?: {
+    height?: string;
+    build?: string;
+    hair?: string;
+    eyes?: string;
+    skin?: string;
+    distinguishingFeatures?: string;
+    clothing?: string;
+    generalDescription?: string;
+  };
+  personality?: {
+    likes?: string;
+    dislikes?: string;
+    habits?: string;
+    strengths?: string;
+    weaknesses?: string;
+    fears?: string;
+    values?: string;
+  };
+  voice?: {
+    speechStyle?: string;
+    vocabularyLevel?: string;
+    accentDialect?: string;
+    sentenceLength?: string;
+    humorStyle?: string;
+    swearingLevel?: string;
+    emotionalExpressiveness?: string;
+    bodyLanguage?: string;
+    mannerisms?: string;
+    rarePhrases?: string;
+    exampleDialogue?: string;
+  };
+  background?: {
+    biography?: string;
+    childhood?: string;
+    importantEvents?: string;
+    family?: string;
+    education?: string;
+    occupation?: string;
+    skills?: string;
+    secrets?: string;
+    trauma?: string;
+    currentSituation?: string;
+  };
+  relationships?: Array<{
+    characterId: string;
+    type: string;
+    description: string;
+    trust?: string;
+    affection?: string;
+    familiarity?: string;
+    notes?: string;
+  }>;
+  rpBehavior?: {
+    goals?: string;
+    motivations?: string;
+    boundaries?: string;
+    avoids?: string;
+    pursues?: string;
+    conflictBehavior?: string;
+    responseToDanger?: string;
+    responseToAffection?: string;
+    responseToStrangers?: string;
+    responseToAuthority?: string;
+  };
+  worldLore?: {
+    worldId?: string;
+    setting?: string;
+    faction?: string;
+    home?: string;
+    defaultScenario?: string;
+  };
+  contextNotes?: string;
+  authorNote?: string;
 };
 
 export type BackupCuratedState = {
@@ -258,6 +334,81 @@ export type BackupSource = {
     allowedRelationshipTypes?: string[];
     disallowedContent?: string[];
     pronouns?: string;
+    traits?: import("../characters/traits.ts").CharacterTraits;
+    appearance?: {
+      height?: string;
+      build?: string;
+      hair?: string;
+      eyes?: string;
+      skin?: string;
+      distinguishingFeatures?: string;
+      clothing?: string;
+      generalDescription?: string;
+    };
+    personality?: {
+      likes?: string;
+      dislikes?: string;
+      habits?: string;
+      strengths?: string;
+      weaknesses?: string;
+      fears?: string;
+      values?: string;
+    };
+    voice?: {
+      speechStyle?: string;
+      vocabularyLevel?: string;
+      accentDialect?: string;
+      sentenceLength?: string;
+      humorStyle?: string;
+      swearingLevel?: string;
+      emotionalExpressiveness?: string;
+      bodyLanguage?: string;
+      mannerisms?: string;
+      rarePhrases?: string;
+      exampleDialogue?: string;
+    };
+    background?: {
+      biography?: string;
+      childhood?: string;
+      importantEvents?: string;
+      family?: string;
+      education?: string;
+      occupation?: string;
+      skills?: string;
+      secrets?: string;
+      trauma?: string;
+      currentSituation?: string;
+    };
+    relationships?: Array<{
+      characterId: string;
+      type: string;
+      description: string;
+      trust?: string;
+      affection?: string;
+      familiarity?: string;
+      notes?: string;
+    }>;
+    rpBehavior?: {
+      goals?: string;
+      motivations?: string;
+      boundaries?: string;
+      avoids?: string;
+      pursues?: string;
+      conflictBehavior?: string;
+      responseToDanger?: string;
+      responseToAffection?: string;
+      responseToStrangers?: string;
+      responseToAuthority?: string;
+    };
+    worldLore?: {
+      worldId?: string;
+      setting?: string;
+      faction?: string;
+      home?: string;
+      defaultScenario?: string;
+    };
+    contextNotes?: string;
+    authorNote?: string;
   }>;
   messages: BackupData["messages"];
   sessions: BackupData["sessions"];
@@ -317,6 +468,16 @@ export function buildBackupPayload(
         allowedRelationshipTypes: character.allowedRelationshipTypes,
         disallowedContent: character.disallowedContent,
         pronouns: character.pronouns || undefined,
+        traits: character.traits ? sanitizeTraits(character.traits) : undefined,
+        appearance: character.appearance,
+        personality: character.personality,
+        voice: character.voice,
+        background: character.background,
+        relationships: character.relationships?.slice(0, 20),
+        rpBehavior: character.rpBehavior,
+        worldLore: character.worldLore,
+        contextNotes: character.contextNotes || undefined,
+        authorNote: character.authorNote || undefined,
       });
     }
   }
@@ -789,7 +950,89 @@ function sanitizeCharacters(value: unknown): BackupUserCharacter[] {
         ? c.disallowedContent.filter((t): t is string => typeof t === "string").slice(0, 30)
         : undefined,
       pronouns: typeof c.pronouns === "string" ? c.pronouns.slice(0, 60) : undefined,
+      traits: sanitizeTraits(c.traits),
+      appearance: isRecord(c.appearance) ? {
+        height: typeof c.appearance.height === "string" ? c.appearance.height.slice(0, 200) : undefined,
+        build: typeof c.appearance.build === "string" ? c.appearance.build.slice(0, 200) : undefined,
+        hair: typeof c.appearance.hair === "string" ? c.appearance.hair.slice(0, 200) : undefined,
+        eyes: typeof c.appearance.eyes === "string" ? c.appearance.eyes.slice(0, 200) : undefined,
+        skin: typeof c.appearance.skin === "string" ? c.appearance.skin.slice(0, 200) : undefined,
+        distinguishingFeatures: typeof c.appearance.distinguishingFeatures === "string" ? c.appearance.distinguishingFeatures.slice(0, 500) : undefined,
+        clothing: typeof c.appearance.clothing === "string" ? c.appearance.clothing.slice(0, 500) : undefined,
+        generalDescription: typeof c.appearance.generalDescription === "string" ? c.appearance.generalDescription.slice(0, 1000) : undefined,
+      } : undefined,
+      personality: isRecord(c.personality) ? {
+        likes: typeof c.personality.likes === "string" ? c.personality.likes.slice(0, 500) : undefined,
+        dislikes: typeof c.personality.dislikes === "string" ? c.personality.dislikes.slice(0, 500) : undefined,
+        habits: typeof c.personality.habits === "string" ? c.personality.habits.slice(0, 500) : undefined,
+        strengths: typeof c.personality.strengths === "string" ? c.personality.strengths.slice(0, 500) : undefined,
+        weaknesses: typeof c.personality.weaknesses === "string" ? c.personality.weaknesses.slice(0, 500) : undefined,
+        fears: typeof c.personality.fears === "string" ? c.personality.fears.slice(0, 500) : undefined,
+        values: typeof c.personality.values === "string" ? c.personality.values.slice(0, 500) : undefined,
+      } : undefined,
+      voice: isRecord(c.voice) ? {
+        speechStyle: typeof c.voice.speechStyle === "string" ? c.voice.speechStyle.slice(0, 1000) : undefined,
+        vocabularyLevel: typeof c.voice.vocabularyLevel === "string" ? c.voice.vocabularyLevel.slice(0, 500) : undefined,
+        accentDialect: typeof c.voice.accentDialect === "string" ? c.voice.accentDialect.slice(0, 500) : undefined,
+        sentenceLength: typeof c.voice.sentenceLength === "string" ? c.voice.sentenceLength.slice(0, 200) : undefined,
+        humorStyle: typeof c.voice.humorStyle === "string" ? c.voice.humorStyle.slice(0, 500) : undefined,
+        swearingLevel: typeof c.voice.swearingLevel === "string" ? c.voice.swearingLevel.slice(0, 200) : undefined,
+        emotionalExpressiveness: typeof c.voice.emotionalExpressiveness === "string" ? c.voice.emotionalExpressiveness.slice(0, 500) : undefined,
+        bodyLanguage: typeof c.voice.bodyLanguage === "string" ? c.voice.bodyLanguage.slice(0, 500) : undefined,
+        mannerisms: typeof c.voice.mannerisms === "string" ? c.voice.mannerisms.slice(0, 500) : undefined,
+        rarePhrases: typeof c.voice.rarePhrases === "string" ? c.voice.rarePhrases.slice(0, 500) : undefined,
+        exampleDialogue: typeof c.voice.exampleDialogue === "string" ? c.voice.exampleDialogue.slice(0, 2000) : undefined,
+      } : undefined,
+      background: isRecord(c.background) ? {
+        biography: typeof c.background.biography === "string" ? c.background.biography.slice(0, 2000) : undefined,
+        childhood: typeof c.background.childhood === "string" ? c.background.childhood.slice(0, 2000) : undefined,
+        importantEvents: typeof c.background.importantEvents === "string" ? c.background.importantEvents.slice(0, 2000) : undefined,
+        family: typeof c.background.family === "string" ? c.background.family.slice(0, 1000) : undefined,
+        education: typeof c.background.education === "string" ? c.background.education.slice(0, 1000) : undefined,
+        occupation: typeof c.background.occupation === "string" ? c.background.occupation.slice(0, 1000) : undefined,
+        skills: typeof c.background.skills === "string" ? c.background.skills.slice(0, 1000) : undefined,
+        secrets: typeof c.background.secrets === "string" ? c.background.secrets.slice(0, 1000) : undefined,
+        trauma: typeof c.background.trauma === "string" ? c.background.trauma.slice(0, 1000) : undefined,
+        currentSituation: typeof c.background.currentSituation === "string" ? c.background.currentSituation.slice(0, 1000) : undefined,
+      } : undefined,
+      relationships: Array.isArray(c.relationships) ? c.relationships.slice(0, 20).map((rel) => {
+        if (!isRecord(rel)) return null;
+        return {
+          characterId: typeof rel.characterId === "string" ? rel.characterId.slice(0, 120) : "",
+          type: typeof rel.type === "string" ? rel.type.slice(0, 200) : "",
+          description: typeof rel.description === "string" ? rel.description.slice(0, 1000) : "",
+          trust: typeof rel.trust === "string" ? rel.trust.slice(0, 200) : undefined,
+          affection: typeof rel.affection === "string" ? rel.affection.slice(0, 200) : undefined,
+          familiarity: typeof rel.familiarity === "string" ? rel.familiarity.slice(0, 200) : undefined,
+          notes: typeof rel.notes === "string" ? rel.notes.slice(0, 500) : undefined,
+        };
+      }).filter((r): r is NonNullable<typeof r> => r !== null && r.characterId) : undefined,
+      rpBehavior: isRecord(c.rpBehavior) ? {
+        goals: typeof c.rpBehavior.goals === "string" ? c.rpBehavior.goals.slice(0, 1000) : undefined,
+        motivations: typeof c.rpBehavior.motivations === "string" ? c.rpBehavior.motivations.slice(0, 1000) : undefined,
+        boundaries: typeof c.rpBehavior.boundaries === "string" ? c.rpBehavior.boundaries.slice(0, 1000) : undefined,
+        avoids: typeof c.rpBehavior.avoids === "string" ? c.rpBehavior.avoids.slice(0, 1000) : undefined,
+        pursues: typeof c.rpBehavior.pursues === "string" ? c.rpBehavior.pursues.slice(0, 1000) : undefined,
+        conflictBehavior: typeof c.rpBehavior.conflictBehavior === "string" ? c.rpBehavior.conflictBehavior.slice(0, 1000) : undefined,
+        responseToDanger: typeof c.rpBehavior.responseToDanger === "string" ? c.rpBehavior.responseToDanger.slice(0, 500) : undefined,
+        responseToAffection: typeof c.rpBehavior.responseToAffection === "string" ? c.rpBehavior.responseToAffection.slice(0, 500) : undefined,
+        responseToStrangers: typeof c.rpBehavior.responseToStrangers === "string" ? c.rpBehavior.responseToStrangers.slice(0, 500) : undefined,
+        responseToAuthority: typeof c.rpBehavior.responseToAuthority === "string" ? c.rpBehavior.responseToAuthority.slice(0, 500) : undefined,
+      } : undefined,
+      worldLore: isRecord(c.worldLore) ? {
+        worldId: typeof c.worldLore.worldId === "string" ? c.worldLore.worldId.slice(0, 120) : undefined,
+        setting: typeof c.worldLore.setting === "string" ? c.worldLore.setting.slice(0, 1000) : undefined,
+        faction: typeof c.worldLore.faction === "string" ? c.worldLore.faction.slice(0, 200) : undefined,
+        home: typeof c.worldLore.home === "string" ? c.worldLore.home.slice(0, 500) : undefined,
+        defaultScenario: typeof c.worldLore.defaultScenario === "string" ? c.worldLore.defaultScenario.slice(0, 1000) : undefined,
+      } : undefined,
+      contextNotes: typeof c.contextNotes === "string" ? c.contextNotes.slice(0, 2000) : undefined,
+      authorNote: typeof c.authorNote === "string" ? c.authorNote.slice(0, 2000) : undefined,
     });
   }
   return out;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

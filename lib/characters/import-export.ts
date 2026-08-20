@@ -11,6 +11,8 @@ const MAX_LIBRARY_CHARACTERS = 60;
 const CURATED_BUILTIN_IDS = new Set(["coda", "heather", "peony", "senako-steel"]);
 const AGE_CATEGORIES = new Set(["adult", "minor", "unknown"]);
 
+import { sanitizeTraits } from "./traits.ts";
+
 export type BackupCharacter = {
   id: string;
   name: string;
@@ -35,6 +37,81 @@ export type BackupCharacter = {
   allowedRelationshipTypes?: string[];
   disallowedContent?: string[];
   cardV2?: HowlingV2Metadata;
+  traits?: import("./traits.ts").CharacterTraits;
+  appearance?: {
+    height?: string;
+    build?: string;
+    hair?: string;
+    eyes?: string;
+    skin?: string;
+    distinguishingFeatures?: string;
+    clothing?: string;
+    generalDescription?: string;
+  };
+  personality?: {
+    likes?: string;
+    dislikes?: string;
+    habits?: string;
+    strengths?: string;
+    weaknesses?: string;
+    fears?: string;
+    values?: string;
+  };
+  voice?: {
+    speechStyle?: string;
+    vocabularyLevel?: string;
+    accentDialect?: string;
+    sentenceLength?: string;
+    humorStyle?: string;
+    swearingLevel?: string;
+    emotionalExpressiveness?: string;
+    bodyLanguage?: string;
+    mannerisms?: string;
+    rarePhrases?: string;
+    exampleDialogue?: string;
+  };
+  background?: {
+    biography?: string;
+    childhood?: string;
+    importantEvents?: string;
+    family?: string;
+    education?: string;
+    occupation?: string;
+    skills?: string;
+    secrets?: string;
+    trauma?: string;
+    currentSituation?: string;
+  };
+  relationships?: Array<{
+    characterId: string;
+    type: string;
+    description: string;
+    trust?: string;
+    affection?: string;
+    familiarity?: string;
+    notes?: string;
+  }>;
+  rpBehavior?: {
+    goals?: string;
+    motivations?: string;
+    boundaries?: string;
+    avoids?: string;
+    pursues?: string;
+    conflictBehavior?: string;
+    responseToDanger?: string;
+    responseToAffection?: string;
+    responseToStrangers?: string;
+    responseToAuthority?: string;
+  };
+  worldLore?: {
+    worldId?: string;
+    setting?: string;
+    faction?: string;
+    home?: string;
+    defaultScenario?: string;
+  };
+  contextNotes?: string;
+  authorNote?: string;
 };
 
 function clamp(
@@ -105,6 +182,84 @@ function sanitizeCharacter(value: unknown): BackupCharacter | null {
     allowedRelationshipTypes: sanitizeStringList(src.allowedRelationshipTypes, 24, 160),
     disallowedContent: sanitizeStringList(src.disallowedContent, 32, 240),
     cardV2,
+    traits: sanitizeTraits(src.traits),
+    appearance: isRecord(src.appearance) ? {
+      height: clampString(src.appearance.height),
+      build: clampString(src.appearance.build),
+      hair: clampString(src.appearance.hair),
+      eyes: clampString(src.appearance.eyes),
+      skin: clampString(src.appearance.skin),
+      distinguishingFeatures: clampString(src.appearance.distinguishingFeatures),
+      clothing: clampString(src.appearance.clothing),
+      generalDescription: clampString(src.appearance.generalDescription),
+    } : undefined,
+    personality: isRecord(src.personality) ? {
+      likes: clampString(src.personality.likes),
+      dislikes: clampString(src.personality.dislikes),
+      habits: clampString(src.personality.habits),
+      strengths: clampString(src.personality.strengths),
+      weaknesses: clampString(src.personality.weaknesses),
+      fears: clampString(src.personality.fears),
+      values: clampString(src.personality.values),
+    } : undefined,
+    voice: isRecord(src.voice) ? {
+      speechStyle: clampString(src.voice.speechStyle),
+      vocabularyLevel: clampString(src.voice.vocabularyLevel),
+      accentDialect: clampString(src.voice.accentDialect),
+      sentenceLength: clampString(src.voice.sentenceLength),
+      humorStyle: clampString(src.voice.humorStyle),
+      swearingLevel: clampString(src.voice.swearingLevel),
+      emotionalExpressiveness: clampString(src.voice.emotionalExpressiveness),
+      bodyLanguage: clampString(src.voice.bodyLanguage),
+      mannerisms: clampString(src.voice.mannerisms),
+      rarePhrases: clampString(src.voice.rarePhrases),
+      exampleDialogue: clampString(src.voice.exampleDialogue),
+    } : undefined,
+    background: isRecord(src.background) ? {
+      biography: clampString(src.background.biography),
+      childhood: clampString(src.background.childhood),
+      importantEvents: clampString(src.background.importantEvents),
+      family: clampString(src.background.family),
+      education: clampString(src.background.education),
+      occupation: clampString(src.background.occupation),
+      skills: clampString(src.background.skills),
+      secrets: clampString(src.background.secrets),
+      trauma: clampString(src.background.trauma),
+      currentSituation: clampString(src.background.currentSituation),
+    } : undefined,
+    relationships: Array.isArray(src.relationships) ? src.relationships.slice(0, 20).map((rel) => {
+      if (!isRecord(rel)) return null;
+      return {
+        characterId: clampString(rel.characterId),
+        type: clampString(rel.type),
+        description: clampString(rel.description),
+        trust: clampString(rel.trust),
+        affection: clampString(rel.affection),
+        familiarity: clampString(rel.familiarity),
+        notes: clampString(rel.notes),
+      };
+    }).filter((r): r is NonNullable<typeof r> => r !== null) : undefined,
+    rpBehavior: isRecord(src.rpBehavior) ? {
+      goals: clampString(src.rpBehavior.goals),
+      motivations: clampString(src.rpBehavior.motivations),
+      boundaries: clampString(src.rpBehavior.boundaries),
+      avoids: clampString(src.rpBehavior.avoids),
+      pursues: clampString(src.rpBehavior.pursues),
+      conflictBehavior: clampString(src.rpBehavior.conflictBehavior),
+      responseToDanger: clampString(src.rpBehavior.responseToDanger),
+      responseToAffection: clampString(src.rpBehavior.responseToAffection),
+      responseToStrangers: clampString(src.rpBehavior.responseToStrangers),
+      responseToAuthority: clampString(src.rpBehavior.responseToAuthority),
+    } : undefined,
+    worldLore: isRecord(src.worldLore) ? {
+      worldId: clampString(src.worldLore.worldId),
+      setting: clampString(src.worldLore.setting),
+      faction: clampString(src.worldLore.faction),
+      home: clampString(src.worldLore.home),
+      defaultScenario: clampString(src.worldLore.defaultScenario),
+    } : undefined,
+    contextNotes: clampString(src.contextNotes),
+    authorNote: clampString(src.authorNote),
   };
 }
 
@@ -114,6 +269,10 @@ function sanitizeStringList(value: unknown, maxItems: number, maxLength: number)
     .slice(0, maxItems)
     .map((item) => typeof item === "string" ? item.slice(0, maxLength).trim() : "")
     .filter(Boolean);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function sanitizeV2Metadata(value: unknown): HowlingV2Metadata | undefined {

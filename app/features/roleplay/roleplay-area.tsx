@@ -1,12 +1,17 @@
 "use client";
 
-import React, { type ComponentType } from "react";
-import { useState } from "react";
+import React, { type ComponentType, useState } from "react";
 import type { Character, SceneDefinition, StoryEditor, CommonScene, Message } from "../dreambound-app";
-import type { AgeCategory } from "../../lib/characters/canonical";
+import type { Location } from "../../lib/locations/types";
+import type { Scenario } from "../../lib/scenarios/types";
 import type { OllamaModelInfo } from "../../lib/ollama";
+import { CharacterFactory } from "../characters/character-factory";
+import { LocationCard } from "../locations/location-card";
+import { LocationFactory } from "../locations/location-factory";
+import { ScenarioCard } from "../scenarios/scenario-card";
+import { ScenarioFactory } from "../scenarios/scenario-factory";
 
-export interface CharacterAreaProps {
+export interface RoleplayAreaProps {
   view: string;
   currentUser: { displayName: string } | null;
   setView: (view: string) => void;
@@ -25,6 +30,7 @@ export interface CharacterAreaProps {
   setEditingCharacter: (character: Character | null) => void;
   setConfirmDeleteCharacter: (character: Character | null) => void;
   setIsCreating: (creating: boolean) => void;
+  setIsCreatingLocation: (creating: boolean) => void;
   characterBackupMsg: string;
   characterBackupError: string;
   importCharacterFile: (event: React.ChangeEvent<HTMLInputElement>) => void;
@@ -80,26 +86,105 @@ export interface CharacterAreaProps {
   onResumeLatest: () => void;
   hasLatestSession: boolean;
   Portrait: ComponentType<{ character: Character; accent?: string; image?: string }>;
+  locations: Location[];
+  isUserOwnedLocation: (location: Location) => boolean;
+  createLocation: (input: Partial<Location>) => void;
+  updateLocation: (id: string, updates: Partial<Location>) => void;
+  deleteLocation: (location: Location) => void;
+  editingLocation: Location | null;
+  setEditingLocation: (location: Location | null) => void;
+  confirmDeleteLocation: Location | null;
+  setConfirmDeleteLocation: (location: Location | null) => void;
+  locationError: string;
+  locationImportMsg: string;
+  importLocationFile: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  exportLocation: (location: Location) => void;
+  scenarios: Scenario[];
+  isUserOwnedScenario: (scenario: Scenario) => boolean;
+  createScenario: (input: Partial<Scenario>) => void;
+  updateScenario: (id: string, updates: Partial<Scenario>) => void;
+  deleteScenario: (scenario: Scenario) => void;
+  isCreatingScenario: boolean;
+  setIsCreatingScenario: (value: boolean) => void;
+  editingScenario: Scenario | null;
+  setEditingScenario: (scenario: Scenario | null) => void;
+  confirmDeleteScenario: Scenario | null;
+  setConfirmDeleteScenario: (scenario: Scenario | null) => void;
+  scenarioError: string;
+  scenarioImportMsg: string;
+  importScenarioFile: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  exportScenario: (scenario: Scenario) => void;
 }
 
-export function CharacterArea(props: CharacterAreaProps) {
+export function RoleplayArea(props: RoleplayAreaProps) {
   const { Portrait } = props;
+  const [roleplayType, setRoleplayType] = useState<"characters" | "locations" | "scenarios">("characters");
   const [characterTab, setCharacterTab] = useState<"curated" | "custom">("curated");
+  const [locationTab, setLocationTab] = useState<"curated" | "custom">("curated");
+  const [scenarioTab, setScenarioTab] = useState<"curated" | "custom">("curated");
   const curatedCharacters = props.characters.filter((character) => !props.isUserOwnedCharacter(character));
   const customCharacters = props.characters.filter((character) => props.isUserOwnedCharacter(character));
+  const curatedLocations = props.locations.filter((location) => !props.isUserOwnedLocation(location));
+  const customLocations = props.locations.filter((location) => props.isUserOwnedLocation(location));
+  const curatedScenarios = props.scenarios.filter((scenario) => !props.isUserOwnedScenario(scenario));
+  const customScenarios = props.scenarios.filter((scenario) => props.isUserOwnedScenario(scenario));
+
+  const countLabel =
+    roleplayType === "characters"
+      ? characterTab === "curated"
+        ? `${curatedCharacters.length} curated contacts`
+        : `${customCharacters.length} custom contacts`
+      : roleplayType === "locations"
+        ? locationTab === "curated"
+          ? `${curatedLocations.length} curated places`
+          : `${customLocations.length} custom places`
+        : scenarioTab === "curated"
+          ? `${curatedScenarios.length} curated scenarios`
+          : `${customScenarios.length} custom scenarios`;
+
+  const createButtonLabel =
+    roleplayType === "characters"
+      ? "Create contact"
+      : roleplayType === "locations"
+        ? "Create location"
+        : "Create scenario";
+
+  const handleCreate = () => {
+    if (roleplayType === "characters") {
+      props.setIsCreating(true);
+    } else if (roleplayType === "locations") {
+      props.setIsCreatingLocation(true);
+    } else if (roleplayType === "scenarios") {
+      props.setIsCreatingScenario(true);
+    }
+  };
+
+  const sectionEyebrow =
+    roleplayType === "characters"
+      ? "Contacts"
+      : roleplayType === "locations"
+        ? "Locations"
+        : "Scenarios";
+
+  const sectionHeading =
+    roleplayType === "characters"
+      ? "Choose someone to meet"
+      : roleplayType === "locations"
+        ? "Choose somewhere to begin"
+        : "Choose a story to enter";
+
   return (
     <>
-      {props.view === "home" && (
+      {props.view === "roleplay" && (
         <section className="character-home">
           <div className="home-hero">
             <div>
               <p className="eyebrow">
                 Welcome back{props.currentUser?.displayName.trim() ? `, ${props.currentUser.displayName}` : ""}
               </p>
-              <h1>Who will answer tonight?</h1>
+              <h1>Where will the whisper take you?</h1>
               <p>
-                Every whisper becomes a world. Choose a soul, then enter a new
-                scene or return to one already unfolding.
+                Every whisper becomes a world. Choose how your story begins, then step into something new or return to one already unfolding.
               </p>
               <button className="home-changelog-link" onClick={() => props.setView("changelog")}>
                 See what&apos;s new <span aria-hidden="true">→</span>
@@ -130,157 +215,283 @@ export function CharacterArea(props: CharacterAreaProps) {
             </button>
           </div>
 
-          <div className="home-section-heading">
-            <div>
-              <p className="eyebrow">Your characters</p>
-              <h2>Begin a new roleplay</h2>
-            </div>
-            <span className="home-section-count">
-              {characterTab === "curated"
-                ? `${curatedCharacters.length} curated souls`
-                : `${customCharacters.length} custom souls`}
-            </span>
-          </div>
-
           <div className="character-tabs">
             <button
-              className={characterTab === "curated" ? "active" : ""}
-              onClick={() => setCharacterTab("curated")}
+              className={roleplayType === "characters" ? "active" : ""}
+              onClick={() => setRoleplayType("characters")}
             >
-              Curated
+              Contacts
             </button>
             <button
-              className={characterTab === "custom" ? "active" : ""}
-              onClick={() => setCharacterTab("custom")}
+              className={roleplayType === "locations" ? "active" : ""}
+              onClick={() => setRoleplayType("locations")}
             >
-              Custom
+              Locations
+            </button>
+            <button
+              className={roleplayType === "scenarios" ? "active" : ""}
+              onClick={() => setRoleplayType("scenarios")}
+            >
+              Scenarios
             </button>
           </div>
 
-          <div className="character-backup-bar">
-            <label className="outline-button import-browse">
-              Import characters
-              <input
-                type="file"
-                accept=".png,.json,image/png,application/json"
-                onChange={props.importCharacterFile}
-              />
-            </label>
-            <button
-              className="outline-button"
-              onClick={props.exportCharacterLibrary}
-            >
-              Howling library backup
-            </button>
-            {props.characterBackupMsg && <span className="backup-feedback ok">{props.characterBackupMsg}</span>}
-            {props.characterBackupError && <span className="backup-feedback err">{props.characterBackupError}</span>}
-          </div>
+          {roleplayType === "characters" && (
+            <>
+              <div className="home-section-heading">
+                <div>
+                  <p className="eyebrow">{sectionEyebrow}</p>
+                  <h2>{sectionHeading}</h2>
+                </div>
+                <div className="home-section-actions">
+                  <span className="home-section-count">{countLabel}</span>
+                  <button className="primary-button" onClick={handleCreate} disabled={roleplayType === "scenarios"}>
+                    {createButtonLabel}
+                  </button>
+                </div>
+              </div>
 
-          <div className="character-gallery">
-            {(characterTab === "curated" ? curatedCharacters : customCharacters).map((character) => {
-              const characterTheme = props.scenesFor(character)[0].theme;
-              return (
-                <article
-                  className="home-character"
-                  key={character.id}
-                  onClick={() => props.openSceneLibrary(character.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      props.openSceneLibrary(character.id);
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  style={
-                    {
-                      "--card-image": props.portraitUrl(character)
-                        ? `url("${props.portraitUrl(character)}")`
-                        : "linear-gradient(145deg, #2b1c1e, #0c0c0e)",
-                      "--character-accent": characterTheme.accent,
-                      "--card-position": character.portraitFocalPoint ?? "center",
-                    } as React.CSSProperties
-                  }
+              <div className="character-tabs">
+                <button
+                  className={characterTab === "curated" ? "active" : ""}
+                  onClick={() => setCharacterTab("curated")}
                 >
-                  <div className="home-character-wash" />
-                  <div className="home-character-copy">
-                    <span className="home-character-status">
-                      <i />
-                      {character.status}
-                    </span>
-                    <h3>
-                      {character.creditUrl ? (
-                        <a
-                          href={character.creditUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          {character.name}
-                        </a>
-                      ) : (
-                        character.name
-                      )}
-                    </h3>
-                    <p>{character.role}</p>
-                    <small>{character.scene}</small>
-                    {character.credit && (
-                      <small className="home-character-credit">{character.credit}</small>
-                    )}
-                    <button onClick={(event) => {
-                      event.stopPropagation();
-                      props.openSceneLibrary(character.id);
-                    }}>
-                      Open their stories <span aria-hidden="true">→</span>
-                    </button>
-                    <span className="home-character-actions">
-                        <button
-                          className="home-character-edit"
-                          aria-label={`Download ${character.name}`}
-                          title="Download character"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            props.setCharacterDownloadError("");
-                            props.setDownloadingCharacter(character);
-                          }}
-                        >
-                          Download
+                  Curated
+                </button>
+                <button
+                  className={characterTab === "custom" ? "active" : ""}
+                  onClick={() => setCharacterTab("custom")}
+                >
+                  Custom
+                </button>
+              </div>
+
+              <div className="character-backup-bar">
+                <label className="outline-button import-browse">
+                  Import characters
+                  <input
+                    type="file"
+                    accept=".png,.json,image/png,application/json"
+                    onChange={props.importCharacterFile}
+                  />
+                </label>
+                <button
+                  className="outline-button"
+                  onClick={props.exportCharacterLibrary}
+                >
+                  Howling library backup
+                </button>
+                {props.characterBackupMsg && <span className="backup-feedback ok">{props.characterBackupMsg}</span>}
+                {props.characterBackupError && <span className="backup-feedback err">{props.characterBackupError}</span>}
+              </div>
+
+              <div className="character-gallery">
+                {(characterTab === "curated" ? curatedCharacters : customCharacters).map((character) => {
+                  const characterTheme = props.scenesFor(character)[0].theme;
+                  return (
+                    <article
+                      className="home-character"
+                      key={character.id}
+                      onClick={() => props.openSceneLibrary(character.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          props.openSceneLibrary(character.id);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      style={
+                        {
+                          "--card-image": props.portraitUrl(character)
+                            ? `url("${props.portraitUrl(character)}")`
+                            : "linear-gradient(145deg, #2b1c1e, #0c0c0e)",
+                          "--character-accent": characterTheme.accent,
+                          "--card-position": character.portraitFocalPoint ?? "center",
+                        } as React.CSSProperties
+                      }
+                    >
+                      <div className="home-character-wash" />
+                      <div className="home-character-copy">
+                        <span className="home-character-status">
+                          <i />
+                          {character.status}
+                        </span>
+                        <h3>
+                          {character.creditUrl ? (
+                            <a
+                              href={character.creditUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {character.name}
+                            </a>
+                          ) : (
+                            character.name
+                          )}
+                        </h3>
+                        <p>{character.role}</p>
+                        <small>{character.scene}</small>
+                        {character.credit && (
+                          <small className="home-character-credit">{character.credit}</small>
+                        )}
+                        <button onClick={(event) => {
+                          event.stopPropagation();
+                          props.openSceneLibrary(character.id);
+                        }}>
+                          Open their stories <span aria-hidden="true">→</span>
                         </button>
-                    {props.isUserOwnedCharacter(character) && (<>
-                        <button
-                          className="home-character-edit"
-                          aria-label={`Edit ${character.name}`}
-                          title="Edit character"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            props.setEditingCharacter(character);
-                          }}
-                        >
-                          ✎ Edit
-                        </button>
-                        <button
-                          className="home-character-delete"
-                          aria-label={`Delete ${character.name}`}
-                          title="Delete character"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            props.setConfirmDeleteCharacter(character);
-                          }}
-                        >
-                          Delete
-                        </button>
-                    </>)}
-                      </span>
-                  </div>
-                </article>
-              );
-            })}
-            <button className="new-character-card" onClick={() => props.setIsCreating(true)}>
-              <span aria-hidden="true">＋</span>
-              <strong>Awaken someone new</strong>
-              <small>Create a character or import a V2 PNG/JSON card.</small>
-            </button>
-          </div>
+                        <span className="home-character-actions">
+                            <button
+                              className="home-character-edit"
+                              aria-label={`Download ${character.name}`}
+                              title="Download character"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                props.setCharacterDownloadError("");
+                                props.setDownloadingCharacter(character);
+                              }}
+                            >
+                              Download
+                            </button>
+                        {props.isUserOwnedCharacter(character) && (<>
+                            <button
+                              className="home-character-edit"
+                              aria-label={`Edit ${character.name}`}
+                              title="Edit character"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                props.setEditingCharacter(character);
+                              }}
+                            >
+                              ✎ Edit
+                            </button>
+                            <button
+                              className="home-character-delete"
+                              aria-label={`Delete ${character.name}`}
+                              title="Delete character"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                props.setConfirmDeleteCharacter(character);
+                              }}
+                            >
+                              Delete
+                            </button>
+                        </>)}
+                          </span>
+                      </div>
+                    </article>
+                  );
+                })}
+                <button className="new-character-card" onClick={() => props.setIsCreating(true)}>
+                  <span aria-hidden="true">＋</span>
+                  <strong>Awaken someone new</strong>
+                  <small>Create a character or import a V2 PNG/JSON card.</small>
+                </button>
+              </div>
+            </>
+          )}
+
+          {roleplayType === "locations" && (
+            <>
+              <div className="character-tabs">
+                <button
+                  className={locationTab === "curated" ? "active" : ""}
+                  onClick={() => setLocationTab("curated")}
+                >
+                  Curated
+                </button>
+                <button
+                  className={locationTab === "custom" ? "active" : ""}
+                  onClick={() => setLocationTab("custom")}
+                >
+                  Custom
+                </button>
+              </div>
+
+              <div className="character-backup-bar">
+                <label className="outline-button import-browse">
+                  Import locations
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={props.importLocationFile}
+                  />
+                </label>
+                {props.locationImportMsg && <span className="backup-feedback ok">{props.locationImportMsg}</span>}
+                {props.locationError && <span className="backup-feedback err">{props.locationError}</span>}
+              </div>
+
+              <div className="character-gallery">
+                {(locationTab === "curated" ? curatedLocations : customLocations).map((location) => (
+                  <LocationCard
+                    key={location.id}
+                    location={location}
+                    onOpen={() => {}}
+                    onEdit={props.isUserOwnedLocation(location) ? (loc) => props.setEditingLocation(loc) : undefined}
+                    onDelete={props.isUserOwnedLocation(location) ? (loc) => props.setConfirmDeleteLocation(loc) : undefined}
+                    onExport={props.isUserOwnedLocation(location) ? (loc) => props.exportLocation(loc) : undefined}
+                  />
+                ))}
+                <button className="new-character-card" onClick={() => props.setIsCreatingLocation(true)}>
+                  <span aria-hidden="true">＋</span>
+                  <strong>Awaken somewhere new</strong>
+                  <small>Create a location or import a Howling Whispers location file.</small>
+                </button>
+              </div>
+            </>
+          )}
+
+          {roleplayType === "scenarios" && (
+            <>
+              <div className="character-tabs">
+                <button
+                  className={scenarioTab === "curated" ? "active" : ""}
+                  onClick={() => setScenarioTab("curated")}
+                >
+                  Curated
+                </button>
+                <button
+                  className={scenarioTab === "custom" ? "active" : ""}
+                  onClick={() => setScenarioTab("custom")}
+                >
+                  Custom
+                </button>
+              </div>
+
+              <div className="character-backup-bar">
+                <label className="outline-button import-browse">
+                  Import scenarios
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={props.importScenarioFile}
+                  />
+                </label>
+                {props.scenarioImportMsg && <span className="backup-feedback ok">{props.scenarioImportMsg}</span>}
+                {props.scenarioError && <span className="backup-feedback err">{props.scenarioError}</span>}
+              </div>
+
+              <div className="character-gallery">
+                {(scenarioTab === "curated" ? curatedScenarios : customScenarios).map((scenario) => (
+                  <ScenarioCard
+                    key={scenario.id}
+                    scenario={scenario}
+                    onOpen={() => {}}
+                    onEdit={props.isUserOwnedScenario(scenario) ? (scenario) => props.setEditingScenario(scenario) : undefined}
+                    onDelete={props.isUserOwnedScenario(scenario) ? (scenario) => props.setConfirmDeleteScenario(scenario) : undefined}
+                    onExport={props.isUserOwnedScenario(scenario) ? (scenario) => props.exportScenario(scenario) : undefined}
+                  />
+                ))}
+                <button className="new-character-card" onClick={() => props.setIsCreatingScenario(true)}>
+                  <span aria-hidden="true">＋</span>
+                  <strong>Shape a new situation</strong>
+                  <small>Create a scenario or import a Howling Whispers scenario file.</small>
+                </button>
+              </div>
+            </>
+          )}
         </section>
       )}
 
@@ -338,165 +549,13 @@ export function CharacterArea(props: CharacterAreaProps) {
       )}
 
       {props.editingCharacter && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onMouseDown={() => props.setEditingCharacter(null)}
-        >
-          <section
-            className="modal character-edit-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="character-edit-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <button className="modal-close" onClick={() => props.setEditingCharacter(null)} aria-label="Close">
-              ×
-            </button>
-            <p className="eyebrow">Shape them further</p>
-            <h2 id="character-edit-title">Edit {props.editingCharacter.name}</h2>
-            <p className="modal-intro">
-              Tweak how {props.editingCharacter.name} appears, speaks, and opens a scene. Changes apply to
-              every future chat with them.
-            </p>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                const form = new FormData(event.currentTarget);
-                props.updateCharacter(props.editingCharacter.id, {
-                  name: String(form.get("name") || props.editingCharacter.name).trim(),
-                  role: String(form.get("role") || props.editingCharacter.role).trim(),
-                  status: String(form.get("status") || props.editingCharacter.status).trim(),
-                  scene: String(form.get("scene") || props.editingCharacter.scene).trim(),
-                  weather: String(form.get("weather") || props.editingCharacter.weather).trim(),
-                  profile: String(form.get("profile") || props.editingCharacter.profile).trim(),
-                  reply: String(form.get("reply") || props.editingCharacter.reply).trim(),
-                  accent: String(form.get("accent") || props.editingCharacter.accent).trim(),
-                  image: String(form.get("portrait") || "").trim()
-                    || (props.isStoredPortraitReference(props.editingCharacter.image) ? props.editingCharacter.image : ""),
-                  sceneImage: String(form.get("sceneImage") || "").trim(),
-                  portraitFocalPoint: String(form.get("portraitFocalPoint") || "center").trim(),
-                  backgroundFocalPoint: String(form.get("sceneFocalPoint") || "center").trim(),
-                  relationship: String(form.get("relationship") || props.editingCharacter.relationship || "").trim() || undefined,
-                  ageCategory: (String(form.get("ageCategory") || "") as AgeCategory) || undefined,
-                  memories: String(form.get("memories") || props.editingCharacter.memories.join("\n"))
-                    .split("\n")
-                    .map((item) => item.trim())
-                    .filter(Boolean),
-                });
-              }}
-            >
-              <label>
-                Name
-                <input name="name" defaultValue={props.editingCharacter.name} required />
-              </label>
-              <label>
-                Role in your story
-                <input name="role" defaultValue={props.editingCharacter.role} required />
-              </label>
-              <label>
-                Status
-                <input name="status" defaultValue={props.editingCharacter.status} placeholder="How they seem right now" />
-              </label>
-              <label>
-                Scene / place
-                <input name="scene" defaultValue={props.editingCharacter.scene} placeholder="Where their story lives" />
-              </label>
-              <label>
-                Weather / atmosphere
-                <input name="weather" defaultValue={props.editingCharacter.weather} placeholder="A detail of the air" />
-              </label>
-              <label>
-                Profile &amp; personality
-                <textarea
-                  name="profile"
-                  rows={5}
-                  defaultValue={props.editingCharacter.profile}
-                  placeholder="Who they are, how they look, what they care about…"
-                />
-              </label>
-              <label>
-                Opening message
-                <textarea
-                  name="reply"
-                  rows={3}
-                  defaultValue={props.editingCharacter.reply}
-                  placeholder="How they greet you"
-                />
-              </label>
-              <label>
-                Memories (one per line)
-                <textarea
-                  name="memories"
-                  rows={4}
-                  defaultValue={props.editingCharacter.memories.join("\n")}
-                  placeholder="Shared history, one memory per line"
-                />
-              </label>
-              <label>
-                Accent color
-                <input type="color" name="accent" defaultValue={props.editingCharacter.accent || "#d78a5e"} />
-              </label>
-              <label>
-                Portrait image URL
-                <input
-                  name="portrait"
-                  defaultValue={props.isStoredPortraitReference(props.editingCharacter.image) ? "" : props.editingCharacter.image}
-                  placeholder={props.isStoredPortraitReference(props.editingCharacter.image) ? "Imported card artwork is stored" : "https://…/portrait.png"}
-                />
-              </label>
-              <label>
-                Portrait focal point
-                <input name="portraitFocalPoint" defaultValue={props.editingCharacter.portraitFocalPoint ?? "center"} placeholder="e.g. center, 20% 80%" />
-              </label>
-              <label>
-                Scene image URL
-                <input name="sceneImage" defaultValue={props.editingCharacter.sceneImage} placeholder="https://…/scene.png" />
-              </label>
-              <label>
-                Scene focal point
-                <input name="sceneFocalPoint" defaultValue={props.editingCharacter.backgroundFocalPoint ?? "center"} placeholder="e.g. center, 70% 30%" />
-              </label>
-              <label>
-                Relationship to you
-                <input name="relationship" defaultValue={props.editingCharacter.relationship ?? ""} placeholder="Friend, rival, mentor…" />
-              </label>
-              <label>
-                Age category
-                <select
-                  name="ageCategory"
-                  defaultValue={props.editingCharacter.ageCategory ? String(props.editingCharacter.ageCategory) : ""}
-                >
-                  <option value="">Unspecified / not relevant to story</option>
-                  <option value="adult">Adult</option>
-                  <option value="minor">Minor</option>
-                </select>
-              </label>
-              <div className="character-edit-actions">
-                <button
-                  className="outline-button character-delete"
-                  type="button"
-                  onClick={() => props.setConfirmDeleteCharacter(props.editingCharacter)}
-                >
-                  Delete character
-                </button>
-                <button
-                  className="text-button"
-                  type="button"
-                  onClick={() => {
-                    props.setCharacterDownloadError("");
-                    props.setDownloadingCharacter(props.editingCharacter);
-                  }}
-                >
-                  Download character
-                </button>
-                <button className="primary-button" type="submit">
-                  Save changes
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
+        <CharacterFactory
+          character={props.editingCharacter}
+          isCreating={false}
+          onSave={(draft) => props.updateCharacter(props.editingCharacter.id, draft)}
+          onCancel={() => props.setEditingCharacter(null)}
+          createCharacter={() => {}}
+        />
       )}
 
       {props.downloadingCharacter && (
@@ -585,6 +644,132 @@ export function CharacterArea(props: CharacterAreaProps) {
         </div>
       )}
 
+      {props.isCreatingLocation && (
+        <LocationFactory
+          mode="create"
+          location={null}
+          onSave={(location) => {
+            props.createLocation(location);
+          }}
+          onCancel={() => props.setIsCreatingLocation(false)}
+        />
+      )}
+
+      {props.editingLocation && (
+        <LocationFactory
+          mode="edit"
+          location={props.editingLocation}
+          onSave={(location) => {
+            props.updateLocation(location.id, location);
+          }}
+          onCancel={() => props.setEditingLocation(null)}
+        />
+      )}
+
+      {props.confirmDeleteLocation && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => props.setConfirmDeleteLocation(null)}
+        >
+          <section
+            className="modal character-delete-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="location-delete-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              className="modal-close"
+              onClick={() => props.setConfirmDeleteLocation(null)}
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <p className="eyebrow">Remove place for good</p>
+            <h2 id="location-delete-title">Delete {props.confirmDeleteLocation.name}?</h2>
+            <p className="modal-intro">
+              This removes {props.confirmDeleteLocation.name} from your library. This cannot be undone.
+            </p>
+            <div className="character-edit-actions">
+              <button className="outline-button" type="button" onClick={() => props.setConfirmDeleteLocation(null)}>
+                Cancel
+              </button>
+              <button
+                className="primary-button character-delete"
+                type="button"
+                onClick={() => props.deleteLocation(props.confirmDeleteLocation)}
+              >
+                Delete location
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {props.isCreatingScenario && (
+        <ScenarioFactory
+          mode="create"
+          scenario={null}
+          onSave={(scenario) => {
+            props.createScenario(scenario);
+          }}
+          onCancel={() => props.setIsCreatingScenario(false)}
+        />
+      )}
+
+      {props.editingScenario && (
+        <ScenarioFactory
+          mode="edit"
+          scenario={props.editingScenario}
+          onSave={(scenario) => {
+            props.updateScenario(scenario.id, scenario);
+          }}
+          onCancel={() => props.setEditingScenario(null)}
+        />
+      )}
+
+      {props.confirmDeleteScenario && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => props.setConfirmDeleteScenario(null)}
+        >
+          <section
+            className="modal character-delete-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="scenario-delete-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              className="modal-close"
+              onClick={() => props.setConfirmDeleteScenario(null)}
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <p className="eyebrow">Remove scenario for good</p>
+            <h2 id="scenario-delete-title">Delete {props.confirmDeleteScenario.name}?</h2>
+            <p className="modal-intro">
+              This removes {props.confirmDeleteScenario.name} from your library. This cannot be undone.
+            </p>
+            <div className="character-edit-actions">
+              <button className="outline-button" type="button" onClick={() => props.setConfirmDeleteScenario(null)}>
+                Cancel
+              </button>
+              <button
+                className="primary-button character-delete"
+                type="button"
+                onClick={() => props.deleteScenario(props.confirmDeleteScenario)}
+              >
+                Delete scenario
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {props.view === "scenes" && (
         <section className="scene-library" style={props.themeVariables}>
           <div
@@ -598,8 +783,8 @@ export function CharacterArea(props: CharacterAreaProps) {
           />
           <div className="scene-library-content">
             <header className="scene-library-header">
-              <button className="outline-button" onClick={() => props.setView("home")}>
-                ← All characters
+              <button className="outline-button" onClick={() => props.setView("roleplay")}>
+                ← Back to roleplay
               </button>
               {props.isUserOwnedCharacter(props.selected) && (
                 <span className="scene-library-actions">
