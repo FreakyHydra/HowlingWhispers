@@ -82,6 +82,7 @@ export default function ComparisonPage() {
           that belong to the person creating them.
         </p>
         <Link href="/">Enter the current application <span aria-hidden="true">-&gt;</span></Link>
+        <Link href="/community" className="comparison-community-link">Join the Community</Link>
       </footer>
     </main>
   );

@@ -145,12 +145,13 @@ export default function ConceptPage() {
               The Howling Whispers
             </span>
           </Link>
-          <nav className="concept-nav-links" aria-label="Sagas sections">
+          <nav className="concept-nav-links" aria-label="Dev site sections">
             <a href="#idea">The Idea</a>
             <a href="#experience">Experience</a>
             <a href="#system">System</a>
             <a href="#bitterroot">Bitterroot</a>
             <a href="#worlds">Sagas</a>
+            <Link href="/community">Community</Link>
           </nav>
           <Link href="/" className="concept-nav-cta">
             Open the app
@@ -534,6 +535,7 @@ export default function ConceptPage() {
             <span>Into the Wild — a Sagas concept</span>
           </div>
           <Link href="/comparison" className="concept-meta-link">See the world so far</Link>
+          <Link href="/community" className="concept-meta-link">Community</Link>
         </div>
       </footer>
     </main>

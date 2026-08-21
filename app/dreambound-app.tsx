@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { ChangelogView } from "../features/changelog/changelog-view";
 import packageInfo from "../package.json";
 import { legacyCharacterToCanon, type AgeCategory } from "../lib/characters/canonical";
+import { COMMUNITY_DISCORD_URL } from "../lib/site";
 import {
   ensureUniqueCharacterIds,
   parseCharacterImport,
@@ -5285,6 +5286,14 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             <button className="primary-button" type="button" onClick={handleEnter} autoFocus>
               Enter The Howling Whispers
             </button>
+            <a
+              href={COMMUNITY_DISCORD_URL}
+              className="login-community-button"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Join the Community
+            </a>
             <p className="login-hint">No account required. Your characters and stories stay in this browser.</p>
           </div>
           <div className="login-details" aria-label="The Howling Whispers features">
