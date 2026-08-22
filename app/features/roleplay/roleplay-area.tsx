@@ -41,6 +41,13 @@ export interface RoleplayAreaProps {
   createCharacter: (event: React.FormEvent<HTMLFormElement>) => void;
   editingCharacter: Character | null;
   updateCharacter: (id: string, updates: Partial<Character>) => void;
+  advancedEditingCharacter: Character | null;
+  setAdvancedEditingCharacter: (character: Character | null) => void;
+  onAdvancedCreate: () => void;
+  uploadPortrait: (characterId: string, bytes: Uint8Array) => Promise<string>;
+  uploadScene: (characterId: string, bytes: Uint8Array) => Promise<string>;
+  removePortrait: (reference: string) => void;
+  removeScene: (reference: string) => void;
   isStoredPortraitReference: (reference: string) => boolean;
   downloadingCharacter: Character | null;
   exportV2Png: (character: Character) => Promise<void> | void;
@@ -545,6 +552,12 @@ export function RoleplayArea(props: RoleplayAreaProps) {
               <button className="primary-button" type="submit">
                 Awaken character
               </button>
+              <button type="button" className="outline-button create-advanced-button" onClick={props.onAdvancedCreate}>
+                Advanced Create
+              </button>
+              <small className="create-advanced-hint">
+                Skip the quick form and author the full HWCC v1 character up front.
+              </small>
             </form>
           </section>
         </div>
@@ -557,6 +570,10 @@ export function RoleplayArea(props: RoleplayAreaProps) {
           onSave={(draft) => props.updateCharacter(props.editingCharacter.id, draft)}
           onCancel={() => props.setEditingCharacter(null)}
           createCharacter={() => {}}
+          onOpenAdvanced={(draft) => {
+            props.setAdvancedEditingCharacter(draft);
+            props.setEditingCharacter(null);
+          }}
         />
       )}
 

@@ -38,6 +38,20 @@ export type BackupCharacter = {
   disallowedContent?: string[];
   cardV2?: HowlingV2Metadata;
   traits?: import("./traits.ts").CharacterTraits;
+  pronouns?: string;
+  hwccVersion?: string;
+  identity?: { species?: string };
+  ageBehavior?: {
+    actualAge?: string;
+    maturityLevel?: string;
+    knowledgeBoundaries?: string;
+    speechAge?: string;
+    emotionalMaturity?: string;
+    independenceLevel?: string;
+    areasOfExpertise?: string;
+    areasOfKnowledgeGaps?: string;
+    ageConsistencyInstructions?: string;
+  };
   appearance?: {
     height?: string;
     build?: string;
@@ -49,19 +63,32 @@ export type BackupCharacter = {
     generalDescription?: string;
   };
   personality?: {
+    coreTraits?: string;
     likes?: string;
     dislikes?: string;
     habits?: string;
     strengths?: string;
+    flaws?: string;
     weaknesses?: string;
     fears?: string;
+    quirks?: string;
+    temperament?: string;
+    confidence?: string;
+    curiosity?: string;
+    impulsiveness?: string;
+    socialBehavior?: string;
     values?: string;
   };
   voice?: {
     speechStyle?: string;
+    vocabulary?: string;
     vocabularyLevel?: string;
     accentDialect?: string;
     sentenceLength?: string;
+    slang?: string;
+    verbalHabits?: string;
+    emotionalSpeechChanges?: string;
+    phrasesToAvoid?: string;
     humorStyle?: string;
     swearingLevel?: string;
     emotionalExpressiveness?: string;
@@ -91,6 +118,25 @@ export type BackupCharacter = {
     familiarity?: string;
     notes?: string;
   }>;
+  interests?: {
+    interests?: string;
+    skills?: string;
+  };
+  knowledge?: {
+    knowsWell?: string;
+    knowsSomewhat?: string;
+    doesNotKnow?: string;
+    hobbies?: string;
+    practicalSkills?: string;
+    academicKnowledge?: string;
+    professionalKnowledge?: string;
+    misconceptions?: string;
+    knowledgeLimits?: string;
+  };
+  greetings?: {
+    alternateGreetings?: string[];
+    exampleMessages?: string;
+  };
   rpBehavior?: {
     goals?: string;
     motivations?: string;
@@ -183,6 +229,20 @@ function sanitizeCharacter(value: unknown): BackupCharacter | null {
     disallowedContent: sanitizeStringList(src.disallowedContent, 32, 240),
     cardV2,
     traits: sanitizeTraits(src.traits),
+    pronouns: clamp(src.pronouns, "").trim() || undefined,
+    hwccVersion: src.hwccVersion === "1" ? "1" : undefined,
+    identity: isRecord(src.identity) ? { species: clampString(src.identity.species) } : undefined,
+    ageBehavior: isRecord(src.ageBehavior) ? {
+      actualAge: clampString(src.ageBehavior.actualAge),
+      maturityLevel: clampString(src.ageBehavior.maturityLevel),
+      knowledgeBoundaries: clampString(src.ageBehavior.knowledgeBoundaries),
+      speechAge: clampString(src.ageBehavior.speechAge),
+      emotionalMaturity: clampString(src.ageBehavior.emotionalMaturity),
+      independenceLevel: clampString(src.ageBehavior.independenceLevel),
+      areasOfExpertise: clampString(src.ageBehavior.areasOfExpertise),
+      areasOfKnowledgeGaps: clampString(src.ageBehavior.areasOfKnowledgeGaps),
+      ageConsistencyInstructions: clampString(src.ageBehavior.ageConsistencyInstructions),
+    } : undefined,
     appearance: isRecord(src.appearance) ? {
       height: clampString(src.appearance.height),
       build: clampString(src.appearance.build),
@@ -194,19 +254,32 @@ function sanitizeCharacter(value: unknown): BackupCharacter | null {
       generalDescription: clampString(src.appearance.generalDescription),
     } : undefined,
     personality: isRecord(src.personality) ? {
+      coreTraits: clampString(src.personality.coreTraits),
       likes: clampString(src.personality.likes),
       dislikes: clampString(src.personality.dislikes),
       habits: clampString(src.personality.habits),
       strengths: clampString(src.personality.strengths),
+      flaws: clampString(src.personality.flaws),
       weaknesses: clampString(src.personality.weaknesses),
       fears: clampString(src.personality.fears),
+      quirks: clampString(src.personality.quirks),
+      temperament: clampString(src.personality.temperament),
+      confidence: clampString(src.personality.confidence),
+      curiosity: clampString(src.personality.curiosity),
+      impulsiveness: clampString(src.personality.impulsiveness),
+      socialBehavior: clampString(src.personality.socialBehavior),
       values: clampString(src.personality.values),
     } : undefined,
     voice: isRecord(src.voice) ? {
       speechStyle: clampString(src.voice.speechStyle),
+      vocabulary: clampString(src.voice.vocabulary),
       vocabularyLevel: clampString(src.voice.vocabularyLevel),
       accentDialect: clampString(src.voice.accentDialect),
       sentenceLength: clampString(src.voice.sentenceLength),
+      slang: clampString(src.voice.slang),
+      verbalHabits: clampString(src.voice.verbalHabits),
+      emotionalSpeechChanges: clampString(src.voice.emotionalSpeechChanges),
+      phrasesToAvoid: clampString(src.voice.phrasesToAvoid),
       humorStyle: clampString(src.voice.humorStyle),
       swearingLevel: clampString(src.voice.swearingLevel),
       emotionalExpressiveness: clampString(src.voice.emotionalExpressiveness),
@@ -257,6 +330,25 @@ function sanitizeCharacter(value: unknown): BackupCharacter | null {
       faction: clampString(src.worldLore.faction),
       home: clampString(src.worldLore.home),
       defaultScenario: clampString(src.worldLore.defaultScenario),
+    } : undefined,
+    interests: isRecord(src.interests) ? {
+      interests: clampString(src.interests.interests),
+      skills: clampString(src.interests.skills),
+    } : undefined,
+    knowledge: isRecord(src.knowledge) ? {
+      knowsWell: clampString(src.knowledge.knowsWell),
+      knowsSomewhat: clampString(src.knowledge.knowsSomewhat),
+      doesNotKnow: clampString(src.knowledge.doesNotKnow),
+      hobbies: clampString(src.knowledge.hobbies),
+      practicalSkills: clampString(src.knowledge.practicalSkills),
+      academicKnowledge: clampString(src.knowledge.academicKnowledge),
+      professionalKnowledge: clampString(src.knowledge.professionalKnowledge),
+      misconceptions: clampString(src.knowledge.misconceptions),
+      knowledgeLimits: clampString(src.knowledge.knowledgeLimits),
+    } : undefined,
+    greetings: isRecord(src.greetings) ? {
+      alternateGreetings: sanitizeStringList(src.greetings.alternateGreetings, 24, 240),
+      exampleMessages: clampString(src.greetings.exampleMessages),
     } : undefined,
     contextNotes: clampString(src.contextNotes),
     authorNote: clampString(src.authorNote),

@@ -54,12 +54,14 @@ export function CharacterFactory({
   onSave,
   onCancel,
   createCharacter,
+  onOpenAdvanced,
 }: {
   character: Character | null;
   isCreating: boolean;
   onSave: (character: Character) => void;
   onCancel: () => void;
   createCharacter: (event: React.FormEvent<HTMLFormElement>) => void;
+  onOpenAdvanced?: (draft: Character) => void;
 }) {
   const [draft, setDraft] = useState<Character>(() => {
     if (character) return { ...character, traits: character.traits ?? { primary: [], secondary: [], situational: [], custom: [] } };
@@ -438,6 +440,11 @@ export function CharacterFactory({
         </div>
 
         <div className="factory-footer">
+          {!isCreating && onOpenAdvanced && (
+            <button type="button" className="outline-button" onClick={() => onOpenAdvanced(draft)}>
+              Open Advanced Editor
+            </button>
+          )}
           <button type="button" className="outline-button" onClick={onCancel}>
             Cancel
           </button>

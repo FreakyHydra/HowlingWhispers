@@ -1,5 +1,8 @@
 import type { CanonicalCharacterV1, CharacterSafety } from "./canonical.ts";
 import type { WorldLorebookV1 } from "../worlds/schema.ts";
+import { extensionV1ToCharacterFields, isHWCC } from "./hwcc.ts";
+import type { HowlingExtensionV1 } from "./hwcc.ts";
+import { HOWLING_EXTENSION_KEY } from "./hwcc.ts";
 
 export const CHARACTER_CARD_V2_SPEC = "chara_card_v2";
 export const CHARACTER_CARD_V2_VERSION = "2.0";
@@ -85,6 +88,7 @@ export type HowlingV2Metadata = {
   importedPostHistoryInstructions: string;
   characterBook?: CharacterBookV2;
   original: CharacterCardV2;
+  hwccVersion?: string;
 };
 
 export type HowlingPortableCharacter = {
@@ -106,6 +110,7 @@ export type HowlingPortableCharacter = {
   backgroundFocalPoint?: string;
   cardV2: HowlingV2Metadata;
   pronouns?: string;
+  hwccVersion?: string;
   traits?: import("./traits.ts").CharacterTraits;
 };
 
@@ -223,7 +228,7 @@ export function characterCardV2ToHowling(card: CharacterCardV2, id = portableId(
   const role = data.tags.slice(0, 2).join(" / ") || "Imported character";
   const pronouns = extractPronounsFromDescription(data.description);
   const traits = parseTraitsFromExtensions(data.extensions);
-  return {
+  const base: HowlingPortableCharacter = {
     id,
     name: data.name,
     role,
@@ -256,6 +261,17 @@ export function characterCardV2ToHowling(card: CharacterCardV2, id = portableId(
     },
     pronouns: pronouns || undefined,
     ...(traits ? { traits } : {}),
+  };
+
+  if (!isHWCC(card)) return base;
+
+  const extension = card.data.extensions[HOWLING_EXTENSION_KEY] as HowlingExtensionV1;
+  const hwccFields = extensionV1ToCharacterFields(extension);
+  return {
+    ...base,
+    ...hwccFields,
+    hwccVersion: "1",
+    cardV2: { ...base.cardV2, hwccVersion: "1" },
   };
 }
 
@@ -746,3 +762,11 @@ function parseTraitsFromExtensions(extensions: Record<string, unknown> | undefin
   if (!primary.length && !secondary.length && !situational.length && !custom.length) return undefined;
   return { primary, secondary, situational, custom };
 }
+
+export {
+  characterToHWCCCard,
+  isHWCC,
+  HWCC_VERSION,
+  HOWLING_EXTENSION_KEY,
+} from "./hwcc.ts";
+export type { HowlingExtensionV1 } from "./hwcc.ts";

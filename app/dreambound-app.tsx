@@ -9,6 +9,7 @@ import { legacyCharacterToCanon, type AgeCategory } from "../lib/characters/cano
 import { COMMUNITY_DISCORD_URL } from "../lib/site";
 import {
   ensureUniqueCharacterIds,
+  newCharacterId,
   parseCharacterImport,
   serializeCharacter,
   serializeCharacterLibrary,
@@ -40,9 +41,10 @@ import {
   howlingWorldLoreToCharacterBook,
   isCharacterCardV2,
   parseCharacterCardV2Json,
-  serializeCharacterCardV2,
+  characterToHWCCCard,
   type HowlingV2Metadata,
 } from "../lib/characters/character-card-v2";
+import { compileCharacterProfile } from "../lib/characters/compile";
 import {
   deleteCharacterPortrait,
   isStoredPortraitReference,
@@ -143,6 +145,7 @@ import {
   type OllamaModelInfo,
 } from "../lib/ollama.ts";
 import { RoleplayArea } from "./features/roleplay/roleplay-area";
+import { AdvancedCharacterEditor } from "./features/characters/advanced-character-editor";
 import { SettingsPage } from "./features/settings/settings-page";
 import { ChatWorkspace } from "../features/chat/chat-workspace";
 
@@ -174,7 +177,22 @@ export type Character = {
   disallowedContent?: string[];
   cardV2?: HowlingV2Metadata;
   pronouns?: string;
+  hwccVersion?: string;
   traits?: import("../lib/characters/traits.ts").CharacterTraits;
+  ageBehavior?: {
+    actualAge?: string;
+    maturityLevel?: string;
+    knowledgeBoundaries?: string;
+    speechAge?: string;
+    emotionalMaturity?: string;
+    independenceLevel?: string;
+    areasOfExpertise?: string;
+    areasOfKnowledgeGaps?: string;
+    ageConsistencyInstructions?: string;
+  };
+  identity?: {
+    species?: string;
+  };
   appearance?: {
     height?: string;
     build?: string;
@@ -186,19 +204,32 @@ export type Character = {
     generalDescription?: string;
   };
   personality?: {
-    likes?: string;
-    dislikes?: string;
-    habits?: string;
+    coreTraits?: string;
     strengths?: string;
+    flaws?: string;
     weaknesses?: string;
     fears?: string;
+    habits?: string;
+    quirks?: string;
+    likes?: string;
+    dislikes?: string;
+    temperament?: string;
+    confidence?: string;
+    curiosity?: string;
+    impulsiveness?: string;
+    socialBehavior?: string;
     values?: string;
   };
   voice?: {
     speechStyle?: string;
+    vocabulary?: string;
     vocabularyLevel?: string;
     accentDialect?: string;
     sentenceLength?: string;
+    slang?: string;
+    verbalHabits?: string;
+    emotionalSpeechChanges?: string;
+    phrasesToAvoid?: string;
     humorStyle?: string;
     swearingLevel?: string;
     emotionalExpressiveness?: string;
@@ -206,6 +237,25 @@ export type Character = {
     mannerisms?: string;
     rarePhrases?: string;
     exampleDialogue?: string;
+  };
+  knowledge?: {
+    knowsWell?: string;
+    knowsSomewhat?: string;
+    doesNotKnow?: string;
+    hobbies?: string;
+    practicalSkills?: string;
+    academicKnowledge?: string;
+    professionalKnowledge?: string;
+    misconceptions?: string;
+    knowledgeLimits?: string;
+  };
+  interests?: {
+    interests?: string;
+    skills?: string;
+  };
+  greetings?: {
+    alternateGreetings?: string[];
+    exampleMessages?: string;
   };
   background?: {
     biography?: string;
@@ -1722,6 +1772,12 @@ export default function DreamboundApp() {
   const [isCreating, setIsCreating] = useState(false);
   const [isCreatingLocation, setIsCreatingLocation] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
+  const [advancedEditingCharacter, setAdvancedEditingCharacter] = useState<Character | null>(null);
+  const [advancedCreatingCharacter, setAdvancedCreatingCharacter] = useState<Character | null>(null);
+  const uploadPortrait = useCallback((characterId: string, bytes: Uint8Array) => persistCharacterPortrait(characterId, bytes), []);
+  const uploadScene = useCallback((characterId: string, bytes: Uint8Array) => persistCharacterPortrait(`${characterId}-scene`, bytes), []);
+  const removePortrait = useCallback((reference: string) => { if (isStoredPortraitReference(reference)) void deleteCharacterPortrait(reference); }, []);
+  const removeScene = useCallback((reference: string) => { if (isStoredPortraitReference(reference)) void deleteCharacterPortrait(reference); }, []);
   const [confirmDeleteCharacter, setConfirmDeleteCharacter] = useState<Character | null>(null);
   const [downloadingCharacter, setDownloadingCharacter] = useState<Character | null>(null);
   const [characterDownloadError, setCharacterDownloadError] = useState("");
@@ -2710,7 +2766,7 @@ export default function DreamboundApp() {
       characters.find((candidate) => candidate.id === characterId) ?? characters[0];
     const scene = scenesFor(character)[0];
     const description = character.profile && !character.credit
-      ? character.profile
+      ? compileCharacterProfile(character)
       : "";
     const { session, initialMessages } = buildSessionInitialState(character, scene, {
       description,
@@ -3988,6 +4044,58 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
     }
   }
 
+  function beginAdvancedCreate() {
+    const id = newCharacterId();
+    setAdvancedCreatingCharacter({
+      id,
+      name: "",
+      role: "",
+      status: "Just awakened",
+      image: "",
+      sceneImage: "",
+      scene: "An Unwritten Place",
+      weather: "The air holds its breath",
+      bond: 8,
+      memories: ["This is where your story begins"],
+      reply: "I was wondering when you would find me.",
+      profile: "",
+      accent: "#d78a5e",
+      ageCategory: "unknown",
+      isMinor: null,
+    });
+  }
+
+  function createCharacterFromDraft(draft: Character) {
+    const [unique] = ensureUniqueCharacterIds([draft], characters.map((character) => character.id));
+    const scene = scenesFor(unique)[0];
+    const session: StorySession = {
+      id: `session-${unique.id}`,
+      characterId: unique.id,
+      sceneId: scene.id,
+      title: scene.title,
+      messageKey: unique.id,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      livingCast: createCast({ id: unique.id, name: unique.name }),
+    };
+    setCharacters((current) => [...current, unique]);
+    setMessages((current) => ({
+      ...current,
+      [unique.id]: [
+        {
+          id: Date.now(),
+          sender: "narrator",
+          text: `${unique.name || "They"} look up as the unwritten world takes shape around you.`,
+        },
+        { id: Date.now() + 1, sender: "character", text: unique.reply },
+      ],
+    }));
+    setSessions((current) => [session, ...current]);
+    setCurrentSessionId(session.id);
+    setSelectedId(unique.id);
+    setAdvancedCreatingCharacter(null);
+    setView("chat");
+  }
   function createCharacter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -4216,9 +4324,13 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
   }
 
   function exportV2Json(character: Character) {
+    const portable = portableExportSource(character);
+    const card = character.hwccVersion
+      ? characterToHWCCCard(portable)
+      : howlingCharacterToV2(portable);
     downloadTextFile(
       `${fileSlug(character.name)}.v2.json`,
-      serializeCharacterCardV2(portableExportSource(character)),
+      JSON.stringify(card, null, 2),
     );
     setDownloadingCharacter(null);
   }
@@ -4227,7 +4339,11 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
     setCharacterDownloadError("");
     try {
       const portrait = await portraitPngBytes(character);
-      const png = embedCharacterCardV2InPng(portrait, howlingCharacterToV2(portableExportSource(character)));
+      const portable = portableExportSource(character);
+      const card = character.hwccVersion
+        ? characterToHWCCCard(portable)
+        : howlingCharacterToV2(portable);
+      const png = embedCharacterCardV2InPng(portrait, card);
       downloadBinaryFile(`${fileSlug(character.name)}.card.png`, png, "image/png");
       setDownloadingCharacter(null);
     } catch (error) {
@@ -5726,6 +5842,13 @@ Roleplay
           createCharacter={createCharacter}
           editingCharacter={editingCharacter}
           updateCharacter={updateCharacter}
+          advancedEditingCharacter={advancedEditingCharacter}
+          setAdvancedEditingCharacter={setAdvancedEditingCharacter}
+          onAdvancedCreate={beginAdvancedCreate}
+          uploadPortrait={uploadPortrait}
+          uploadScene={uploadScene}
+          removePortrait={removePortrait}
+          removeScene={removeScene}
           isStoredPortraitReference={isStoredPortraitReference}
           downloadingCharacter={downloadingCharacter}
           exportV2Png={exportV2Png}
@@ -5804,6 +5927,35 @@ Roleplay
           }}
           hasLatestSession={selectedSessions.length > 0}
           Portrait={Portrait}
+        />
+      )}
+
+       {advancedEditingCharacter && (
+        <AdvancedCharacterEditor
+          character={advancedEditingCharacter}
+          mode="edit"
+          onSave={(updated) => {
+            updateCharacter(updated.id, { ...updated, hwccVersion: "1" });
+            setAdvancedEditingCharacter(null);
+          }}
+          onCancel={() => setAdvancedEditingCharacter(null)}
+          onUploadPortrait={(bytes) => uploadPortrait(advancedEditingCharacter.id, bytes)}
+          onUploadScene={(bytes) => uploadScene(advancedEditingCharacter.id, bytes)}
+          onRemovePortrait={removePortrait}
+          onRemoveScene={removeScene}
+        />
+      )}
+
+      {advancedCreatingCharacter && (
+        <AdvancedCharacterEditor
+          character={advancedCreatingCharacter}
+          mode="create"
+          onSave={(updated) => createCharacterFromDraft({ ...updated, hwccVersion: "1" })}
+          onCancel={() => setAdvancedCreatingCharacter(null)}
+          onUploadPortrait={(bytes) => uploadPortrait(advancedCreatingCharacter.id, bytes)}
+          onUploadScene={(bytes) => uploadScene(advancedCreatingCharacter.id, bytes)}
+          onRemovePortrait={removePortrait}
+          onRemoveScene={removeScene}
         />
       )}
 
