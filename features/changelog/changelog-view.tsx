@@ -15,8 +15,29 @@ export function ChangelogView(props: ChangelogViewProps) {
         <button className="outline-button" onClick={() => props.setView("roleplay")}>← Back to roleplay</button>
       </header>
 
-          <div className="changelog-list">
-            <article className="changelog-entry milestone latest">
+           <div className="changelog-list">
+             <article className="changelog-entry featured latest">
+               <span className="changelog-mark">◐</span>
+               <div>
+                 <span className="changelog-version">Version 0.9.1 · Community Opens</span>
+                 <h2>Community Opens</h2>
+                 <p>The project now has a dedicated community home, and Location sessions are more stable than ever.</p>
+                 <h3>✨ Added</h3>
+                 <ul>
+                   <li><strong>Community Hub</strong> — a dedicated Discord community page with join link and server description</li>
+                   <li><strong>Community navigation</strong> — Discord link from the login screen and community links in the site navigation</li>
+                   <li><strong>Accessibility typography preferences</strong> — OpenDyslexic font support and configurable text sizing</li>
+                 </ul>
+                 <h3>🛠 Fixed</h3>
+                 <ul>
+                   <li><strong>Location isolation</strong> — hardened the boundary between Location sessions and Character fallback so Locations no longer silently fall back to Contacts</li>
+                   <li><strong>Location fallback</strong> — added a graceful unavailable-Location state so the UI no longer breaks when a Location becomes inaccessible</li>
+                   <li><strong>Legacy state migration</strong> — existing sessions that relied on the old fallback behavior now migrate cleanly to the new isolation model</li>
+                 </ul>
+               </div>
+             </article>
+
+             <article className="changelog-entry milestone latest">
               <span className="changelog-mark">🏆</span>
               <div>
                 <span className="changelog-version">Version 0.9.0 · Worlds Take Shape</span>

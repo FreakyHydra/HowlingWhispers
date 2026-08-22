@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.1 — Community Opens
+
+### ✨ Added
+
+- **Community Hub** — a dedicated Discord community page with join link and server description
+- **Community navigation** — Discord link from the login screen and community links in the site navigation
+- **Accessibility typography preferences** — OpenDyslexic font support and configurable text sizing
+
+### 🛠 Fixed
+
+- **Location isolation** — hardened the boundary between Location sessions and Character fallback so Locations no longer silently fall back to Contacts
+- **Location fallback** — added a graceful unavailable-Location state so the UI no longer breaks when a Location becomes inaccessible
+- **Legacy state migration** — existing sessions that relied on the old fallback behavior now migrate cleanly to the new isolation model
+
+---
+
 ## 0.9.0 — Worlds Take Shape
 
 🏆 MAJOR FEATURE RELEASE
