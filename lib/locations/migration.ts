@@ -33,13 +33,10 @@ export function migrateLegacySelectedId(
     if (locations.some((location) => location.id === legacyLocationId)) {
       return `location:${legacyLocationId}`;
     }
-    return "coda";
+    return `location:${legacyLocationId}`;
   }
   if (selectedId.startsWith("location:")) {
-    if (locations.some((location) => `location:${location.id}` === selectedId)) {
-      return selectedId;
-    }
-    return "coda";
+    return selectedId;
   }
   return selectedId;
 }

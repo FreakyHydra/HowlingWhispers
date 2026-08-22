@@ -1175,6 +1175,24 @@ function createLocationTarget(location: Location): LocationTarget {
   };
 }
 
+function unavailableLocationTarget(locationId: string): LocationTarget {
+  return {
+    id: locationSelectionKey(locationId),
+    name: "Unavailable Location",
+    role: "Location",
+    status: "This Location is no longer available.",
+    image: "",
+    sceneImage: "",
+    scene: "Unavailable Location",
+    weather: "",
+    memories: [],
+    reply: "",
+    profile: "The saved Location reference points to a Location that was deleted or is unavailable.",
+    accent: "#8f8284",
+    backgroundFocalPoint: "50% 50%",
+  };
+}
+
 function buildLocationOpening(location: Location): string {
   const parts: string[] = [];
   parts.push(`*${location.name}*`);
@@ -1669,18 +1687,13 @@ export default function DreamboundApp() {
   });
   const locationTargets = useMemo(() => {
     const targets: Record<string, LocationTarget> = {};
-    for (const session of sessions) {
-      if (session.locationId) {
-        const location = locations.find((l) => l.id === session.locationId);
-        if (location) {
-          const target = createLocationTarget(location);
-          targets[target.id] = target;
-          targets[`location-${location.id}`] = target;
-        }
-      }
+    for (const location of locations) {
+      const target = createLocationTarget(location);
+      targets[target.id] = target;
+      targets[`location-${location.id}`] = target;
     }
     return targets;
-  }, [sessions, locations]);
+  }, [locations]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(
     () => {
       const saved = readSession<string | null>("currentSessionId", null);
@@ -2320,27 +2333,37 @@ export default function DreamboundApp() {
     ));
   }
 
-  const selected = useMemo(
-    () => characters.find((character) => character.id === selectedId)
-      ?? locationTargets[selectedId]
-      ?? characters[0],
-    [characters, selectedId, locationTargets],
-  );
+  const selected = useMemo(() => {
+    const character = characters.find((character) => character.id === selectedId);
+    if (character) return character;
+    const locationTarget = locationTargets[selectedId];
+    if (locationTarget) return locationTarget;
+    const isLocationKey = selectedId.startsWith("location:") || selectedId.startsWith("location-");
+    if (isLocationKey) {
+      const locationId = selectedId.startsWith("location:")
+        ? selectedId.slice("location:".length)
+        : selectedId.slice("location-".length);
+      return unavailableLocationTarget(locationId);
+    }
+    return characters[0];
+  }, [characters, selectedId, locationTargets]);
 
   const activeSession = sessions.find((session) => session.id === currentSessionId)
     ?? sessions.find((session) => session.characterId === selected.id && session.messageKey === selected.id)
     ?? null;
   const selectedLocation = activeSession?.locationId
     ? locations.find((location) => location.id === activeSession.locationId) ?? null
-    : selectedId.startsWith("location:")
-      ? locations.find((location) => locationSelectionKey(location.id) === selectedId) ?? null
-      : selectedId.startsWith("location-")
-        ? locations.find((location) => `location-${location.id}` === selectedId) ?? null
+    : selected.id.startsWith("location:")
+      ? locations.find((location) => locationSelectionKey(location.id) === selected.id) ?? null
+      : selected.id.startsWith("location-")
+        ? locations.find((location) => `location-${location.id}` === selected.id) ?? null
         : null;
-  const isLocationSession = Boolean(activeSession?.locationId);
+  const isLocationSession = Boolean(activeSession?.locationId) || selected.id.startsWith("location:");
   const selectedScenes = selectedLocation
     ? resolveLocationScenes(selectedLocation, storyScenes[selected.id], createLocationScene)
-    : storyScenes[selected.id] ?? scenesFor(selected);
+    : selected.id.startsWith("location:") || selected.id.startsWith("location-")
+      ? []
+      : storyScenes[selected.id] ?? scenesFor(selected);
   const enabledAddons = installedAddons.filter((addon) => addon.enabled);
   const addonCommonScenes = enabledAddons
     .flatMap((addon) => validateAddonContent(addon.manifest.content) ?? [])

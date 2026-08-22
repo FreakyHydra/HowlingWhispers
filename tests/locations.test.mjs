@@ -13,7 +13,7 @@ import {
   ensureUniqueLocationIds,
   MAX_LOCATION_BYTES,
 } from "../lib/locations/index.ts";
-import { locationSelectionKey, locationSessionFields, resolveLocationScenes } from "../lib/locations/session.ts";
+import { locationSelectionKey, locationSessionFields, resolveLocationScenes, isLocationKey, resolveLocationIdFromKey, resolveSelectedTarget } from "../lib/locations/session.ts";
 import { migrateLegacySessions, migrateLegacySelectedId } from "../lib/locations/migration.ts";
 
 function baseLocation(overrides = {}) {
@@ -512,10 +512,10 @@ test("migrateLegacySelectedId converts old location- prefix to current location:
   assert.equal(migrateLegacySelectedId("location-loc-1", locations), "location:loc-1");
 });
 
-test("migrateLegacySelectedId resets invalid location keys to coda", () => {
+test("migrateLegacySelectedId preserves invalid location keys as unresolved Location references", () => {
   const locations = [{ id: "loc-1", name: "Test Loc", source: "custom" }];
-  assert.equal(migrateLegacySelectedId("location-deleted", locations), "coda");
-  assert.equal(migrateLegacySelectedId("location:deleted", locations), "coda");
+  assert.equal(migrateLegacySelectedId("location-deleted", locations), "location:deleted");
+  assert.equal(migrateLegacySelectedId("location:deleted", locations), "location:deleted");
 });
 
 test("migrateLegacySelectedId preserves valid character and current location keys", () => {
@@ -544,4 +544,186 @@ test("migrated legacy Location session never resolves to coda character id", () 
   assert.notEqual(migrated[0].characterId, "coda", "migrated session must not retain coda characterId");
   assert.equal(migrated[0].locationId, "custom-loc-1");
 });
+
+test("isLocationKey detects both location: and location- prefixes", () => {
+  assert.ok(isLocationKey("location:daycare"));
+  assert.ok(isLocationKey("location-daycare"));
+  assert.ok(!isLocationKey("coda"));
+  assert.ok(!isLocationKey("heather"));
+});
+
+test("resolveLocationIdFromKey extracts id from both prefixes", () => {
+  assert.equal(resolveLocationIdFromKey("location:daycare"), "daycare");
+  assert.equal(resolveLocationIdFromKey("location-daycare"), "daycare");
+  assert.equal(resolveLocationIdFromKey("coda"), null);
+});
+
+test("resolveSelectedTarget returns Character for valid character id", () => {
+  const result = resolveSelectedTarget("coda", ["coda", "heather"], {});
+  assert.equal(result.id, "coda");
+  assert.equal(result.name, "coda");
+  assert.ok(!result.isLocation);
+});
+
+test("resolveSelectedTarget returns LocationTarget for valid location: key", () => {
+  const locationTarget = {
+    id: "location:daycare",
+    name: "Daycare",
+    role: "Location",
+    status: "",
+    image: "",
+    sceneImage: "",
+    backgroundFocalPoint: "center",
+    accent: "#8aa4c9",
+    memories: [],
+    profile: "",
+    scene: "Daycare",
+    weather: "",
+    reply: "",
+  };
+  const result = resolveSelectedTarget("location:daycare", ["coda"], { "location:daycare": locationTarget });
+  assert.equal(result.id, "location:daycare");
+  assert.equal(result.name, "Daycare");
+  assert.ok(result.isLocation);
+});
+
+test("resolveSelectedTarget returns unavailable Location for missing location: key", () => {
+  const result = resolveSelectedTarget("location:deleted", ["coda"], {});
+  assert.equal(result.id, "location:deleted");
+  assert.equal(result.name, "Unavailable Location");
+  assert.ok(result.isLocation);
+  assert.notEqual(result.id, "coda");
+});
+
+test("resolveSelectedTarget returns unavailable Location for missing location- legacy key", () => {
+  const result = resolveSelectedTarget("location-deleted", ["coda"], {});
+  assert.equal(result.id, "location:deleted");
+  assert.equal(result.name, "Unavailable Location");
+  assert.ok(result.isLocation);
+  assert.notEqual(result.id, "coda");
+});
+
+test("resolveSelectedTarget falls back to default character only for non-location keys", () => {
+  const result = resolveSelectedTarget("unknown-character", ["coda"], {});
+  assert.equal(result.id, "coda");
+  assert.ok(!result.isLocation);
+});
+
+test("existing Location resolves through locationTargets and never reaches Coda", () => {
+  const locationTarget = {
+    id: "location:daycare",
+    name: "Daycare",
+    role: "Location",
+    status: "",
+    image: "",
+    sceneImage: "",
+    backgroundFocalPoint: "center",
+    accent: "#8aa4c9",
+    memories: [],
+    profile: "",
+    scene: "Daycare",
+    weather: "",
+    reply: "",
+  };
+  const targets = { "location:daycare": locationTarget };
+  const result = resolveSelectedTarget("location:daycare", ["coda"], targets);
+  assert.equal(result.id, "location:daycare");
+  assert.ok(result.isLocation);
+  assert.notEqual(result.id, "coda");
+});
+
+test("legacy existing Location migrates and resolves without reaching Coda", () => {
+  const locations = [{ id: "daycare", name: "Daycare", source: "custom" }];
+  const migratedSelectedId = migrateLegacySelectedId("location-daycare", locations);
+  assert.equal(migratedSelectedId, "location:daycare");
+  const locationTarget = {
+    id: "location:daycare",
+    name: "Daycare",
+    role: "Location",
+    status: "",
+    image: "",
+    sceneImage: "",
+    backgroundFocalPoint: "center",
+    accent: "#8aa4c9",
+    memories: [],
+    profile: "",
+    scene: "Daycare",
+    weather: "",
+    reply: "",
+  };
+  const targets = { "location:daycare": locationTarget };
+  const result = resolveSelectedTarget(migratedSelectedId, ["coda"], targets);
+  assert.equal(result.id, "location:daycare");
+  assert.ok(result.isLocation);
+  assert.notEqual(result.id, "coda");
+});
+
+test("missing current Location key produces unavailable state, not Coda", () => {
+  const result = resolveSelectedTarget("location:deleted-place", ["coda"], {});
+  assert.equal(result.id, "location:deleted-place");
+  assert.equal(result.name, "Unavailable Location");
+  assert.ok(result.isLocation);
+  assert.notEqual(result.id, "coda");
+});
+
+test("missing legacy Location key produces unavailable state, not Coda", () => {
+  const result = resolveSelectedTarget("location-deleted-place", ["coda"], {});
+  assert.equal(result.id, "location:deleted-place");
+  assert.equal(result.name, "Unavailable Location");
+  assert.ok(result.isLocation);
+  assert.notEqual(result.id, "coda");
+});
+
+test("stale Location session with characterId coda migrates to clean Location session", () => {
+  const retired = new Set(["ash", "seraphina"]);
+  const validLocationIds = new Set(["daycare"]);
+  const legacySession = {
+    id: "session-legacy-1",
+    characterId: "coda",
+    locationId: "daycare",
+    sceneId: "scene-1",
+    title: "Legacy Location Session",
+    messageKey: "session-legacy-1",
+    createdAt: 1,
+    updatedAt: 1,
+  };
+
+  const migrated = migrateLegacySessions([legacySession], validLocationIds, retired);
+  assert.equal(migrated.length, 1);
+  assert.equal(migrated[0].characterId, undefined, "stale characterId must be removed");
+  assert.equal(migrated[0].locationId, "daycare");
+});
+
+test("valid Location with zero sessions still resolves through locationTargets", () => {
+  const locationTarget = {
+    id: "location:daycare",
+    name: "Daycare",
+    role: "Location",
+    status: "",
+    image: "",
+    sceneImage: "",
+    backgroundFocalPoint: "center",
+    accent: "#8aa4c9",
+    memories: [],
+    profile: "",
+    scene: "Daycare",
+    weather: "",
+    reply: "",
+  };
+  const targets = { "location:daycare": locationTarget };
+  const result = resolveSelectedTarget("location:daycare", ["coda"], targets);
+  assert.equal(result.id, "location:daycare");
+  assert.ok(result.isLocation);
+  assert.notEqual(result.id, "coda");
+});
+
+test("Location-originating selection never resolves to coda", () => {
+  const locationKeys = ["location:daycare", "location-deleted", "location:deleted-place", "location-deleted-place"];
+  for (const key of locationKeys) {
+    const result = resolveSelectedTarget(key, ["coda"], {});
+    assert.notEqual(result.id, "coda", `Location key ${key} must never resolve to coda`);
+    assert.ok(result.isLocation, `Location key ${key} must be identified as Location`);
+  }
+});
+
 
