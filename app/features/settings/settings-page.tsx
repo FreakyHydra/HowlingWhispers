@@ -10,6 +10,8 @@ type TextStyle = {
   action: string;
   narration: string;
   fontSize: number;
+  uiFontSize: number;
+  fontFamily: "default" | "opendyslexic" | "system";
 };
 
 type ModelId = "xialong-v1" | "glm-4-6";
@@ -810,9 +812,43 @@ export function SettingsPage(props: SettingsPageProps) {
 
             <section className="settings-panel style-settings">
               <p className="eyebrow">Appearance</p>
-              <h2>Text colors</h2>
-              <p>Customize how dialogue, actions, and narration appear in the chat.</p>
+              <h2>Text appearance</h2>
+              <p>Customize long-form story text for comfortable reading. Branding and controls keep their normal typefaces.</p>
               <div className="style-grid">
+                <label>
+                  <span>Reading font</span>
+                  <select
+                    value={textStyle.fontFamily}
+                    onChange={(event) => setTextStyle((style) => ({
+                      ...style,
+                      fontFamily: event.target.value as TextStyle["fontFamily"],
+                    }))}
+                  >
+                    <option value="default">Default Howling Whispers font</option>
+                    <option value="opendyslexic">OpenDyslexic</option>
+                    <option value="system">System Sans / high-legibility fallback</option>
+                  </select>
+                  <small>OpenDyslexic is bundled locally with the app.</small>
+                </label>
+                <div className={`font-preview reading-font-${textStyle.fontFamily}`}>
+                  <span>Preview</span>
+                  <p>&quot;The quick brown fox jumps over the lazy dog.&quot;</p>
+                </div>
+                <label className="font-size-setting">
+                  <span>UI font size</span>
+                  <input
+                    type="range"
+                    min="12"
+                    max="22"
+                    step="1"
+                    value={textStyle.uiFontSize}
+                    onChange={(event) => setTextStyle((style) => ({
+                      ...style,
+                      uiFontSize: Number(event.target.value),
+                    }))}
+                  />
+                  <output>{textStyle.uiFontSize}px</output>
+                </label>
                 <label className="font-size-setting">
                   <span>Chat font size</span>
                   <input
@@ -841,6 +877,7 @@ export function SettingsPage(props: SettingsPageProps) {
                   <input type="color" value={textStyle.narration} onChange={(e) => setTextStyle(s => ({ ...s, narration: e.target.value }))} />
                 </label>
               </div>
+              <p className="settings-attribution">OpenDyslexic by Abbie Gonzalez, licensed under the SIL Open Font License 1.1. See <code>public/fonts/THIRD_PARTY_NOTICES.md</code>.</p>
               <button className="text-button" onClick={() => setTextStyle(defaultTextStyle)}>
                 Reset to defaults
               </button>

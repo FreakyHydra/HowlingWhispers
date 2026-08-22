@@ -102,7 +102,7 @@ export interface ChatWorkspaceProps {
   relationshipNote: string;
   setRelationshipNote: (value: string) => void;
   autopilotError: string;
-  textStyle: { dialogue: string; action: string; narration: string; fontSize: number };
+  textStyle: { dialogue: string; action: string; narration: string; fontSize: number; fontFamily: "default" | "opendyslexic" | "system" };
   editingId: number | null;
   editDraft: string;
   setEditDraft: (value: string) => void;
@@ -371,7 +371,14 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
       .filter(Boolean);
 
     return (
-      <div className="message-copy-text">
+      <div
+        className="message-copy-text"
+        style={{
+          fontFamily: textStyle.fontFamily === "opendyslexic"
+            ? '"OpenDyslexic", system-ui, sans-serif'
+            : textStyle.fontFamily === "system" ? "system-ui, sans-serif" : '"Cormorant Garamond", Georgia, serif',
+        }}
+      >
         {(paragraphs.length > 0 ? paragraphs : [formattedText]).map((paragraph, index) => {
           const isSpeakerLabel = /^[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2}(?:\s*\(as\))?:$/.test(paragraph);
           const escapedName = (speakerName ?? selected.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -535,7 +542,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
 
   return (
     <section
-      className={`workspace${showCharacterRail ? "" : " hide-character-rail"}${showContextRail ? "" : " hide-context-rail"}`}
+      className={`workspace reading-font-${textStyle.fontFamily}${showCharacterRail ? "" : " hide-character-rail"}${showContextRail ? "" : " hide-context-rail"}`}
       style={themeVariables}
     >
       {showCharacterRail && <aside className="character-rail" aria-label="Characters">

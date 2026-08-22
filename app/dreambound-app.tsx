@@ -352,6 +352,8 @@ export type TextStyle = {
   action: string;
   narration: string;
   fontSize: number;
+  uiFontSize: number;
+  fontFamily: "default" | "opendyslexic" | "system";
 };
 
 type ModelId = "xialong-v1" | "glm-4-6";
@@ -1906,6 +1908,8 @@ export default function DreamboundApp() {
     action: "#8ab4c8",
     narration: "#9a9f7a",
     fontSize: 19,
+    uiFontSize: 16,
+    fontFamily: "default",
   };
   const [textStyle, setTextStyle] = useState<TextStyle>(() => {
     try {
@@ -1915,7 +1919,13 @@ export default function DreamboundApp() {
         const fontSize = typeof parsed.fontSize === "number"
           ? Math.min(26, Math.max(15, parsed.fontSize))
           : defaultTextStyle.fontSize;
-        return { ...defaultTextStyle, ...parsed, fontSize };
+        const uiFontSize = typeof parsed.uiFontSize === "number"
+          ? Math.min(22, Math.max(12, parsed.uiFontSize))
+          : defaultTextStyle.uiFontSize;
+        const fontFamily = parsed.fontFamily === "opendyslexic" || parsed.fontFamily === "system"
+          ? parsed.fontFamily
+          : defaultTextStyle.fontFamily;
+        return { ...defaultTextStyle, ...parsed, fontSize, uiFontSize, fontFamily };
       }
     } catch { /* ignore */ }
     return defaultTextStyle;
@@ -1924,6 +1934,7 @@ export default function DreamboundApp() {
   useEffect(() => {
     try {
       localStorage.setItem("dreambound_text_style", JSON.stringify(textStyle));
+      window.dispatchEvent(new Event("dreambound-preferences-changed"));
     } catch { /* ignore */ }
   }, [textStyle]);
 
@@ -2425,6 +2436,16 @@ export default function DreamboundApp() {
       return false;
     })
     .sort((a, b) => b.updatedAt - a.updatedAt);
+  const readingFontFamily = textStyle.fontFamily === "opendyslexic"
+    ? '"OpenDyslexic", system-ui, sans-serif'
+    : textStyle.fontFamily === "system" ? "system-ui, sans-serif" : '"Cormorant Garamond", Georgia, serif';
+  const appFontVariables = {
+    "--reading-font-family": readingFontFamily,
+    "--serif": readingFontFamily,
+    "--sans": readingFontFamily,
+    "--ui-font-size": `${textStyle.uiFontSize}px`,
+    "--ui-font-scale": String(textStyle.uiFontSize / 16),
+  } as React.CSSProperties;
   const themeVariables = {
     "--theme-accent": activeTheme.accent,
     "--theme-accent-muted": activeTheme.accentMuted,
@@ -2435,6 +2456,7 @@ export default function DreamboundApp() {
     "--copper-bright": activeTheme.accent,
     "--rune": activeTheme.accent,
     "--chat-font-size": `${textStyle.fontSize}px`,
+    "--chat-font-family": readingFontFamily,
   } as React.CSSProperties;
   const hasNovelAiToken = Boolean(apiToken.trim());
   const configured = storyProvider === "local"
@@ -4632,7 +4654,18 @@ function updateCharacter(id: string, updates: Partial<Character>) {
     if (typeof preferences.initiative === "string") setInitiative(preferences.initiative as Initiative);
     if (typeof preferences.viewpoint === "string") setViewpoint(preferences.viewpoint as Viewpoint);
     if (typeof preferences.storyTense === "string") setStoryTense(preferences.storyTense as StoryTense);
-    if (preferences.textStyle) setTextStyle(preferences.textStyle);
+    if (preferences.textStyle) {
+      setTextStyle((current) => ({
+        ...current,
+        ...preferences.textStyle,
+        fontFamily: preferences.textStyle?.fontFamily === "opendyslexic" || preferences.textStyle?.fontFamily === "system"
+          ? preferences.textStyle.fontFamily
+          : current.fontFamily,
+        uiFontSize: typeof preferences.textStyle?.uiFontSize === "number"
+          ? Math.min(22, Math.max(12, preferences.textStyle.uiFontSize))
+          : current.uiFontSize,
+      }));
+    }
     if (typeof preferences.shareCount === "number") setShareCount(preferences.shareCount);
     if (typeof preferences.shareCaptions === "boolean") setShareCaptions(preferences.shareCaptions);
     if (typeof preferences.shareHeader === "boolean") setShareHeader(preferences.shareHeader);
@@ -4774,7 +4807,9 @@ function updateCharacter(id: string, updates: Partial<Character>) {
     const maxBubbleWidth = contentWidth * 0.86;
     const gap = 20;
 
-    const serifFamily = '"Cormorant Garamond", Georgia, serif';
+    const serifFamily = textStyle.fontFamily === "opendyslexic"
+      ? '"OpenDyslexic", system-ui, sans-serif'
+      : textStyle.fontFamily === "system" ? "system-ui, sans-serif" : '"Cormorant Garamond", Georgia, serif';
     const sansFamily = '"Inter", system-ui, sans-serif';
     const serifFont = (size: number, italic = false, bold = false) =>
       `${italic ? "italic " : ""}${bold ? "600 " : "400 "}${size}px ${serifFamily}`;
@@ -5451,7 +5486,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell reading-font-${textStyle.fontFamily}`} style={appFontVariables}>
       <header className="topbar">
         <button
           className="brand brand-button"
