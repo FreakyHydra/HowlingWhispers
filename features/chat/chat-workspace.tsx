@@ -265,6 +265,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
   const [rsPos, setRsPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const rsCogRef = useRef<HTMLButtonElement>(null);
   const rsPopRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
 
   const placeRsPopover = useCallback(() => {
     const trigger = rsCogRef.current;
@@ -310,6 +311,21 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
       window.removeEventListener("scroll", reposition, true);
     };
   }, [showRsSettings, placeRsPopover]);
+
+  useLayoutEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const style = getComputedStyle(el);
+    const maxHeight = parseFloat(style.maxHeight);
+    if (el.scrollHeight > maxHeight) {
+      el.style.height = `${maxHeight}px`;
+      el.style.overflowY = "auto";
+    } else {
+      el.style.height = `${el.scrollHeight}px`;
+      el.style.overflowY = "hidden";
+    }
+  }, [draft]);
 
   useEffect(() => {
     if (!showRsSettings) return;
@@ -813,7 +829,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
                     }
                   }}
                   placeholder="Speak, act, or shape the scene…"
-                  rows={2}
+                  ref={composerRef}
                 />
               </>
               <div className="composer-actions">
