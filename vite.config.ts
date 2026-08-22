@@ -24,6 +24,14 @@ export default defineConfig(async () => {
     server: {
       host: isRemoteAccess ? "0.0.0.0" : "127.0.0.1",
       allowedHosts: isRemoteAccess ? true : ["localhost", "127.0.0.1", "terminal.local"],
+      proxy: {
+        "/radio/": {
+          target: "http://62.50.185.109:8000/",
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/radio/, ""),
+          secure: false,
+        },
+      },
       ...(isCodexSeatbeltSandbox
         ? { watch: { useFsEvents: false, usePolling: true } }
         : {}),

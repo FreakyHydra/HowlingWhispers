@@ -6,11 +6,28 @@ import {
 import { resolveLatestBuiltinCanon } from "../../../lib/characters/builtins.ts";
 import {
   compileContext,
+  freshRerollSeed,
   type ContextManifest,
   type ContextMode,
   type RoleplayMessage,
   type StoryPreferences,
 } from "../../../lib/generation/compile-context.ts";
+import { parseContextInput } from "../../../lib/context/import-export.ts";
+import { parseStoryMetadata, type StoryMetadata } from "../../../lib/generation/story-metadata.ts";
+import { formatPlayerTurn } from "../../../lib/generation/player-turn.ts";
+import {
+  findCastEntryByName,
+  matchesName,
+  sanitizeCast,
+} from "../../../lib/generation/living-cast.ts";
+import {
+  autonomousAgentsToArray,
+  deriveAutonomyPulse,
+  sanitizeAutonomousCast,
+  seedAutonomyFromCast,
+  updateAutonomyState,
+  type AutonomousAgent,
+} from "../../../lib/generation/autonomous-cast.ts";
 import { resolveBuiltinWorldLore } from "../../../lib/worlds/builtins.ts";
 import type { WorldLorebookV1 } from "../../../lib/worlds/schema.ts";
 import { parseWorldLorebook } from "../../../lib/worlds/schema.ts";
@@ -51,6 +68,27 @@ function releaseGenerationSlot(id: number): void {
   if (index >= 0) generationSlots.splice(index, 1);
 }
 
+type UpstreamJson = { value?: unknown; error: string };
+
+async function readUpstreamJson(readable: Response, context: string): Promise<UpstreamJson> {
+  const status = readable.status;
+  let text = "";
+  try {
+    text = await readable.text();
+  } catch {
+    return { error: `${context} could not be read (HTTP ${status}).` };
+  }
+  if (!text.trim()) {
+    return { error: `${context} returned an empty response (HTTP ${status}).` };
+  }
+  try {
+    return { value: JSON.parse(text) };
+  } catch {
+    const preview = text.length > 260 ? `${text.slice(0, 260)}…` : text;
+    return { error: `${context} returned an invalid response (HTTP ${status}). ${preview}`.trim() };
+  }
+}
+
 async function waitForGenerationSlot(waitMs = 15_000): Promise<boolean> {
   const deadline = Date.now() + waitMs;
   while (Date.now() < deadline) {
@@ -64,28 +102,46 @@ async function waitForGenerationSlot(waitMs = 15_000): Promise<boolean> {
 const REPLY_LENGTHS = {
   quick: {
     maxTokens: 360,
-    instruction: "Write 1–2 complete paragraphs, usually 90–160 words. Keep it responsive, but still include characterful action and sensory context.",
+    maxWords: 160,
+    maxParagraphs: 2,
+    instruction: "Write exactly 1–2 complete paragraphs, maximum 160 words. Do not write more than two paragraphs. Do not exceed 160 words. Keep it responsive, but still include characterful action and sensory context.",
   },
   immersive: {
     maxTokens: 850,
-    instruction: "Write 3–5 substantial paragraphs, usually 220–400 words. Develop the moment through physical reactions, sensory environment, emotionally revealing dialogue, and subtext.",
+    maxWords: 400,
+    maxParagraphs: 5,
+    instruction: "Write exactly 3–5 substantial paragraphs, maximum 400 words. Do not write more than five paragraphs. Do not exceed 400 words. Develop the moment through physical reactions, sensory environment, emotionally revealing dialogue, and subtext.",
   },
   novel: {
     maxTokens: 1300,
-    instruction: "Write 5–8 substantial paragraphs, usually 400–650 words. Treat the reply like a polished scene from a character-driven novel, with patient pacing, vivid atmosphere, layered emotion, and meaningful dialogue.",
+    maxWords: 650,
+    maxParagraphs: 8,
+    instruction: "Write exactly 5–8 substantial paragraphs, maximum 650 words. Do not write more than eight paragraphs. Do not exceed 650 words. Treat the reply like a polished scene from a character-driven novel, with patient pacing, vivid atmosphere, layered emotion, and meaningful dialogue.",
   },
 } as const;
 
 const IMPERSONATION_LENGTHS: Record<keyof typeof REPLY_LENGTHS, string> = {
-  quick: "Write 1–2 complete paragraphs, usually 90–160 words. Keep it responsive, but still include characterful action and sensory context. A response under 90 words is incomplete.",
-  immersive: "Write 3–5 substantial paragraphs, usually 220–400 words. Develop the moment through physical reactions, sensory environment, emotionally revealing dialogue, and subtext. A response under 220 words is incomplete.",
-  novel: "Write 5–8 substantial paragraphs, usually 400–650 words. Treat the reply like a polished scene from a character-driven novel, with patient pacing, vivid atmosphere, layered emotion, and meaningful dialogue. A response under 400 words is incomplete.",
+  quick: "Write exactly one concise player turn, 25–55 words maximum. Do not write more than 55 words. Do not write more than one short action or line of dialogue. A clear action and/or a line of dialogue with just enough physical framing and reaction to feel alive.",
+  immersive: "Write exactly one developed player turn, 70–160 words maximum. Do not exceed 160 words. Write in the player's own first-person voice: the intended action or speech plus the player's reaction, body language, and a couple of sensory or emotional details from the player's side. Never write for the AI character.",
+  novel: "Write exactly one substantial player turn, 120–260 words maximum. Do not exceed 260 words. A fuller first-person scene with dialogue, deliberate action, reactions, and interior voice. Do not write for the AI character and do not invent extra decisions merely to pad length.",
 };
 
-const AUTOPILOT_BEAT_INSTRUCTION = "Write one self-contained story beat rather than a full reply: a distinct action or development followed by dialogue or narration, usually 80-150 words. It must advance the scene on its own and never hand the turn back to the player. Follow the same output format as before: actions and narration in single asterisks, inner voice in square brackets, spoken dialogue as plain text with no quotation marks.";
+function truncateReplyToLength(reply: string, replyLength: ReplyLength): string {
+  const limits = REPLY_LENGTHS[replyLength];
+  const paragraphs = reply.split(/\n\s*\n/).filter((p) => p.trim());
+  const trimmed = paragraphs.slice(0, limits.maxParagraphs).join('\n\n');
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length > limits.maxWords) {
+    return words.slice(0, limits.maxWords).join(' ') + '...';
+  }
+  return trimmed;
+}
+
+const AUTOPILOT_BEAT_INSTRUCTION = "Write one self-contained story beat rather than a full reply: a distinct action or development followed by dialogue or narration, usually 80-150 words. It must advance the scene on its own and never hand the turn back to the player. Follow the same output format as before: actions and narration in single asterisks, inner voice in square brackets, spoken dialogue in double quotes. Keep action, dialogue, and inner voice inline within the same paragraph; do not force blank lines between them. Preserve natural paragraph boundaries. Adjacent spans of the same type may merge.";
 const AUTOPILOT_MAX_TOKENS = 264;
 
 type ReplyLength = keyof typeof REPLY_LENGTHS;
+type TargetSpeaker = "character" | "player";
 type CharacterPrompt = {
   name: string;
   role: string;
@@ -104,33 +160,47 @@ type CharacterPrompt = {
 type ProseFormat = "roleplay";
 type StoryProvider = "novelai" | "local" | "device";
 
-const LOCAL_MINIMUM_WORDS: Record<ReplyLength, { character: number; player: number }> = {
-  quick: { character: 90, player: 90 },
-  immersive: { character: 220, player: 220 },
-  novel: { character: 400, player: 400 },
+const LOCAL_MINIMUM_WORDS: Record<ReplyLength, Record<TargetSpeaker, number>> = {
+  quick: { character: 90, player: 12 },
+  immersive: { character: 220, player: 70 },
+  novel: { character: 400, player: 160 },
 };
 
-const LOCAL_MINIMUM_SEGMENTS: Record<ReplyLength, { character: number; player: number }> = {
-  quick: { character: 3, player: 3 },
-  immersive: { character: 6, player: 6 },
-  novel: { character: 10, player: 10 },
+const LOCAL_MINIMUM_SEGMENTS: Record<ReplyLength, Record<TargetSpeaker, number>> = {
+  quick: { character: 3, player: 1 },
+  immersive: { character: 6, player: 3 },
+  novel: { character: 10, player: 5 },
 };
 
-function localRoleplayFormat(minSegments: number) {
+const LOCAL_MAX_SEGMENTS: Record<ReplyLength, Record<TargetSpeaker, number>> = {
+  quick: { character: 6, player: 2 },
+  immersive: { character: 12, player: 6 },
+  novel: { character: 18, player: 10 },
+};
+
+const IMPERSONATION_MIN_WORDS: Record<ReplyLength, number> = {
+  quick: 15,
+  immersive: 70,
+  novel: 120,
+};
+
+function localRoleplayFormat(minSegments: number, maxSegments: number) {
   return {
     type: "object",
     properties: {
       segments: {
         type: "array",
         minItems: minSegments,
-        maxItems: 24,
+        maxItems: maxSegments,
         items: {
           type: "object",
           properties: {
             kind: {
               type: "string",
               enum: ["dialogue", "action", "narration"],
-              description: "Dialogue is spoken only by the portrayed character. Action and narration must never assign the player an action, feeling, perception, or decision.",
+              description: minSegments <= 1
+                ? "The player-only kind that this segment belongs to."
+                : "Dialogue is spoken only by the portrayed character. Action and narration must never assign the player an action, feeling, perception, or decision.",
             },
             text: { type: "string" },
           },
@@ -140,6 +210,22 @@ function localRoleplayFormat(minSegments: number) {
     },
     required: ["segments"],
   };
+}
+
+function localContractPrompt(
+  prompt: string, replyLength: ReplyLength, outputKind: TargetSpeaker,
+  minimumSegments: number, maximumSegments: number, minimumWords: number, maximumWords: number,
+): string {
+  const lengthRule = outputKind === "player"
+    ? `The selected ${replyLength} length is mandatory. Write ${minimumWords}–${maximumWords} words. A shorter or longer draft is invalid.`
+    : `The selected ${replyLength} length is mandatory. Write ${minimumWords}–${maximumWords} words. A shorter or longer draft is invalid.`;
+  const segmentRule = `Use ${minimumSegments}–${maximumSegments} substantial segments. Fewer than ${minimumSegments} or more than ${maximumSegments} segments is invalid.`;
+  const boundary = outputKind === "player"
+    ? "The turn must contain only the player's own actions and spoken words. Never continue, finish, extend, or reword the character's last message; never write the character's dialogue, actions, voice, reactions, inner voice, or a second speaker."
+    : "Never assign the player an action, feeling, perception, or decision. In an open sandbox, do not invent a location, earlier meeting, or shared history that the player did not establish.";
+  return `${prompt}
+
+Local output contract: Return a JSON object with a segments array containing ${segmentRule} ${lengthRule} Each segment has kind dialogue, action, or narration and plain text without asterisks, brackets, or speaker labels. A dialogue segment contains only words spoken aloud. Put gestures, dialogue tags, sensory description, and internal or external narration in separate action or narration segments. Preserve the intended reading order. ${boundary}`;
 }
 
 function getDisplayName(requestedName: string): string {
@@ -154,22 +240,79 @@ export async function POST(request: Request) {
   if (!isRecord(body)) {
     return Response.json({ error: "The story request was malformed." }, { status: 400 });
   }
+  const contextInput = parseContextInput(body.contextInput);
+  const locationId = limitedString(body.locationId, 120);
+  const location = isRecord(body.location) ? {
+    id: limitedString(body.location.id, 120),
+    name: limitedString(body.location.name, 120),
+    type: limitedString(body.location.type, 120),
+    shortDescription: limitedString(body.location.shortDescription, 400),
+    description: limitedString(body.location.description, 8000),
+    image: limitedString(body.location.image, 120),
+    areas: Array.isArray(body.location.areas)
+      ? body.location.areas.map((a: unknown) => ({
+          id: limitedString((a as Record<string, unknown>)?.id, 120),
+          name: limitedString((a as Record<string, unknown>)?.name, 120),
+          description: limitedString((a as Record<string, unknown>)?.description, 600),
+          image: limitedString((a as Record<string, unknown>)?.image, 120),
+          tags: Array.isArray((a as Record<string, unknown>)?.tags)
+            ? (a as Record<string, unknown>).tags.map((t: unknown) => limitedString(t, 60)).filter(Boolean)
+            : undefined,
+        }))
+      : undefined,
+    features: Array.isArray(body.location.features)
+      ? body.location.features.map((f: unknown) => limitedString(f, 120)).filter(Boolean)
+      : undefined,
+    activities: Array.isArray(body.location.activities)
+      ? body.location.activities.map((a: unknown) => limitedString(a, 120)).filter(Boolean)
+      : undefined,
+    atmosphere: Array.isArray(body.location.atmosphere)
+      ? body.location.atmosphere.map((a: unknown) => limitedString(a, 120)).filter(Boolean)
+      : undefined,
+    occupants: Array.isArray(body.location.occupants)
+      ? body.location.occupants.map((o: unknown) => limitedString(o, 120)).filter(Boolean)
+      : undefined,
+    staffRoles: Array.isArray(body.location.staffRoles)
+      ? body.location.staffRoles.map((s: unknown) => limitedString(s, 120)).filter(Boolean)
+      : undefined,
+    accessibilityFeatures: Array.isArray(body.location.accessibilityFeatures)
+      ? body.location.accessibilityFeatures.map((a: unknown) => limitedString(a, 120)).filter(Boolean)
+      : undefined,
+    ageRange: isRecord(body.location.ageRange)
+      ? {
+          minimum: typeof body.location.ageRange.minimum === "number" ? Math.max(0, Math.floor(body.location.ageRange.minimum)) : undefined,
+          maximum: typeof body.location.ageRange.maximum === "number" ? Math.max(0, Math.floor(body.location.ageRange.maximum)) : undefined,
+        }
+      : undefined,
+    tags: Array.isArray(body.location.tags)
+      ? body.location.tags.map((t: unknown) => limitedString(t, 60)).filter(Boolean)
+      : undefined,
+  } : null;
+  const isLocationSession = Boolean(locationId && location);
+
   if (body.action === "finalize-device") {
     const rawReply = limitedString(body.rawReply, 50_000);
     const outputName = limitedString(body.outputName, 120);
     const outputKind = body.outputKind === "player" ? "player" : "character";
     const proseFormat: ProseFormat = "roleplay";
     const preparedReply = rawReply;
+    const metadataOut: { metadata?: StoryMetadata | null } = {};
     const reply = cleanReply(
       preparedReply, outputName, limitedString(body.playerName, 100), proseFormat, outputKind,
-      body.autopilot === true,
+      body.autopilot === true, metadataOut,
     );
     return reply
-      ? Response.json({ reply })
+      ? Response.json({ reply, metadata: metadataOut.metadata ?? null })
       : Response.json({ error: "The local model returned an empty reply." }, { status: 502 });
   }
   const playerName = getDisplayName(limitedString(body.playerName, 100));
-  const playerPersona = limitedString(body.playerPersona, 2000);
+  const playerPersonaInput = body.playerPersona;
+  let playerPersona: string | undefined;
+  if (typeof playerPersonaInput === "string") {
+    playerPersona = limitedString(playerPersonaInput, 2000);
+  } else if (playerPersonaInput && typeof playerPersonaInput === "object") {
+    playerPersona = JSON.stringify(playerPersonaInput);
+  }
 
   const apiToken = limitedString(body.apiToken, 4096);
   const provider: StoryProvider = body.provider === "local" || body.provider === "device"
@@ -179,6 +322,11 @@ export async function POST(request: Request) {
   let model = requestedModel;
   const temperature = boundedNumber(body.temperature, 0.1, 1, 0.8);
   const replyLength = parseReplyLength(body.replyLength);
+  const isReroll = body.reroll === true;
+  const rerollSeed = isReroll ? freshRerollSeed() : undefined;
+  if (rerollSeed !== undefined && process.env.NODE_ENV !== "production") {
+    console.log(`[reroll] fresh seed ${rerollSeed} for generation`);
+  }
   const preferences = parseStoryPreferences(body);
   const isConnectionTest = body.action === "test";
   const isImpersonation = body.action === "impersonate";
@@ -188,9 +336,23 @@ export async function POST(request: Request) {
   const autopilotPov: "first" | "third" | "narrator" =
     body.autopilotPov === "first" || body.autopilotPov === "narrator" ? body.autopilotPov : "third";
   const impersonationPrompt = limitedString(body.impersonationPrompt, 1200);
+  if (isImpersonation) {
+    console.log("[impersonation-debug] received impersonationPrompt:", JSON.stringify(impersonationPrompt));
+  }
   const doStream = body.stream === true;
   const character = isConnectionTest ? null : parseCharacter(body.character);
   const messages = isConnectionTest ? [] : parseMessages(body.messages);
+  const livingCast = isConnectionTest ? [] : sanitizeCast(body.livingCast, character ? { id: character.id, name: character.name } : undefined);
+  const autonomousCast = isConnectionTest ? new Map() : sanitizeAutonomousCast(body.autonomousCast);
+  const requestedSpeaker = limitedString(body.respondAs, 120);
+  const castSpeaker = !isConnectionTest && !isImpersonation && !isAutonomousBeat && requestedSpeaker
+    ? (() => {
+      const entry = findCastEntryByName(livingCast, requestedSpeaker);
+      if (!entry || entry.origin === "player" || entry.primary) return null;
+      if (matchesName(entry.name, character?.name ?? "")) return null;
+      return entry;
+    })()
+    : null;
 
   if (provider === "novelai" && !apiToken) {
     return Response.json({ error: "A NovelAI access token is required." }, { status: 400 });
@@ -213,19 +375,40 @@ export async function POST(request: Request) {
   if (provider === "device" && !isValidOllamaModelName(model)) {
     return Response.json({ error: "Enter the Ollama model installed on this computer." }, { status: 400 });
   }
-  if (!isConnectionTest && (!character || (messages.length === 0 && !isAutopilot))) {
+  if (!isConnectionTest && !isLocationSession && (!character || (messages.length === 0 && !isAutopilot && !isImpersonation))) {
     return Response.json({ error: "The character or conversation is incomplete." }, { status: 400 });
   }
   if (
     provider === "local"
     && isAdultOllamaModel(model)
     && !isConnectionTest
+    && !isLocationSession
     && (character?.canonical.safety.ageCategory !== "adult" || character.canonical.safety.isMinor !== false)
   ) {
     return Response.json({
       error: "The adult roleplay model requires a character explicitly confirmed as an adult.",
     }, { status: 400 });
   }
+
+  const autonomySeeded = (autonomousCast.size > 0 || livingCast.length > 0)
+    ? seedAutonomyFromCast(autonomousCast.size > 0 ? autonomousCast : new Map(), livingCast)
+    : autonomousCast;
+  const autonomyUpdated = (autonomySeeded.size > 0 && livingCast.length > 0)
+    ? updateAutonomyState(autonomySeeded, livingCast, messages, {
+      speakerName: castSpeaker?.name ?? null,
+      primaryName: character?.name ?? "",
+    })
+    : autonomySeeded;
+  const autonomyPulse = (autonomyUpdated.size > 0 || livingCast.length > 0)
+    ? deriveAutonomyPulse(autonomyUpdated, livingCast, {
+      speakerName: castSpeaker?.name ?? null,
+      primaryName: character?.name ?? "",
+      pendingTargetName: castSpeaker && !matchesName(castSpeaker.name, character?.name ?? "")
+        ? castSpeaker.name
+        : null,
+    })
+    : autonomyUpdated;
+  const autonomyPersisted = autonomousAgentsToArray(autonomyUpdated);
 
   const compiled = isConnectionTest ? null : compileContext({
       kind: isAutopilot ? "autopilot" : isImpersonation ? "impersonation" : "roleplay",
@@ -237,6 +420,8 @@ export async function POST(request: Request) {
       character: character!.canonical,
       worldLore: character!.worldLore,
       relationship: character!.relationship,
+      relationshipContextInstruction: body.character?.relationshipContextInstruction,
+      relationshipNote: body.character?.relationshipNote,
       playerRole: character!.playerRole,
       scene: character!.scene,
       sceneId: character!.sceneId,
@@ -256,25 +441,37 @@ export async function POST(request: Request) {
             ? "Write one concise character-only continuation, usually 60-150 words. Advance the scene with one action, reaction, or piece of dialogue, then stop. Never write the player's words, actions, thoughts, feelings, decisions, or a second speaker."
             : REPLY_LENGTHS[replyLength].instruction,
       playerDirection: impersonationPrompt,
+      reroll: isReroll,
+      cast: livingCast,
+      speaker: castSpeaker?.name,
+      autonomy: autonomousAgentsToArray(autonomyPulse),
+      contextInput,
+      location: isLocationSession ? location : undefined,
     });
   const prompt = isConnectionTest
     ? `Reply with exactly this text and nothing else: ${CONNECTION_TEST_RESPONSE}`
     : compiled!.prompt;
+  if (isImpersonation) {
+    console.log("[impersonation-debug] compiled prompt includes direction:", prompt.includes(impersonationPrompt));
+    console.log("[impersonation-debug] prompt length:", prompt.length);
+    console.log("[impersonation-debug] direction substring:", impersonationPrompt.slice(0, 100));
+  }
   const generationLength = isAutonomousBeat ? "quick" : replyLength;
   const maxTokens = isAutonomousBeat ? AUTOPILOT_MAX_TOKENS : REPLY_LENGTHS[replyLength].maxTokens;
+  const targetSpeaker: TargetSpeaker = isImpersonation ? "player" : "character";
   const stopSequences = isImpersonation
     ? impersonationStops(character?.name ?? "")
     : roleplayStops(playerName);
-  const outputName = isImpersonation ? playerName : character?.name ?? "";
-  const outputKind = isImpersonation ? "player" : "character";
+  const outputName = targetSpeaker === "player"
+    ? playerName
+    : (castSpeaker?.name || character?.name || "");
+  const outputKind = targetSpeaker;
   if (provider === "device") {
     const structuredRoleplay = preferences.proseFormat === "roleplay";
-    const minimumWords = LOCAL_MINIMUM_WORDS[replyLength][outputKind];
-    const minimumSegments = LOCAL_MINIMUM_SEGMENTS[replyLength][outputKind];
+    const minimumWords = LOCAL_MINIMUM_WORDS[replyLength][targetSpeaker];
+    const minimumSegments = LOCAL_MINIMUM_SEGMENTS[replyLength][targetSpeaker];
     const localPrompt = structuredRoleplay
-      ? `${prompt}
-
-Local output contract: Return a JSON object with a segments array containing at least ${minimumSegments} substantial segments and at least ${minimumWords} words total. The selected ${replyLength} length is mandatory. Each segment has kind dialogue, action, or narration and plain text without asterisks, brackets, quotation marks, or speaker labels. A dialogue segment contains only words spoken aloud. Put gestures, dialogue tags, sensory description, and narration in separate action or narration segments. Preserve reading order and never assign the player an action, feeling, perception, or decision.`
+      ? localContractPrompt(prompt, replyLength, targetSpeaker, minimumSegments, REPLY_LENGTHS[replyLength].maxParagraphs * 2, minimumWords, REPLY_LENGTHS[replyLength].maxWords)
       : prompt;
     return Response.json({
       ollamaRequest: {
@@ -290,6 +487,7 @@ Local output contract: Return a JSON object with a segments array containing at 
           top_p: 0.95,
           repeat_penalty: 1.08,
           stop: stopSequences,
+          ...(rerollSeed !== undefined ? { seed: rerollSeed } : {}),
         },
       },
         finalization: {
@@ -300,6 +498,7 @@ Local output contract: Return a JSON object with a segments array containing at 
           autopilot: isAutonomousBeat,
         },
       context: compiled?.manifest,
+      autonomy: autonomyPersisted,
     });
   }
   const controller = new AbortController();
@@ -336,6 +535,7 @@ Local output contract: Return a JSON object with a segments array containing at 
           model, prompt, isConnectionTest, temperature, generationLength,
           outputName, playerName, preferences.proseFormat,
           outputKind, stopSequences, compiled?.manifest, controller, timeout, maxTokens, isAutonomousBeat,
+          rerollSeed, autonomyPersisted,
         );
       } finally {
         releaseGenerationSlot(slotId);
@@ -345,14 +545,16 @@ Local output contract: Return a JSON object with a segments array containing at 
     if (doStream) {
       return streamReply(
         apiToken, model, prompt, isConnectionTest, temperature, generationLength,
-        stopSequences, controller, timeout, maxTokens,
+        stopSequences, controller, timeout, maxTokens, rerollSeed,
       );
     }
 
     return await nonStreamReply(
       apiToken, model, prompt, isConnectionTest, temperature, generationLength,
-      isImpersonation ? playerName : character?.name ?? "", playerName, preferences.proseFormat,
-      isImpersonation ? "player" : "character", stopSequences, compiled?.manifest, controller, timeout, maxTokens, isAutonomousBeat,
+      outputName, playerName, preferences.proseFormat,
+      outputKind, stopSequences, compiled?.manifest, controller, timeout, maxTokens,
+      isAutonomousBeat, rerollSeed, isImpersonation ? impersonationPrompt : "",
+      autonomyPersisted,
     );
   } catch (error) {
     clearTimeout(timeout);
@@ -372,7 +574,8 @@ async function localReply(
   temperature: number, replyLength: ReplyLength, outputName: string, playerName: string,
   proseFormat: ProseFormat, outputKind: "player" | "character", stopSequences: string[],
   contextManifest: ContextManifest | undefined, controller: AbortController, timeout: NodeJS.Timeout,
-  maxTokens: number, autopilot: boolean,
+  maxTokens: number, autopilot: boolean, rerollSeed?: number,
+  autonomy?: AutonomousAgent[],
 ) {
   if (isTest) {
     const upstream = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
@@ -475,9 +678,7 @@ async function localReply(
   const minimumWords = LOCAL_MINIMUM_WORDS[replyLength][outputKind];
   const minimumSegments = LOCAL_MINIMUM_SEGMENTS[replyLength][outputKind];
   const localPrompt = structuredRoleplay
-    ? `${prompt}
-
-Local output contract: Return a JSON object with a segments array containing at least ${minimumSegments} substantial segments and at least ${minimumWords} words total. The selected ${replyLength} length is mandatory; a shorter draft is invalid. Each segment has kind dialogue, action, or narration and plain text without asterisks, brackets, quotation marks, or speaker labels. A dialogue segment contains only words spoken aloud. Put gestures, dialogue tags, sensory description, and internal or external narration in separate action or narration segments. Preserve the intended reading order. Never address the player by the character's own name. In an open sandbox, do not invent a current location, earlier meeting, or shared history that the player did not establish.`
+    ? localContractPrompt(prompt, replyLength, outputKind, minimumSegments, REPLY_LENGTHS[replyLength].maxParagraphs * 2, minimumWords, REPLY_LENGTHS[replyLength].maxWords)
     : prompt;
   const generate = (generationPrompt: string) => fetch(`${OLLAMA_BASE_URL}/api/generate`, {
       method: "POST",
@@ -489,11 +690,12 @@ Local output contract: Return a JSON object with a segments array containing at 
         format: structuredRoleplay ? localRoleplayFormat(minimumSegments) : undefined,
         options: {
           num_ctx: 16_384,
-          num_predict: maxTokens,
+          num_predict: structuredRoleplay ? Math.min(maxTokens, Math.max(200, REPLY_LENGTHS[replyLength].maxWords * 2)) : maxTokens,
           temperature,
           top_p: 0.95,
           repeat_penalty: 1.08,
           stop: stopSequences,
+          ...(rerollSeed !== undefined && !isTest ? { seed: rerollSeed } : {}),
         },
       }),
       signal: controller.signal,
@@ -511,7 +713,12 @@ Local output contract: Return a JSON object with a segments array containing at 
     }, { status: 502 });
   }
 
-  let result: unknown = await upstream.json();
+  const parsed = await readUpstreamJson(upstream, "Ollama");
+  if (!("value" in parsed)) {
+    clearTimeout(timeout);
+    return Response.json({ error: parsed.error }, { status: 502 });
+  }
+  let result: unknown = parsed.value;
   let rawReply = isRecord(result) && typeof result.response === "string"
     ? result.response
     : "";
@@ -519,32 +726,56 @@ Local output contract: Return a JSON object with a segments array containing at 
     ? formatLocalRoleplayReply(rawReply, outputKind, outputName)
     : rawReply;
 
+  const maxWords = REPLY_LENGTHS[replyLength].maxWords;
   for (let attempt = 0; structuredRoleplay && countWords(preparedReply) < minimumWords && attempt < 3; attempt += 1) {
-    const remainingWords = minimumWords - countWords(preparedReply);
-    upstream = await generate(`${prompt}
+    const currentWords = countWords(preparedReply);
+    if (currentWords >= maxWords) break;
+    const remainingWords = Math.min(minimumWords - currentWords, maxWords - currentWords);
+    const continuationPrompt = outputKind === "player"
+      ? `${prompt}
+
+<player-continuation-control>
+Continue after the existing player-turn prefix with at least ${remainingWords} new words. Return only a JSON object containing additional player-only segments. Never reproduce the prefix or this instruction, and never write the AI character or another speaker.
+</player-continuation-control>
+
+<existing-player-prefix>
+${preparedReply}
+</existing-player-prefix>`
+      : `${prompt}
 
 Continuation task: The response draft below is incomplete and still needs at least ${remainingWords} additional words. Continue directly after its final beat with new, developed action, dialogue, and sensory or emotional detail. Do not repeat, restart, summarize, conclude early, or contradict the draft. Return only a JSON object containing the additional segments, using the same dialogue/action/narration schema and no markup characters.
 
 Incomplete response draft:
-${preparedReply}`);
+${preparedReply}`;
+    upstream = await generate(continuationPrompt);
     if (!upstream.ok) {
       clearTimeout(timeout);
       return Response.json({ error: `Ollama continuation returned HTTP ${upstream.status}.` }, { status: 502 });
     }
-    result = await upstream.json();
+    const continuationRead = await readUpstreamJson(upstream, "Ollama continuation");
+    if (!("value" in continuationRead)) {
+      clearTimeout(timeout);
+      return Response.json({ error: continuationRead.error }, { status: 502 });
+    }
+    result = continuationRead.value;
     rawReply = isRecord(result) && typeof result.response === "string" ? result.response : "";
-    const continuation = formatLocalRoleplayReply(rawReply, outputKind, outputName);
+    const formattedContinuation = formatLocalRoleplayReply(rawReply, outputKind, outputName);
+    const continuation = outputKind === "player"
+      ? cleanPlayerContinuationDelta(preparedReply, formattedContinuation)
+      : formattedContinuation;
     if (!continuation.trim()) break;
     preparedReply = `${preparedReply}\n\n${continuation}`;
   }
 
   clearTimeout(timeout);
-  const reply = isTest
+  const metadataOut: { metadata?: StoryMetadata | null } = {};
+  const cleaned = isTest
     ? rawReply.trim().slice(0, 200)
       : cleanReply(
        preparedReply,
-       outputName, playerName, proseFormat, outputKind, autopilot,
+       outputName, playerName, proseFormat, outputKind, autopilot, metadataOut,
      );
+  const reply = !isTest && !autopilot ? truncateReplyToLength(cleaned, replyLength) : cleaned;
 
   if (!reply) {
     return Response.json({
@@ -555,11 +786,65 @@ ${preparedReply}`);
     return Response.json({ error: "The local model returned an unexpected test response." }, { status: 502 });
   }
 
-  return Response.json(isTest ? { ok: true, message: CONNECTION_TEST_RESPONSE } : { reply, context: contextManifest });
+  return Response.json(
+    isTest
+      ? { ok: true, message: CONNECTION_TEST_RESPONSE }
+      : { reply, context: contextManifest, metadata: metadataOut.metadata ?? null, autonomy },
+  );
 }
 
 function countWords(value: string): number {
   return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function playerContinuationPrompt(
+  basePrompt: string, draft: string, remainingWords: number, playerDirection: string,
+): string {
+  const direction = playerDirection
+    ? `\nPRIVATE DIRECTION (MANDATORY):\n${playerDirection}\nPreserve this intent and any supplied words verbatim; do not replace, soften, or summarize it.`
+    : "";
+  const instruction = `Continue the existing first-person player turn with about ${remainingWords} new words of the player's own action, reaction, dialogue, body language, or interior voice. Return only text that comes after the supplied prefix. Never repeat or quote the prefix, these instructions, or the private direction. Do not start a new turn, add a second speaker, or write the AI character's actions, dialogue, feelings, or reactions.${direction}`;
+  const finalPlayerTurn = basePrompt.lastIndexOf("\n<|user|>\n");
+  if (finalPlayerTurn < 0) {
+    return `${basePrompt}\n\n<player-continuation-control>\n${instruction}\n</player-continuation-control>\n\n<existing-player-prefix>\n${draft}\n</existing-player-prefix>`;
+  }
+  return `${basePrompt.slice(0, finalPlayerTurn)}\n<|system|>\n${instruction}${basePrompt.slice(finalPlayerTurn)}${draft}`;
+}
+
+const PLAYER_CONTINUATION_LEAKS = [
+  /^Continue this SAME turn from the player's side,\s*preserving and expanding on the current intent without concluding or ending the turn yet\.\s*Do not stop or wrap up\.\s*Keep the player's perspective flowing forward into the next natural beat\.\s*/i,
+  /^Continuation task:\s*The first-person player turn below is incomplete[\s\S]*?use no labels, markup, or metadata\.\s*/i,
+  /^Continue the existing first-person player turn with about \d+ new words[\s\S]*?write the AI character's actions, dialogue, feelings, or reactions\.(?:\s*PRIVATE DIRECTION \(MANDATORY\):[\s\S]*?do not replace, soften, or summarize it\.)?\s*/i,
+  /^Continue after the existing player-turn prefix with at least \d+ new words\.\s*Return only a JSON object containing additional player-only segments\.\s*Never reproduce the prefix or this instruction, and never write the AI character or another speaker\.\s*/i,
+];
+
+function wordSpans(value: string): Array<{ word: string; end: number }> {
+  return [...value.matchAll(/[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*/g)]
+    .map((match) => ({ word: match[0].toLocaleLowerCase("en-US"), end: match.index! + match[0].length }));
+}
+
+export function cleanPlayerContinuationDelta(draft: string, value: string): string {
+  let delta = value
+    .replace(/<\/?(?:player-continuation-control|existing-player-prefix)>/gi, "")
+    .replace(/^<\|system\|>\s*/i, "")
+    .trim();
+  for (const leak of PLAYER_CONTINUATION_LEAKS) delta = delta.replace(leak, "").trimStart();
+  delta = delta.replace(/^(?:Player turn so far|Existing player(?:-turn)? prefix):\s*/i, "");
+
+  const draftWords = wordSpans(draft);
+  const deltaWords = wordSpans(delta);
+  let repeatedWords = 0;
+  for (let count = Math.min(draftWords.length, deltaWords.length); count >= 4; count -= 1) {
+    const draftOffset = draftWords.length - count;
+    if (deltaWords.slice(0, count).every(({ word }, index) => word === draftWords[draftOffset + index].word)) {
+      repeatedWords = count;
+      break;
+    }
+  }
+  if (repeatedWords > 0) {
+    delta = delta.slice(deltaWords[repeatedWords - 1].end).replace(/^[\s.,!?;:—-]+/, "");
+  }
+  return delta.trim();
 }
 
 function formatLocalRoleplayReply(
@@ -600,7 +885,7 @@ async function streamReply(
   apiToken: string, model: string, prompt: string, isTest: boolean,
   temperature: number, replyLength: ReplyLength,
   stopSequences: string[], controller: AbortController, timeout: NodeJS.Timeout,
-  maxTokens: number,
+  maxTokens: number, rerollSeed?: number,
 ) {
   const upstream = await fetch(`${NOVELAI_BASE}/completions`, {
     method: "POST",
@@ -615,6 +900,7 @@ async function streamReply(
       presence_penalty: 0,
       stream: true,
       stop: stopSequences,
+      ...(rerollSeed !== undefined && !isTest ? { seed: rerollSeed } : {}),
     }),
     signal: controller.signal,
   });
@@ -655,14 +941,33 @@ async function nonStreamReply(
   temperature: number, replyLength: ReplyLength, outputName: string, playerName: string,
   proseFormat: ProseFormat, outputKind: "player" | "character", stopSequences: string[],
   contextManifest: ContextManifest | undefined, controller: AbortController, timeout: NodeJS.Timeout,
-  maxTokens: number, autopilot: boolean,
+  maxTokens: number, autopilot: boolean, rerollSeed?: number,
+  playerDirection = "",
+  autonomy?: AutonomousAgent[],
 ) {
-  const upstream = await fetch(`${NOVELAI_BASE}/completions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
+  const generate = (generationPrompt: string) => fetch(`${NOVELAI_BASE}/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        prompt: generationPrompt,
+        max_tokens: isTest ? 32 : maxTokens,
+        temperature: isTest ? 0.1 : temperature,
+        top_p: 1,
+        frequency_penalty: 0,
+        presence_penalty: 0,
+        stream: false,
+        stop: stopSequences,
+        ...(rerollSeed !== undefined && !isTest ? { seed: rerollSeed } : {}),
+      }),
+      signal: controller.signal,
+    });
+
+  let upstream = await generate(prompt);
+  if (outputKind === "player") {
+    const sentBody = JSON.parse(JSON.stringify({
       model,
-      prompt,
+      prompt: prompt,
       max_tokens: isTest ? 32 : maxTokens,
       temperature: isTest ? 0.1 : temperature,
       top_p: 1,
@@ -670,22 +975,55 @@ async function nonStreamReply(
       presence_penalty: 0,
       stream: false,
       stop: stopSequences,
-    }),
-    signal: controller.signal,
-  });
-
+      ...(rerollSeed !== undefined && !isTest ? { seed: rerollSeed } : {}),
+    }));
+    console.log("[impersonation-debug] NovelAI request body prompt length:", sentBody.prompt.length);
+    console.log("[impersonation-debug] NovelAI request body includes direction:", sentBody.prompt.includes(playerDirection));
+    console.log("[impersonation-debug] NovelAI request body direction sample:", playerDirection.slice(0, 100));
+  }
   clearTimeout(timeout);
 
   if (!upstream.ok) {
     return Response.json({ error: providerError(upstream.status) }, { status: 502 });
   }
 
-  const result: unknown = await upstream.json();
-  const rawReply = extractReply(result);
-  const reply = isTest
-    ? rawReply.trim().slice(0, 200)
-    : cleanReply(rawReply, outputName, playerName, proseFormat, outputKind, autopilot);
+  const firstRead = await readUpstreamJson(upstream, "NovelAI");
+  if (!("value" in firstRead)) {
+    return Response.json({ error: firstRead.error }, { status: 502 });
+  }
+  let result: unknown = firstRead.value;
+  let rawReply = extractReply(result);
+  const metadataOut: { metadata?: StoryMetadata | null } = {};
+  let prepared = isTest ? rawReply.trim().slice(0, 200)
+    : cleanReply(rawReply, outputName, playerName, proseFormat, outputKind, autopilot, metadataOut);
+  if (outputKind === "player") {
+    console.log("[impersonation-debug] raw reply:", rawReply.slice(0, 500));
+    console.log("[impersonation-debug] cleaned reply:", prepared.slice(0, 500));
+  }
 
+  const enforcePlayerFloor = !isTest && outputKind === "player" && !autopilot;
+  const playerFloor = IMPERSONATION_MIN_WORDS[replyLength];
+  const maxWords = REPLY_LENGTHS[replyLength].maxWords;
+  for (let attempt = 0; enforcePlayerFloor && countWords(prepared) < playerFloor && attempt < 2; attempt += 1) {
+    const currentWords = countWords(prepared);
+    if (currentWords >= maxWords) break;
+    const remainingWords = Math.min(playerFloor - currentWords, maxWords - currentWords);
+    upstream = await generate(playerContinuationPrompt(prompt, prepared, remainingWords, playerDirection));
+    if (!upstream.ok) break;
+    const extraRead = await readUpstreamJson(upstream, "NovelAI continuation");
+    if (!("value" in extraRead)) break;
+    result = extraRead.value;
+    rawReply = extractReply(result);
+    const cleanedExtra = cleanReply(rawReply, outputName, playerName, proseFormat, outputKind, autopilot, metadataOut);
+    const extra = cleanPlayerContinuationDelta(prepared, cleanedExtra);
+    if (!extra.trim()) break;
+    prepared = `${prepared}\n\n${extra}`;
+  }
+
+  if (!isTest && !autopilot) {
+    prepared = truncateReplyToLength(prepared, replyLength);
+  }
+  const reply = prepared;
   if (!reply) {
     return Response.json({
       error: isTest ? "NovelAI returned no test response." : "NovelAI returned an empty reply.",
@@ -698,7 +1036,11 @@ async function nonStreamReply(
     }, { status: 502 });
   }
 
-  return Response.json(isTest ? { ok: true, message: CONNECTION_TEST_RESPONSE } : { reply, context: contextManifest });
+  return Response.json(
+    isTest
+      ? { ok: true, message: CONNECTION_TEST_RESPONSE }
+      : { reply, context: contextManifest, metadata: metadataOut.metadata ?? null, autonomy },
+  );
 }
 
 function isSuccessfulConnectionReply(value: string): boolean {
@@ -757,7 +1099,8 @@ function parseMessages(v: unknown): RoleplayMessage[] {
     const sender = limitedString(m.sender, 24);
     const text = limitedString(m.text, 4000);
     if (!ALLOWED_SENDERS.has(sender) || !text) return null;
-    return { sender: sender as RoleplayMessage["sender"], text };
+    const speaker = m.speaker ? limitedString(m.speaker, 120) : undefined;
+    return { sender: sender as RoleplayMessage["sender"], text, speaker: speaker || undefined };
   }).filter((m): m is RoleplayMessage => m !== null);
 }
 
@@ -773,6 +1116,7 @@ function extractReply(v: unknown): string {
 function cleanReply(
   v: string, name: string, playerName: string, proseFormat: ProseFormat,
   outputKind: "player" | "character", autopilot = false,
+  out?: { metadata?: StoryMetadata | null },
 ): string {
   const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const structuralEnd = v.search(/\n\s*<\|(?:user|assistant)\|>|\n\s*\/nothink/i);
@@ -804,19 +1148,31 @@ function cleanReply(
       "\n\n$1\n\n",
     )
     .replace(/\n[ \t]+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
+.replace(/\n{3,}/g, "\n\n")
     .trim();
 
   if (proseFormat === "roleplay") {
     reply = reply
       .replace(/[“”"]/g, "")
       .replace(/^\s*(?:\*\s*)+$/gm, "")
-      .replace(/\s*(?<!\*)(\*[^*]+\*)(?!\*)\s*/g, "\n\n$1\n\n")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
+    if (outputKind !== "player") {
+      reply = reply
+        .replace(/\s*(?<!\*)(\*[^*]+\*)(?!\*)\s*/g, "\n\n$1\n\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    }
   }
 
-  return autopilot ? limitAutopilotBeat(reply) : reply.slice(0, 12_000);
+  if (outputKind === "player" && proseFormat === "roleplay") {
+    reply = formatPlayerTurn(reply, playerName);
+  }
+
+  const final = autopilot ? limitAutopilotBeat(reply) : reply.slice(0, 12_000);
+  const { text: withoutMetadata, metadata } = parseStoryMetadata(final);
+  if (out) out.metadata = metadata;
+  return withoutMetadata;
 }
 
 function limitAutopilotBeat(value: string): string {
@@ -845,6 +1201,7 @@ function roleplayStops(playerName: string): string[] {
   return [
     `\n${label}:`,
     "\nPlayer:", "\nUser:", "\nSystem:", "\nEmotion:", "\nMood:",
+    "\nplayer user message:", "\nplayer message:", "\nuser message:",
     "\nAnalysis:", "\nThinking:", "\nWrite only the next roleplay passage",
     "\n<player>", "\n<user>", "\n<system>",
     "\n<|user|>", "\n<|assistant|>", "\n/nothink",
@@ -855,6 +1212,7 @@ function impersonationStops(characterName: string): string[] {
   return [
     `\n${characterName}:`, "\nNarration:", "\nSystem:", "\nEmotion:", "\nMood:",
     "\nAnalysis:", "\nThinking:", "\nWrite the suggested player response",
+    "\nplayer user message:", "\nplayer message:", "\nuser message:",
     "\n<character_reply>", "\n<system>",
     "\n<|assistant|>", "\n<|user|>", "\n/nothink",
   ];
@@ -868,6 +1226,7 @@ function providerError(status: number): string {
   if (status >= 500) return "NovelAI is temporarily unavailable.";
   return "NovelAI could not generate this reply.";
 }
+
 
 function limitedString(v: unknown, max: number): string {
   return typeof v === "string" ? v.trim().slice(0, max) : "";

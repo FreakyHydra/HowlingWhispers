@@ -3,18 +3,65 @@
 /* eslint-disable @next/next/no-img-element */
 import { FormEvent, useCallback, useMemo, useRef, useState, useEffect, useLayoutEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { ChangelogView } from "../features/changelog/changelog-view";
 import packageInfo from "../package.json";
 import { legacyCharacterToCanon, type AgeCategory } from "../lib/characters/canonical";
+import { COMMUNITY_DISCORD_URL } from "../lib/site";
 import {
   ensureUniqueCharacterIds,
   parseCharacterImport,
   serializeCharacter,
   serializeCharacterLibrary,
 } from "../lib/characters/import-export";
+import type { Location } from "../lib/locations/types";
+import {
+  ensureUniqueLocationIds,
+  parseLocationImport,
+  serializeLocation,
+} from "../lib/locations/import-export";
+import { sanitizeLocation } from "../lib/locations/types";
+import { locationSelectionKey, locationSessionFields, resolveLocationScenes } from "../lib/locations/session.ts";
+import { migrateLegacySessions, migrateLegacySelectedId } from "../lib/locations/migration.ts";
+import type { Scenario } from "../lib/scenarios/types";
+import {
+  ensureUniqueScenarioIds,
+  parseScenarioImport,
+  serializeScenario,
+} from "../lib/scenarios/import-export";
+import { newScenarioId, sanitizeScenario } from "../lib/scenarios/types";
+import {
+  characterCardV2ToHowling,
+  CHARACTER_CARD_V2_LIMITS,
+  characterCardV2BookToWorldLore,
+  characterCardV2ToCanon,
+  embedCharacterCardV2InPng,
+  extractCharacterCardV2FromPng,
+  howlingCharacterToV2,
+  howlingWorldLoreToCharacterBook,
+  isCharacterCardV2,
+  parseCharacterCardV2Json,
+  serializeCharacterCardV2,
+  type HowlingV2Metadata,
+} from "../lib/characters/character-card-v2";
+import {
+  deleteCharacterPortrait,
+  isStoredPortraitReference,
+  loadCharacterPortrait,
+  persistCharacterPortrait,
+} from "../lib/characters/portrait-storage";
+import {
+  buildBackupPayload,
+  parsePortableBackup,
+  serializeBackupPayload,
+  validatePayload,
+  type BackupPayload,
+} from "../lib/backup/format";
+import { ensureUniquePersonaIds } from "../lib/personas/import-export";
 import { PersonaLibrary } from "../components/personas/persona-library";
 import ArchiveView from "../components/archive/archive-view";
-import type { ArchivePublication } from "../lib/archive/client";
+import { archive, type ArchivePublication, type ArchiveUser } from "../lib/archive/client";
 import { PersonaPicker } from "../components/story/persona-picker";
+import RadioPlayer from "./components/radio-player";
 import {
   loadPersonas,
   savePersonas,
@@ -25,15 +72,84 @@ import {
 import { compilePlayerPersona } from "../lib/personas/compile";
 import type { PlayerPersona } from "../lib/personas/schema";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
+import { readContextLibrary, writeContextLibrary, type ContextLibrary } from "../lib/context/storage.ts";
+import type { ContextInput } from "../lib/context/types.ts";
+import type { MemoryEntry, AuthorNoteEntry } from "../lib/context/types.ts";
+import { importMemory, importAuthorNote, decodeLorebookFile, exportMemory, exportAuthorNotes, exportLorebook } from "../lib/context/import-export.ts";
+import { formatPlayerTurn } from "../lib/generation/player-turn.ts";
+import type { AutonomousAgent } from "../lib/generation/autonomous-cast.ts";
+import {
+  autonomousAgentsToArray,
+  seedAutonomyFromCast,
+} from "../lib/generation/autonomous-cast.ts";
+import { resolveStoryTemplate } from "../lib/generation/story-templates.ts";
+import { starterCommonScenes } from "../lib/generation/starter-common-scenes.ts";
+import type {
+  HowlingAddonManifest,
+  InstalledAddon,
+  AddonCommonScene,
+} from "../lib/generation/howling-addons.ts";
+import {
+  isHowlingAddon,
+  validateAddonContent,
+} from "../lib/generation/howling-addons.ts";
+import type { StoryMetadata } from "../lib/generation/story-metadata.ts";
+
+import {
+  createCast,
+  detectLivingCast,
+  detectPendingInteraction,
+  matchesName,
+  type LivingCastEntry,
+} from "../lib/generation/living-cast.ts";
+import { readLivingCastConfig, writeLivingCastConfig, DEFAULT_LIVING_CAST_CONFIG } from "../lib/living-cast/config.ts";
+import { createParticipantSelector, RoundRobinSelector } from "../lib/living-cast/participant-selector.ts";
+import { inviteCharacter, removeInvitedCharacter, resetCast, isInvitedCharacter } from "../lib/living-cast/invitation.ts";
+import type { LivingCastConfig } from "../lib/living-cast/config.ts";
+import { LivingCastConfig as LivingCastConfigView } from "../features/living-cast/living-cast-config.tsx";
+import { CharacterInvitePicker } from "../features/living-cast/character-invite-picker.tsx";
 import { isNewerVersion } from "../lib/version.mjs";
 import { legacyCharacterToWorldLore } from "../lib/worlds/schema.ts";
+import { resolveBuiltinWorldLore } from "../lib/worlds/builtins.ts";
+import type { WorldLorebookV1 } from "../lib/worlds/schema.ts";
+import { parseWorldLorebook } from "../lib/worlds/schema.ts";
+import {
+  commitEvent,
+  effectivePersonaId,
+  effectiveScore,
+  heuristicRelationshipScorer,
+  migrateBondToScore,
+  removeEventsForTurns,
+  deriveRelationshipLabel,
+  relationshipKey,
+  relationshipTierPhrase,
+  loadRelationships,
+  saveRelationships,
+  relationshipMeterPercent,
+  type RelationshipState,
+  type RelationshipScorer,
+} from "../lib/relationships/index.ts";
+import {
+  loadMemoryCards,
+  saveMemoryCards,
+  type MemoryCard,
+  ensureMemoryCard,
+  syncMemoryCardRelationships,
+  getMemoryCard,
+} from "../lib/memory-card";
 import {
   describeOllamaModel,
   parseOllamaModels,
   type OllamaModelInfo,
 } from "../lib/ollama.ts";
+import { RoleplayArea } from "./features/roleplay/roleplay-area";
+import { SettingsPage } from "./features/settings/settings-page";
+import { ChatWorkspace } from "../features/chat/chat-workspace";
 
-type Character = {
+const RELATIONSHIP_CONTEXT_INSTRUCTION =
+  "The current Relationship Status describes how this character relates to the player persona. Treat the persona in a manner consistent with that relationship, while interpreting and expressing it through the character's own personality, traits, history, current mood, boundaries, and circumstances. Relationship Status is context, not a command: it must not force affection, agreement, obedience, intimacy, forgiveness, or any specific behavior.";
+
+export type Character = {
   id: string;
   name: string;
   role: string;
@@ -56,6 +172,99 @@ type Character = {
   isMinor?: boolean | null;
   allowedRelationshipTypes?: string[];
   disallowedContent?: string[];
+  cardV2?: HowlingV2Metadata;
+  pronouns?: string;
+  traits?: import("../lib/characters/traits.ts").CharacterTraits;
+  appearance?: {
+    height?: string;
+    build?: string;
+    hair?: string;
+    eyes?: string;
+    skin?: string;
+    distinguishingFeatures?: string;
+    clothing?: string;
+    generalDescription?: string;
+  };
+  personality?: {
+    likes?: string;
+    dislikes?: string;
+    habits?: string;
+    strengths?: string;
+    weaknesses?: string;
+    fears?: string;
+    values?: string;
+  };
+  voice?: {
+    speechStyle?: string;
+    vocabularyLevel?: string;
+    accentDialect?: string;
+    sentenceLength?: string;
+    humorStyle?: string;
+    swearingLevel?: string;
+    emotionalExpressiveness?: string;
+    bodyLanguage?: string;
+    mannerisms?: string;
+    rarePhrases?: string;
+    exampleDialogue?: string;
+  };
+  background?: {
+    biography?: string;
+    childhood?: string;
+    importantEvents?: string;
+    family?: string;
+    education?: string;
+    occupation?: string;
+    skills?: string;
+    secrets?: string;
+    trauma?: string;
+    currentSituation?: string;
+  };
+  relationships?: Array<{
+    characterId: string;
+    type: string;
+    description: string;
+    trust?: string;
+    affection?: string;
+    familiarity?: string;
+    notes?: string;
+  }>;
+  rpBehavior?: {
+    goals?: string;
+    motivations?: string;
+    boundaries?: string;
+    avoids?: string;
+    pursues?: string;
+    conflictBehavior?: string;
+    responseToDanger?: string;
+    responseToAffection?: string;
+    responseToStrangers?: string;
+    responseToAuthority?: string;
+  };
+  worldLore?: {
+    worldId?: string;
+    setting?: string;
+    faction?: string;
+    home?: string;
+    defaultScenario?: string;
+  };
+  contextNotes?: string;
+  authorNote?: string;
+};
+
+export type LocationTarget = {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+  image: string;
+  sceneImage: string;
+  backgroundFocalPoint: string;
+  accent: string;
+  memories: string[];
+  profile: string;
+  scene: string;
+  weather: string;
+  reply: string;
 };
 
 type VisualTheme = {
@@ -67,7 +276,7 @@ type VisualTheme = {
   motif: string;
 };
 
-type SceneDefinition = {
+export type SceneDefinition = {
   id: string;
   title: string;
   subtitle: string;
@@ -79,9 +288,47 @@ type SceneDefinition = {
   theme: VisualTheme;
 };
 
-type StorySession = {
+export type CommonScene = {
   id: string;
-  characterId: string;
+  title: string;
+  subtitle: string;
+  weather: string;
+  opening: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+const DEFAULT_COMMON_SCENE_THEME: VisualTheme = {
+  accent: "#8aa4c9",
+  accentMuted: "#4a5f7a",
+  glow: "#1e293b",
+  surface: "#0f172a",
+  wash: "#020617",
+  motif: "common",
+};
+
+function generateMessageId() {
+  return Date.now() + 1;
+}
+
+function commonSceneToSceneDefinition(commonScene: CommonScene): SceneDefinition {
+  return {
+    id: commonScene.id,
+    title: commonScene.title,
+    subtitle: commonScene.subtitle,
+    status: "",
+    weather: commonScene.weather,
+    background: "",
+    backgroundFocalPoint: "",
+    opening: commonScene.opening,
+    theme: DEFAULT_COMMON_SCENE_THEME,
+  };
+}
+
+export type StorySession = {
+  id: string;
+  characterId?: string;
+  locationId?: string;
   sceneId: string;
   title: string;
   messageKey: string;
@@ -97,31 +344,38 @@ type StorySession = {
   playerName?: string;
   playerPersona?: string;
   playerPersonaId?: string;
+  livingCast?: LivingCastEntry[];
+  livingCastRoundRobinIndex?: number;
+  autonomousCast?: AutonomousAgent[];
 };
 
-type StoryEditor = {
+export type StoryEditor = {
   mode: "create" | "edit";
   scene: SceneDefinition;
 };
 
-type Message = {
+export type Message = {
   id: number;
   sender: "character" | "player" | "narrator";
   text: string;
+  speaker?: string;
   direction?: string;
   pages?: string[];
   pageIndex?: number;
+  meta?: StoryMetadata | null;
 };
 
-type TextStyle = {
+export type TextStyle = {
   dialogue: string;
   action: string;
   narration: string;
   fontSize: number;
+  uiFontSize: number;
+  fontFamily: "default" | "opendyslexic" | "system";
 };
 
 type ModelId = "xialong-v1" | "glm-4-6";
-type StoryProvider = "novelai" | "local" | "device";
+export type StoryProvider = "novelai" | "local" | "device";
 type ModelScanState = "idle" | "loading" | "ready" | "empty" | "error";
 type OllamaModelOption = OllamaModelInfo & {
   value: string;
@@ -135,8 +389,8 @@ type Viewpoint = "user" | "character" | "roving";
 type StoryTense = "present" | "past";
 type TokenStorageMode = "tab" | "computer";
 type UpdateState = "idle" | "checking" | "current" | "available" | "unconfigured" | "error";
-type AppView = "home" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas";
-type ProviderState =
+export type AppView = "roleplay" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas" | "living-cast";
+export type ProviderState =
   | "disconnected"
   | "ready"
   | "testing"
@@ -354,6 +608,7 @@ const initialCharacters: Character[] = [
       "Coda is a female ancient husky-type dog with fully canine anatomy, pale blue eyes, a dark tan-and-cream double coat, soft partially folded ears, a plume-like tail, large paws, and a rune collar with a red diamond pendant. She is not human or humanoid, uses she/her pronouns, has no human hands, and never wears glasses or human clothing. Any temporary accessory must be practical, suitable for a dog, introduced in the scene, and accepted by Coda. Never give her human gestures or anatomy. Her collar grants speech and deeper understanding, though its origin and mechanism remain unknown. She is a warm, playful companion with a guarded brave streak who notices small details, values trust, and speaks with intimate sincerity.",
     credit: "Character by Arrax Shadowfang",
     accent: "#45b8b3",
+    pronouns: "she/her",
   },
   {
     id: "heather",
@@ -383,10 +638,11 @@ Personality: Disciplined, loyal and bigoted. Heather is a very old-school werewo
 
 Mind: Heather is a workaholic, and gets anxious when she's away from her post for too long. She doesn't fool around while she's on patrol, and will not hesitate to open fire if she catches an intruder in her pack's territory. Heather's beast blood is well under control and she doesn't go into a blood frenzy under the full moon anymore, but she sometimes craves a chance to let loose and go wild like she did when she was young. Though she tries to always present herself as serious and cold, Heather can't help but wag her tail when she's happy.
 
-Speech style: blunt, growling, and plain. Spoken dialogue has no quotation marks. Put actions and observable narration in *single asterisks* with blank lines between beats. Keep Heather autonomous, proud, protective, and capable of cold cruelty and stubborn loyalty. Never control the player's thoughts, feelings, dialogue, decisions, or voluntary actions.`,
+ Speech style: blunt, growling, and plain. Put actions and observable narration in *single asterisks*, spoken dialogue in "double quotes", and inner voice in [square brackets]. Keep action, dialogue, and inner voice inline within the same paragraph; do not force blank lines between them. Preserve natural paragraph boundaries. Adjacent spans of the same type may merge. Keep Heather autonomous, proud, protective, and capable of cold cruelty and stubborn loyalty. Never control the player's thoughts, feelings, dialogue, decisions, or voluntary actions.`,
     credit: "Character by Gigasad",
     creditUrl: "https://botbooru.com/character/15573",
     accent: "#d1a84c",
+    pronouns: "she/her",
   },
   {
     id: "peony",
@@ -428,9 +684,10 @@ Peony wants the best possible outcome and usually helps indirectly: cooking, sha
 
 Body language is essential. When happy she blushes, plays with a strand of hair, becomes more talkative, and unconsciously wags her tail. When interested she stands closer with her hands folded behind her back and teases through dry sarcasm. When nervous she pouts, taps her fingers, plays with her hands, speaks in riddles, or eats too much. When embarrassed she invents increasingly comedic excuses. When angry she becomes grumpy, brief, precise, and may stand hands on hips or point one forefinger. Her heightened hearing and smell let her notice breathing, tone, food, and strong scents earlier than a human would.
 
-Speech style: articulate, confident, slightly flirtatious, and sarcastic without becoming relentlessly seductive. Her insight should appear through specific questions and remembered details rather than announced psychological analysis. Spoken dialogue has no quotation marks. Put actions and observable narration in *single asterisks* with blank lines between beats. Keep Peony autonomous, relationship-aware, capable of mistakes, and focused on becoming more than the fate assigned to her. Never control the player's thoughts, feelings, dialogue, decisions, consent, or voluntary actions.`,
+ Speech style: articulate, confident, slightly flirtatious, and sarcastic without becoming relentlessly seductive. Her insight should appear through specific questions and remembered details rather than announced psychological analysis. Put actions and observable narration in *single asterisks*, spoken dialogue in "double quotes", and inner voice in [square brackets]. Keep action, dialogue, and inner voice inline within the same paragraph; do not force blank lines between them. Preserve natural paragraph boundaries. Adjacent spans of the same type may merge. Keep Peony autonomous, relationship-aware, capable of mistakes, and focused on becoming more than the fate assigned to her. Never control the player's thoughts, feelings, dialogue, decisions, consent, or voluntary actions.`,
     credit: "Character by Derkomor",
     accent: "#bd72da",
+    pronouns: "she/her",
   },
   {
     id: "senako-steel",
@@ -487,6 +744,44 @@ My lead, huh? Bold choice. I threw the last controller because the AI cheats.
 *The faintest spark of her old grin appears. She passes you the second controller.* Stay behind me during phase two, save the power-up, and don't tell Melody if we wipe again.`,
     credit: "Character by FurbyMask",
     accent: "#b7d620",
+    pronouns: "she/her",
+  },
+  {
+    id: "valerie",
+    name: "Valerie Whiteclaw",
+    role: "Whiteclaw pack scout · Heather's daughter",
+    relationship: "Cautious stranger",
+    status: "Patrolling the border",
+    image: "/assets/Heather/valerie-whiteclaw-teaser.png",
+    sceneImage: "/assets/Heather/valerie-whiteclaw-teaser.png",
+    portraitFocalPoint: "50% 30%",
+    backgroundFocalPoint: "center 30%",
+    scene: "Whiteclaw Borderlands",
+    weather: "Pine wind under a rising moon",
+    bond: 55,
+    ageCategory: "adult",
+    isMinor: false,
+    allowedRelationshipTypes: ["friendship", "romance between consenting adults", "comradeship", "trust"],
+    memories: [
+      "Her father vanished years ago; the mystery was never solved",
+      "She serves as a scout in the Whiteclaw pack's ranger corps, knowing the borderlands better than anyone",
+      "Valerie carries her mother's protective instinct without inheriting every old-pack prejudice",
+      "She believes the pack's strength comes from adaptation, not isolation",
+      "Her silver hair and golden eyes mark her as Whiteclaw, but her patience with outsiders is her own",
+    ],
+    reply:
+      "*The pine wind shifts as a figure steps out from between the trees, half-hidden by shadow until she chooses to reveal herself. Valerie Whiteclaw is taller than her mother, with the same silver-grey hair pulled back in a practical braid and golden eyes that measure you with quiet precision rather than immediate hostility. One hand rests near the knife at her belt, but her posture is loose, ready but not aggressive.*\n\nYou're a long way from the road. *Her voice is lower than Heather's, calmer, but it carries the same unmistakable warning.* This is Whiteclaw territory. I'm going to need to know what you're doing out here before I decide whether you're a lost hiker or something worse. Start talking.",
+    profile: `Valerie Whiteclaw is an adult werewolf, Heather's daughter, and a scout in the Whiteclaw pack's ranger corps. She is tall and lean, built for long patrols through rough country, with silver-grey hair usually pulled back in a braid, golden eyes that shift between warm and sharp depending on who she is looking at, and the faint scars of a life spent moving through thorns and fallen branches. She wears practical ranger gear: a worn jacket over a pack-embroidered shirt, cargo trousers, boots that have seen too many miles, and a knife she knows how to use without showing off.
+
+Her father vanished when she was young, and the mystery still hangs over the pack like smoke. Heather raised her alone, teaching her to track, to fight, to never let anyone see uncertainty. Valerie learned those lessons well, but she also learned to question them. Where Heather treats outsiders with open contempt, Valerie treats them with careful assessment. She will give a stranger a chance if they respect her boundaries, and she will not apologize for protecting her territory. Her loyalty to the pack is absolute, but she sees the old ways as tools, not sacred text.
+
+Valerie knows the borderlands the way a musician knows an instrument: every trail, every scent mark, every shadow that does not belong. She moves through the woods with a silence that surprises people who judge by her height and build. Her voice is quieter than her mother's, her threats more measured, but when she decides someone is a threat she is faster and more precise than Heather's raw fury. Beneath the ranger's discipline is someone who has watched her mother carry grief and anger for so long that she has chosen a different path: patient, observant, unwilling to write off a person before they have earned either trust or contempt.
+
+Speech style: low, controlled, and precise. Valerie uses short sentences when she is warning someone, longer ones when she is assessing. She favors actions over declarations and lets her tail, ears, and posture say what her voice will not. Put actions and observable narration in *single asterisks*, spoken dialogue in "double quotes", and inner voice in [square brackets]. Keep action, dialogue, and inner voice inline within the same paragraph; do not force blank lines between them. Preserve natural paragraph boundaries. Adjacent spans of the same type may merge. Keep Valerie autonomous, capable of both warmth and cold judgment, protective of her pack, and unwilling to accept prejudice as inherited wisdom. Never control the player's thoughts, feelings, dialogue, decisions, or voluntary actions.`,
+    credit: "Character by Gigasad",
+    creditUrl: "https://botbooru.com/character/15573",
+    accent: "#c8a94f",
+    pronouns: "she/her",
   },
 ];
 
@@ -530,6 +825,10 @@ const initialMessages: Record<string, Message[]> = {
 const curatedCharacterIds = new Set(initialCharacters.map((character) => character.id));
 function isUserOwnedCharacter(character: Character): boolean {
   return !curatedCharacterIds.has(character.id);
+}
+
+function isUserOwnedLocation(location: Location): boolean {
+  return location.source === "custom";
 }
 
 const handcraftedScenes: Record<string, SceneDefinition[]> = {
@@ -832,7 +1131,7 @@ function sandboxSceneFor(character: Character): SceneDefinition {
     subtitle: "No preset scene, memories, or opening move",
     status: "Waiting for your first move",
     weather: "No setting has been established",
-    background: character.image,
+    background: character.cardV2 ? "" : character.image,
     backgroundFocalPoint: character.portraitFocalPoint ?? "center",
     opening: "",
     theme: {
@@ -851,24 +1150,89 @@ function scenesFor(character: Character): SceneDefinition[] {
     subtitle: character.role,
     status: character.status,
     weather: character.weather,
-    background: character.sceneImage || character.image,
+    background: character.sceneImage || (character.cardV2 ? "" : character.image),
     backgroundFocalPoint: character.backgroundFocalPoint ?? "center top",
     opening: character.reply,
     theme: { ...fallbackTheme, accent: character.accent },
   }];
 }
 
-function createStorySession(character: Character, scene: SceneDefinition): StorySession {
+function createLocationTarget(location: Location): LocationTarget {
+  return {
+    id: locationSelectionKey(location.id),
+    name: location.name,
+    role: location.type || "Location",
+    status: location.shortDescription || "",
+    image: location.image || "",
+    sceneImage: location.image || "",
+    scene: location.name,
+    weather: "",
+    memories: [],
+    reply: "",
+    profile: location.description || "",
+    accent: "#8aa4c9",
+    backgroundFocalPoint: "center",
+  };
+}
+
+function unavailableLocationTarget(locationId: string): LocationTarget {
+  return {
+    id: locationSelectionKey(locationId),
+    name: "Unavailable Location",
+    role: "Location",
+    status: "This Location is no longer available.",
+    image: "",
+    sceneImage: "",
+    scene: "Unavailable Location",
+    weather: "",
+    memories: [],
+    reply: "",
+    profile: "The saved Location reference points to a Location that was deleted or is unavailable.",
+    accent: "#8f8284",
+    backgroundFocalPoint: "50% 50%",
+  };
+}
+
+function buildLocationOpening(location: Location): string {
+  const parts: string[] = [];
+  parts.push(`*${location.name}*`);
+  if (location.type) parts.push(`*A ${location.type}.*`);
+  if (location.shortDescription) parts.push(`*${location.shortDescription}*`);
+  if (location.description) parts.push(`*${location.description}*`);
+  if (location.atmosphere?.length) parts.push(`*${location.atmosphere.slice(0, 3).join(". ")}.*`);
+  if (location.features?.length) parts.push(`*Notable features: ${location.features.slice(0, 4).join(", ")}.*`);
+  if (location.areas?.length) parts.push(`*Areas of note: ${location.areas.slice(0, 3).map((a) => a.name).join(", ")}.*`);
+  if (location.activities?.length) parts.push(`*Activities possible here: ${location.activities.slice(0, 4).join(", ")}.*`);
+  parts.push("*The space is quiet. No one else is here yet.*");
+  return parts.join(" ");
+}
+
+function createLocationScene(location: Location): SceneDefinition {
+  return {
+    id: `location-scene-${location.id}`,
+    title: location.name,
+    subtitle: "",
+    status: location.shortDescription || "",
+    weather: location.shortDescription || location.type || "",
+    background: location.image || "",
+    backgroundFocalPoint: "center",
+    opening: "",
+    theme: { ...fallbackTheme, accent: "#8aa4c9", motif: "location" },
+  };
+}
+
+function createStorySession(character: Character | null, scene: SceneDefinition): StorySession {
   const now = Date.now();
   const id = `session-${now}-${Math.random().toString(36).slice(2, 7)}`;
   return {
     id,
-    characterId: character.id,
+    characterId: character?.id,
     sceneId: scene.id,
     title: scene.title,
     messageKey: id,
     createdAt: now,
     updatedAt: now,
+    livingCast: character ? createCast({ id: character.id, name: character.name }) : [],
   };
 }
 
@@ -896,15 +1260,20 @@ function mergeBuiltInCharacters(saved: Character[]): Character[] {
 }
 
 function readSavedSessions(): StorySession[] {
-  return readSession<StorySession[]>("sessions", [])
-    .filter((session) => !retiredCharacterIds.has(session.characterId));
+  const savedLocations = readSession<Location[] | null>("locations", null) ?? [];
+  const validLocationIds = new Set(savedLocations.map((location) => location.id));
+  return migrateLegacySessions(
+    readSession<StorySession[]>("sessions", []),
+    validLocationIds,
+    retiredCharacterIds,
+  );
 }
 
 function readSavedMessages(): Record<string, Message[]> {
   const savedSessions = readSession<StorySession[]>("sessions", []);
   const retiredMessageKeys = new Set(
     savedSessions
-      .filter((session) => retiredCharacterIds.has(session.characterId))
+      .filter((session) => session.characterId && retiredCharacterIds.has(session.characterId))
       .map((session) => session.messageKey),
   );
   const saved = readSession<Record<string, Message[]>>("messages", initialMessages);
@@ -921,6 +1290,44 @@ function readSavedStoryScenes(): Record<string, SceneDefinition[]> {
   return Object.fromEntries(
     Object.entries(saved).filter(([characterId]) => !retiredCharacterIds.has(characterId)),
   );
+}
+
+function readSavedCommonScenes(): CommonScene[] {
+  return readSession<CommonScene[]>("commonScenes", []);
+}
+
+function readSavedInstalledAddons(): InstalledAddon[] {
+  return readSession<InstalledAddon[]>("installedAddons", []);
+}
+
+function installAddon(manifest: HowlingAddonManifest): InstalledAddon[] {
+  setInstalledAddons((current) => {
+    const existing = current.find((addon) => addon.manifest.id === manifest.id);
+    if (existing) {
+      return current.map((addon) =>
+        addon.manifest.id === manifest.id
+          ? { ...addon, manifest, updatedAt: Date.now() }
+          : addon,
+      );
+    }
+    return [...current, { manifest, enabled: true, installedAt: Date.now(), updatedAt: Date.now() }];
+  });
+}
+
+function uninstallAddon(addonId: string): void {
+  setInstalledAddons((current) => current.filter((addon) => addon.manifest.id !== addonId));
+}
+
+function toggleAddonEnabled(addonId: string): void {
+  setInstalledAddons((current) =>
+    current.map((addon) =>
+      addon.manifest.id === addonId ? { ...addon, enabled: !addon.enabled, updatedAt: Date.now() } : addon,
+    ),
+  );
+}
+
+function exportAddon(addon: InstalledAddon): Blob {
+  return new Blob([JSON.stringify(addon.manifest, null, 2)], { type: "application/json" });
 }
 
 function readSession<T>(key: string, fallback: T): T {
@@ -957,6 +1364,49 @@ function writeTab<T>(key: string, value: T) {
   } catch { /* ignore */ }
 }
 
+const KNOWN_PANELS = [
+  "scene",
+  "memory",
+  "context",
+  "living-cast",
+  "context-inspector",
+  "connection",
+] as const;
+
+function normalizePanelOrder(raw: unknown): string[] {
+  const persisted = Array.isArray(raw)
+    ? raw.filter((id): id is string => typeof id === "string" && KNOWN_PANELS.includes(id as typeof KNOWN_PANELS[number]))
+    : [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const panel of persisted) {
+    if (!seen.has(panel)) {
+      seen.add(panel);
+      normalized.push(panel);
+    }
+  }
+  for (const panel of KNOWN_PANELS) {
+    if (!seen.has(panel)) {
+      seen.add(panel);
+      normalized.push(panel);
+    }
+  }
+  return normalized;
+}
+
+function normalizePanelVisibility(raw: unknown): Record<string, boolean> {
+  const persisted = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const normalized: Record<string, boolean> = {};
+  for (const panel of KNOWN_PANELS) {
+    if (panel in persisted) {
+      normalized[panel] = persisted[panel] === true;
+    } else {
+      normalized[panel] = true;
+    }
+  }
+  return normalized;
+}
+
 function readStoredToken(): string {
   return readSession<string>("naiToken", "") || readTab<string>("naiToken", "");
 }
@@ -965,12 +1415,13 @@ function readTokenStorageMode(): TokenStorageMode {
   return readSession<string>("naiToken", "") ? "computer" : "tab";
 }
 
-function Portrait({ character, accent }: { character: Character; accent?: string }) {
+function Portrait({ character, accent, image }: { character: Character; accent?: string; image?: string }) {
+  const portrait = image ?? character.image;
   return (
     <span className="portrait" style={{ "--accent": accent ?? character.accent } as React.CSSProperties}>
-      {character.image && (
+      {portrait && (
         <img
-          src={character.image}
+          src={portrait}
           alt=""
           width={128}
           height={128}
@@ -978,99 +1429,6 @@ function Portrait({ character, accent }: { character: Character; accent?: string
           style={{ objectPosition: character.portraitFocalPoint ?? "center" }}
         />
       )}
-    </span>
-  );
-}
-
-function InfoTip({ label, children }: { label: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{
-    top: number;
-    left: number;
-    width: number;
-    arrowLeft: number;
-    above: boolean;
-  } | null>(null);
-  const triggerRef = useRef<HTMLSpanElement>(null);
-  const popRef = useRef<HTMLDivElement>(null);
-  const closeTimer = useRef<number | undefined>(undefined);
-
-  const place = useCallback(() => {
-    const trigger = triggerRef.current;
-    const pop = popRef.current;
-    if (!trigger || !pop) return;
-    const rect = trigger.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const margin = 12;
-    const gap = 10;
-    const width = Math.min(340, viewportWidth - margin * 2);
-    pop.style.width = `${width}px`;
-    const height = pop.offsetHeight;
-    let left = rect.left + rect.width / 2 - width / 2;
-    left = Math.max(margin, Math.min(left, viewportWidth - width - margin));
-    const below = rect.bottom + gap + height <= viewportHeight - margin;
-    let top = below ? rect.bottom + gap : rect.top - gap - height;
-    if (top < margin) top = margin;
-    const arrowLeft = Math.min(Math.max(rect.left + rect.width / 2 - left, 18), width - 18);
-    setPos({ top, left, width, arrowLeft, above: !below });
-  }, []);
-
-  useEffect(() => {
-    if (closeTimer.current !== undefined) window.clearTimeout(closeTimer.current);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!open) return;
-    place();
-    const reposition = () => place();
-    window.addEventListener("resize", reposition);
-    window.addEventListener("scroll", reposition, true);
-    return () => {
-      window.removeEventListener("resize", reposition);
-      window.removeEventListener("scroll", reposition, true);
-    };
-  }, [open, place]);
-
-  const openPopup = useCallback(() => {
-    if (closeTimer.current !== undefined) window.clearTimeout(closeTimer.current);
-    setOpen(true);
-  }, []);
-
-  const closePopup = useCallback(() => {
-    closeTimer.current = window.setTimeout(() => setOpen(false), 140);
-  }, []);
-
-  return (
-    <span
-      className="info-tip"
-      ref={triggerRef}
-      role="note"
-      tabIndex={0}
-      onMouseEnter={openPopup}
-      onMouseLeave={closePopup}
-      onFocus={openPopup}
-      onBlur={closePopup}
-    >
-      <span className="info-tip-icon" aria-hidden="true">
-        i
-      </span>
-      {open &&
-        createPortal(
-          <div
-            ref={popRef}
-            className={`info-tip-pop help-popover${pos ? " is-visible" : ""}${pos?.above ? " is-above" : ""}`}
-            role="tooltip"
-            style={pos ? { top: pos.top, left: pos.left, width: pos.width } : undefined}
-            onMouseEnter={openPopup}
-            onMouseLeave={closePopup}
-          >
-            <span className="help-popover__arrow" style={{ left: pos?.arrowLeft }} />
-            <h4 className="help-popover__title">{label}</h4>
-            {children}
-          </div>,
-          document.body,
-        )}
     </span>
   );
 }
@@ -1130,11 +1488,6 @@ function buildParagraphs(
   textStyle: TextStyle,
 ): PaintedParagraph[] {
   const formattedText = text
-    .replace(/\s*(?<!\*)(\*[^*]+\*)(?!\*)\s*/g, "\n\n$1\n\n")
-    .replace(
-      /(?:^|\s+)([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2})(?:\s*\(as\))?:\s*/g,
-      "\n\n$1\n\n",
-    )
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   const raw = formattedText
@@ -1179,27 +1532,59 @@ function buildParagraphs(
   });
 }
 
-function normalizeDirection(value: string): string {
-  return value.toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, " ").trim();
+function escapesRe(name: string): string {
+  return name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function isInvalidImpersonationDraft(direction: string, draft: string, characterName: string): boolean {
-  const normalizedDirection = normalizeDirection(direction);
-  const normalizedDraft = normalizeDirection(draft);
-  if (!normalizedDraft) return true;
-  if (normalizedDraft.split(" ").length < 18) return true;
-  if (normalizedDirection && (normalizedDraft === normalizedDirection || normalizedDraft.includes(normalizedDirection))) {
-    return normalizedDraft.split(" ").length <= normalizedDirection.split(" ").length + 8;
+async function readResponseJson<T>(response: Response, context: string): Promise<T> {
+  const status = response.status;
+  let text = "";
+  try {
+    text = await response.text();
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new Error(`${context} could not be read (HTTP ${status}).`);
   }
-  const escapedName = characterName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const characterPerspective = new RegExp(
-    [
-      `\\b${escapedName}\\b`,
-      "\\b(?:he|she|they)\\s+(?:just\\s+)?(?:knows|rolls|steps|leans|turns|grins|smirks|nods|shrugs|walks|strides|follows|waits|sighs|glances|watches|sees|feels|thinks|wants|looks|smiles|speaks|says|moves|starts|begins|raises|laughs|chuckles|growls|shifts|pushes|reaches|grabs|crosses|sits|stands|catches|holds|winces|pauses)\\b",
-    ].join("|"),
+  if (!text.trim()) {
+    throw new Error(`${context} returned an empty response (HTTP ${status}).`);
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const preview = text.length > 260 ? `${text.slice(0, 260)}…` : text;
+    throw new Error(`${context} returned an invalid response (HTTP ${status}). ${preview}`.trim());
+  }
+}
+
+function isInvalidImpersonationDraft(
+  _direction: string,
+  draft: string,
+  characterName: string,
+): boolean {
+  const trimmedDraft = draft.trim();
+  if (!trimmedDraft) return true;
+
+  const names = new Set<string>(
+    [characterName, characterName.trim().split(/\s+/)[0]].filter(Boolean),
+  );
+  const nameAlternates = [...names].sort((a, b) => b.length - a.length)
+    .map(escapesRe)
+    .join("|");
+
+  const characterSpeakerLabel = new RegExp(
+    `(?:^|\\n)\\s*(?:${nameAlternates})\\s*:\\s*`,
     "i",
   );
-  return characterPerspective.test(normalizedDraft);
+
+  const markedCharacterAction = new RegExp(
+    `(?:^|\\n)\\s*\\*\\s*(?:${nameAlternates}|he|she|they)\\b`,
+    "i",
+  );
+
+  return (
+    characterSpeakerLabel.test(trimmedDraft) ||
+    markedCharacterAction.test(trimmedDraft)
+  );
 }
 
 function messageVersions(message: Message): { versions: string[]; activeIndex: number } {
@@ -1220,6 +1605,7 @@ export default function DreamboundApp() {
     () => false,
   );
   const [currentUser, setCurrentUser] = useState<{ displayName: string } | null>(null);
+  const [archiveUser, setArchiveUser] = useState<ArchiveUser | null>(null);
   const [playerProfile, setPlayerProfile] = useState(() =>
     readSession<{ name: string; persona: string }>("player", { name: "", persona: "" }),
   );
@@ -1247,14 +1633,36 @@ export default function DreamboundApp() {
     () => (activePersona ? compilePlayerPersona(activePersona) : ""),
     [activePersona],
   );
-  const [view, setView] = useState<AppView>(() => readSession<AppView>("view", "home"));
+  const [view, setView] = useState<AppView>(() => {
+    const saved = readSession<AppView>("view", "home");
+    if (saved === "home") return "roleplay";
+    return saved;
+  });
   const [characters, setCharacters] = useState<Character[]>(() => {
     const saved = readSession<Character[] | null>("characters", null);
     return saved && saved.length > 0 ? mergeBuiltInCharacters(saved) : initialCharacters;
   });
+  const [locations, setLocations] = useState<Location[]>(() => {
+    const saved = readSession<Location[] | null>("locations", null);
+    return saved ? saved.map((location) => sanitizeLocation(location)).filter((location): location is Location => location !== null) : [];
+  });
+  const [scenarios, setScenarios] = useState<Scenario[]>(() => {
+    const saved = readSession<Scenario[] | null>("scenarios", null);
+    return saved ? saved.map((scenario) => sanitizeScenario(scenario)).filter((scenario): scenario is Scenario => scenario !== null) : [];
+  });
   const [selectedId, setSelectedId] = useState(() => {
     const saved = readSession<string>("selectedId", "coda");
-    return retiredCharacterIds.has(saved) ? "coda" : saved;
+    if (retiredCharacterIds.has(saved)) return "coda";
+
+    const currentId = readSession<string | null>("currentSessionId", null);
+    if (currentId) {
+      const allSessions = readSavedSessions();
+      const active = allSessions.find((s) => s.id === currentId);
+      if (active?.characterId) return active.characterId;
+      if (active?.locationId) return locationSelectionKey(active.locationId);
+    }
+
+    return migrateLegacySelectedId(saved, locations);
   });
   const [messages, setMessages] = useState(readSavedMessages);
   const [sessions, setSessions] = useState<StorySession[]>(() => {
@@ -1273,9 +1681,19 @@ export default function DreamboundApp() {
         messageKey: characterId,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        livingCast: createCast({ id: character.id, name: character.name }),
       }];
     });
   });
+  const locationTargets = useMemo(() => {
+    const targets: Record<string, LocationTarget> = {};
+    for (const location of locations) {
+      const target = createLocationTarget(location);
+      targets[target.id] = target;
+      targets[`location-${location.id}`] = target;
+    }
+    return targets;
+  }, [locations]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(
     () => {
       const saved = readSession<string | null>("currentSessionId", null);
@@ -1285,7 +1703,16 @@ export default function DreamboundApp() {
   const [storyScenes, setStoryScenes] = useState<Record<string, SceneDefinition[]>>(
     readSavedStoryScenes,
   );
+  const [commonScenes, setCommonScenes] = useState<CommonScene[]>(readSavedCommonScenes);
+  const [installedAddons, setInstalledAddons] = useState<InstalledAddon[]>(readSavedInstalledAddons);
+  const [relationships, setRelationships] = useState<RelationshipState>(loadRelationships);
+  const [relationshipDelta, setRelationshipDelta] = useState<number | null>(null);
+  const [relationshipContextEnabled, setRelationshipContextEnabled] = useState(() =>
+    readSession("relationshipContextEnabled", true)
+  );
+  const [rawMemoryCards, setRawMemoryCards] = useState<Record<string, MemoryCard>>(() => loadMemoryCards());
   const [storyEditor, setStoryEditor] = useState<StoryEditor | null>(null);
+  const [commonSceneEditor, setCommonSceneEditor] = useState<{ mode: "create" | "edit"; scene: CommonScene } | null>(null);
   const [selectedCodaRole, setSelectedCodaRole] = useState("Trusted Companion");
   const [customCodaRole, setCustomCodaRole] = useState("");
   const animationMessageKey = sessions.find((session) => session.id === currentSessionId)?.messageKey
@@ -1293,8 +1720,21 @@ export default function DreamboundApp() {
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState("Dialogue");
   const [isCreating, setIsCreating] = useState(false);
+  const [isCreatingLocation, setIsCreatingLocation] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
   const [confirmDeleteCharacter, setConfirmDeleteCharacter] = useState<Character | null>(null);
+  const [downloadingCharacter, setDownloadingCharacter] = useState<Character | null>(null);
+  const [characterDownloadError, setCharacterDownloadError] = useState("");
+  const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+  const [confirmDeleteLocation, setConfirmDeleteLocation] = useState<Location | null>(null);
+  const [locationError, setLocationError] = useState("");
+  const [locationImportMsg, setLocationImportMsg] = useState("");
+  const [isCreatingScenario, setIsCreatingScenario] = useState(false);
+  const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
+  const [confirmDeleteScenario, setConfirmDeleteScenario] = useState<Scenario | null>(null);
+  const [scenarioError, setScenarioError] = useState("");
+  const [scenarioImportMsg, setScenarioImportMsg] = useState("");
+  const [portraitUrls, setPortraitUrls] = useState<Record<string, string>>({});
   const [apiToken, setApiToken] = useState(readStoredToken);
   const [tokenStorageMode, setTokenStorageMode] =
     useState<TokenStorageMode>(readTokenStorageMode);
@@ -1313,6 +1753,7 @@ export default function DreamboundApp() {
   const [deviceModelScan, setDeviceModelScan] = useState<ModelScanState>("loading");
   const [deviceModelError, setDeviceModelError] = useState("");
   const [deviceModelRefresh, setDeviceModelRefresh] = useState(0);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [storyProvider, setStoryProvider] = useState<StoryProvider>(
     () => readSession<StoryProvider>("storyProvider", "novelai"),
   );
@@ -1333,7 +1774,6 @@ export default function DreamboundApp() {
   const [isReplying, setIsReplying] = useState(false);
   const [isImpersonating, setIsImpersonating] = useState(false);
   const generationAbortRef = useRef<AbortController | null>(null);
-  const [impersonationPrompt, setImpersonationPrompt] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [importError, setImportError] = useState("");
   const [characterBackupMsg, setCharacterBackupMsg] = useState("");
@@ -1342,11 +1782,14 @@ export default function DreamboundApp() {
   const [chatError, setChatError] = useState("");
   const [showShare, setShowShare] = useState(false);
   const [showPersonaModal, setShowPersonaModal] = useState(false);
+  const [showContextWorkspace, setShowContextWorkspace] = useState(false);
   type PendingPersonaStart =
     | { kind: "scene"; characterId: string; scene: SceneDefinition }
     | { kind: "sandbox"; characterId: string }
     | { kind: "autopilot"; characterId: string }
     | { kind: "imported"; characterId: string }
+    | { kind: "commonScene"; scene: CommonScene }
+    | { kind: "location"; location: Location }
     | null;
   const [pendingPersonaStart, setPendingPersonaStart] = useState<PendingPersonaStart>(null);
   const [autopilotPersona, setAutopilotPersona] = useState<PlayerPersona | null>(null);
@@ -1393,9 +1836,70 @@ export default function DreamboundApp() {
   const [showContextRail, setShowContextRail] = useState(
     () => readSession<boolean>("showContextRail", true),
   );
+  const [livingCastConfig, setLivingCastConfig] = useState<LivingCastConfig>(() => readLivingCastConfig());
+  const [panelOrder, setPanelOrder] = useState<string[]>(() => normalizePanelOrder(readSession<string[]>("panelOrder", [])));
+  const [panelVisibility, setPanelVisibility] = useState<Record<string, boolean>>(() => normalizePanelVisibility(readSession<Record<string, boolean>>("panelVisibility", {})));
+  const [showLivingCastConfig, setShowLivingCastConfig] = useState(false);
+  const [showInvitePicker, setShowInvitePicker] = useState(false);
   const [contextManifests, setContextManifests] = useState<Record<string, ContextManifest>>(
     () => readSession<Record<string, ContextManifest>>("contextManifests", {}),
   );
+  const [contextLibrary, setContextLibrary] = useState<ContextLibrary>(() => readContextLibrary());
+
+  // ----- Private-data backups ------------------------------------------
+  const [localBackupMsg, setLocalBackupMsg] = useState("");
+  const [localRestoreMsg, setLocalRestoreMsg] = useState("");
+  const [localBackupError, setLocalBackupError] = useState("");
+  const [serverBackupMsg, setServerBackupMsg] = useState("");
+  const [serverBackups, setServerBackups] = useState<
+    | {
+        id: string;
+        created_at: string;
+        size_bytes: number;
+        format: string;
+        version: number;
+        device: string;
+        source: string;
+      }[]
+    | null
+  >(null);
+  const [serverBackupsError, setServerBackupsError] = useState("");
+  const [serverBackupBusy, setServerBackupBusy] = useState(false);
+
+  const refreshServerBackups = useCallback(() => {
+    if (!archiveUser) {
+      setServerBackups(null);
+      return Promise.resolve();
+    }
+    return archive.backups
+      .list()
+      .then((res) => {
+        setServerBackups(res.backups);
+        setServerBackupsError("");
+      })
+      .catch((err) => {
+        setServerBackups([]);
+        setServerBackupsError(err instanceof Error ? err.message : "Server backups could not be listed.");
+      });
+  }, [archiveUser]);
+
+  function handleArchiveUserChange(next: ArchiveUser | null) {
+    setArchiveUser(next);
+    if (!next) {
+      setServerBackups(null);
+      return;
+    }
+    void archive.backups
+      .list()
+      .then((res) => {
+        setServerBackups(res.backups);
+        setServerBackupsError("");
+      })
+      .catch(() => {
+        setServerBackups([]);
+        setServerBackupsError("Server backups could not be listed.");
+      });
+  }
 
   // Let new messages animate once, then mark them as seen before future remounts.
   useEffect(() => {
@@ -1415,6 +1919,8 @@ export default function DreamboundApp() {
     action: "#8ab4c8",
     narration: "#9a9f7a",
     fontSize: 19,
+    uiFontSize: 16,
+    fontFamily: "default",
   };
   const [textStyle, setTextStyle] = useState<TextStyle>(() => {
     try {
@@ -1424,7 +1930,13 @@ export default function DreamboundApp() {
         const fontSize = typeof parsed.fontSize === "number"
           ? Math.min(26, Math.max(15, parsed.fontSize))
           : defaultTextStyle.fontSize;
-        return { ...defaultTextStyle, ...parsed, fontSize };
+        const uiFontSize = typeof parsed.uiFontSize === "number"
+          ? Math.min(22, Math.max(12, parsed.uiFontSize))
+          : defaultTextStyle.uiFontSize;
+        const fontFamily = parsed.fontFamily === "opendyslexic" || parsed.fontFamily === "system"
+          ? parsed.fontFamily
+          : defaultTextStyle.fontFamily;
+        return { ...defaultTextStyle, ...parsed, fontSize, uiFontSize, fontFamily };
       }
     } catch { /* ignore */ }
     return defaultTextStyle;
@@ -1433,6 +1945,7 @@ export default function DreamboundApp() {
   useEffect(() => {
     try {
       localStorage.setItem("dreambound_text_style", JSON.stringify(textStyle));
+      window.dispatchEvent(new Event("dreambound-preferences-changed"));
     } catch { /* ignore */ }
   }, [textStyle]);
 
@@ -1440,6 +1953,34 @@ export default function DreamboundApp() {
     writeSession("showCharacterRail", showCharacterRail);
     writeSession("showContextRail", showContextRail);
   }, [showCharacterRail, showContextRail]);
+
+  useEffect(() => {
+    let active = true;
+    const urls: string[] = [];
+    void Promise.all(characters.map(async (character) => {
+      if (!isStoredPortraitReference(character.image)) return null;
+      const bytes = await loadCharacterPortrait(character.image);
+      if (!bytes) return null;
+      const url = URL.createObjectURL(new Blob([bytes], { type: "image/png" }));
+      urls.push(url);
+      return [character.id, url] as const;
+    })).then((entries) => {
+      if (!active) return;
+      setPortraitUrls(Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => entry !== null)));
+    }).catch(() => {
+      if (active) setPortraitUrls({});
+    });
+    return () => {
+      active = false;
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [characters]);
+
+  function portraitUrl(character: Character): string {
+    return isStoredPortraitReference(character.image)
+      ? portraitUrls[character.id] ?? ""
+      : character.image;
+  }
 
   useEffect(() => {
     writeSession("shareCount", shareCount);
@@ -1459,6 +2000,35 @@ export default function DreamboundApp() {
     updatePreference();
     media.addEventListener("change", updatePreference);
     return () => media.removeEventListener("change", updatePreference);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    archive
+      .me()
+      .then(({ user }) => {
+        if (active) {
+          setArchiveUser(user);
+          if (user) {
+            void archive.backups
+              .list()
+              .then((res) => {
+                setServerBackups(res.backups);
+                setServerBackupsError("");
+              })
+              .catch(() => {
+                setServerBackups([]);
+                setServerBackupsError("Server backups could not be listed.");
+              });
+          }
+        }
+      })
+      .catch(() => {
+        if (active) setArchiveUser(null);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -1555,8 +2125,16 @@ export default function DreamboundApp() {
 
   // Persist session state so remounts don't reset the app
   useEffect(() => {
-    writeSession("characters", characters.slice(0, 40));
+    writeSession("characters", characters.slice(0, 60));
   }, [characters]);
+
+  useEffect(() => {
+    writeSession("locations", locations.slice(0, 60));
+  }, [locations]);
+
+  useEffect(() => {
+    writeSession("scenarios", scenarios.slice(0, 60));
+  }, [scenarios]);
 
   useEffect(() => {
     savePersonas(personas);
@@ -1593,8 +2171,49 @@ export default function DreamboundApp() {
   }, [storyScenes]);
 
   useEffect(() => {
+    writeSession("commonScenes", commonScenes);
+  }, [commonScenes]);
+
+  useEffect(() => {
+    writeSession("installedAddons", installedAddons);
+  }, [installedAddons]);
+
+  useEffect(() => {
+    saveRelationships(relationships);
+  }, [relationships]);
+
+  useEffect(() => {
+    writeSession("relationshipContextEnabled", relationshipContextEnabled);
+  }, [relationshipContextEnabled]);
+
+  useEffect(() => {
+    const oldAutoNpc = readSession<boolean | null>("autoNpcReplies", null);
+    if (oldAutoNpc !== null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLivingCastConfig((prev) => ({ ...prev, enabled: oldAutoNpc }));
+      localStorage.removeItem("dreambound_autoNpcReplies");
+    }
+  }, []);
+
+  useEffect(() => {
     writeSession("contextManifests", contextManifests);
   }, [contextManifests]);
+
+  useEffect(() => {
+    writeContextLibrary(contextLibrary);
+  }, [contextLibrary]);
+
+  useEffect(() => {
+    writeLivingCastConfig(livingCastConfig);
+  }, [livingCastConfig]);
+
+  useEffect(() => {
+    writeSession("panelOrder", panelOrder);
+  }, [panelOrder]);
+
+  useEffect(() => {
+    writeSession("panelVisibility", panelVisibility);
+  }, [panelVisibility]);
 
   useEffect(() => {
     const trimmed: Record<string, Message[]> = {};
@@ -1604,16 +2223,48 @@ export default function DreamboundApp() {
     writeSession("messages", trimmed);
   }, [messages]);
 
+  const BUILTIN_LIVING_CAST_ADDON = useMemo<InstalledAddon>(() => ({
+    manifest: {
+      format: "howling-addon",
+      formatVersion: 1,
+      id: "howling-living-cast",
+      name: "Living Cast",
+      version: "1.0.0",
+      description: "Multi-character roleplay and cast management.",
+      author: "The Howling Whispers",
+      content: {},
+    },
+    enabled: livingCastConfig.enabled,
+    // eslint-disable-next-line react-hooks/purity
+    installedAt: Date.now(),
+    // eslint-disable-next-line react-hooks/purity
+    updatedAt: Date.now(),
+  }), [livingCastConfig.enabled]);
+
+  useEffect(() => {
+    if (!installedAddons.some((a) => a.manifest.id === "howling-living-cast")) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setInstalledAddons((prev) => [...prev, BUILTIN_LIVING_CAST_ADDON]);
+    }
+  }, [installedAddons, BUILTIN_LIVING_CAST_ADDON]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setInstalledAddons((prev) =>
+      prev.map((a) => (a.manifest.id === "howling-living-cast" ? { ...a, enabled: livingCastConfig.enabled } : a)),
+    );
+  }, [livingCastConfig.enabled]);
+
   const authHeaders: Record<string, string> = { "Content-Type": "application/json" };
 
   function handleEnter() {
     setCurrentUser({ displayName: playerProfile.name.trim() });
-    setView("home");
+    setView("roleplay");
   }
 
   function handleSignOut() {
     setCurrentUser(null);
-    setView("home");
+    setView("roleplay");
   }
 
   function updatePlayerProfile(patch: Partial<{ name: string; persona: string }>) {
@@ -1628,6 +2279,15 @@ export default function DreamboundApp() {
     setSessions((current) => current.map((session) =>
       session.id === activeSession.id
         ? { ...session, ...patch, updatedAt: Date.now() }
+        : session,
+    ));
+  }
+
+  function persistSessionAutonomy(autonomy: AutonomousAgent[] | undefined) {
+    if (!activeSession || !autonomy || autonomy.length === 0) return;
+    setSessions((current) => current.map((session) =>
+      session.id === activeSession.id
+        ? { ...session, autonomousCast: autonomy, updatedAt: Date.now() }
         : session,
     ));
   }
@@ -1656,26 +2316,143 @@ export default function DreamboundApp() {
     ));
   }
 
-  const selected = useMemo(
-    () => characters.find((character) => character.id === selectedId) ?? characters[0],
-    [characters, selectedId],
-  );
+  function refreshSessionCast(
+    conversation: Message[],
+    messageKey: string,
+    overrides: {
+      characterId: string;
+      characterName: string;
+      livingCast: LivingCastEntry[];
+      playerName: string;
+    },
+  ) {
+    setSessions((current) => current.map((session) =>
+      session.messageKey === messageKey
+        ? { ...session, updatedAt: Date.now() }
+        : session,
+    ));
+  }
 
-  const selectedScenes = storyScenes[selected.id] ?? scenesFor(selected);
+  const selected = useMemo(() => {
+    const character = characters.find((character) => character.id === selectedId);
+    if (character) return character;
+    const locationTarget = locationTargets[selectedId];
+    if (locationTarget) return locationTarget;
+    const isLocationKey = selectedId.startsWith("location:") || selectedId.startsWith("location-");
+    if (isLocationKey) {
+      const locationId = selectedId.startsWith("location:")
+        ? selectedId.slice("location:".length)
+        : selectedId.slice("location-".length);
+      return unavailableLocationTarget(locationId);
+    }
+    return characters[0];
+  }, [characters, selectedId, locationTargets]);
+
   const activeSession = sessions.find((session) => session.id === currentSessionId)
     ?? sessions.find((session) => session.characterId === selected.id && session.messageKey === selected.id)
     ?? null;
+  const selectedLocation = activeSession?.locationId
+    ? locations.find((location) => location.id === activeSession.locationId) ?? null
+    : selected.id.startsWith("location:")
+      ? locations.find((location) => locationSelectionKey(location.id) === selected.id) ?? null
+      : selected.id.startsWith("location-")
+        ? locations.find((location) => `location-${location.id}` === selected.id) ?? null
+        : null;
+  const isLocationSession = Boolean(activeSession?.locationId) || selected.id.startsWith("location:");
+  const selectedScenes = selectedLocation
+    ? resolveLocationScenes(selectedLocation, storyScenes[selected.id], createLocationScene)
+    : selected.id.startsWith("location:") || selected.id.startsWith("location-")
+      ? []
+      : storyScenes[selected.id] ?? scenesFor(selected);
+  const enabledAddons = installedAddons.filter((addon) => addon.enabled);
+  const addonCommonScenes = enabledAddons
+    .flatMap((addon) => validateAddonContent(addon.manifest.content) ?? [])
+    .map((scene) => ({
+      ...scene,
+      sourceAddonId: installedAddons.find((addon) => (validateAddonContent(addon.manifest.content) ?? []).some((s) => s.id === scene.id))?.manifest.id,
+      sourceAddonName: installedAddons.find((addon) => (validateAddonContent(addon.manifest.content) ?? []).some((s) => s.id === scene.id))?.manifest.name,
+    }));
+  const allCommonScenes = [...commonScenes, ...addonCommonScenes];
+  const activeRelationshipPersonaId = useMemo(
+    () => effectivePersonaId(
+      activePersona?.id ?? null,
+      activeSession?.playerPersonaId ?? null,
+    ),
+    [activePersona?.id, activeSession?.playerPersonaId],
+  );
+  const relationshipKeyForSelected = selectedLocation
+    ? ""
+    : relationshipKey(selected.id, activeRelationshipPersonaId);
+  const relationshipRecord = selectedLocation
+    ? undefined
+    : relationships[relationshipKeyForSelected];
+  const relationshipScore = selectedLocation
+    ? 0
+    : relationshipRecord
+      ? relationshipRecord.score
+      : migrateBondToScore(selected.bond);
+  const relationshipContext = selectedLocation
+    ? ""
+    : [
+        selected.relationship,
+        relationshipTierPhrase(relationshipScore),
+      ].filter(Boolean).join(" — ");
+
+  const updateRelationshipNote = useCallback((note: string) => {
+    if (selectedLocation) return;
+    setRelationships((prev) => {
+      const key = relationshipKey(selected.id, activeRelationshipPersonaId);
+      const record = prev[key];
+      if (!record) return prev;
+      return { ...prev, [key]: { ...record, note } };
+    });
+  }, [selected.id, activeRelationshipPersonaId, selectedLocation]);
+
+  const relationshipNote = relationshipRecord?.note ?? "";
+
+  const memoryCards = useMemo(() => {
+    let next = rawMemoryCards;
+    for (const persona of personas) {
+      if (!next[persona.id]) {
+        next = ensureMemoryCard(next, persona.id);
+      }
+    }
+    const personaId = activeRelationshipPersonaId;
+    if (personaId && !selectedLocation) {
+      const record = relationships[relationshipKeyForSelected];
+      const score = record ? record.score : migrateBondToScore(selected.bond);
+      next = syncMemoryCardRelationships(next, personaId, { [selected.id]: score });
+    }
+    return next;
+  }, [rawMemoryCards, personas, activeRelationshipPersonaId, relationshipKeyForSelected, relationships, selected.id, selected.bond, selectedLocation]);
+
+  useEffect(() => {
+    saveMemoryCards(memoryCards);
+  }, [memoryCards]);
+
+
   const activeScene = activeSession?.sandbox
     ? sandboxSceneFor(selected)
-    : selectedScenes.find((scene) => scene.id === activeSession?.sceneId) ?? selectedScenes[0];
-  const activePlayerName = activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name.trim();
+    : activeSession?.locationId
+      ? (() => {
+          const location = locations.find((l) => l.id === activeSession!.locationId);
+          return location
+            ? createLocationScene(location)
+            : createLocationScene({
+                id: activeSession!.locationId!,
+                name: activeSession!.locationId!,
+                source: "custom",
+              });
+        })()
+      : selectedScenes.find((scene) => scene.id === activeSession?.sceneId) ?? selectedScenes[0];
+  const activePlayerName = activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim();
   const sessionUsesDefaultPersona = Boolean(
     !activeSession?.playerName?.trim() && !activeSession?.playerPersona?.trim(),
   );
   const sessionPersonaSnapshot = activeSession?.playerPersona?.trim() || "";
   const sessionPersonaName =
-    activeSession?.playerName?.trim() ||
     activePersona?.name.trim() ||
+    activeSession?.playerName?.trim() ||
     playerProfile.name.trim() ||
     null;
   const activeMessageKey = activeSession?.messageKey ?? selected.id;
@@ -1688,8 +2465,22 @@ export default function DreamboundApp() {
   const shareMessages = activeMessages.slice(-Math.max(1, Math.min(shareCount, activeMessages.length)));
   const activeTheme = activeScene.theme;
   const selectedSessions = sessions
-    .filter((session) => session.characterId === selected.id)
+    .filter((session) => {
+      if (session.characterId === selected.id) return true;
+       if (selectedLocation && session.locationId === selectedLocation.id) return true;
+      return false;
+    })
     .sort((a, b) => b.updatedAt - a.updatedAt);
+  const readingFontFamily = textStyle.fontFamily === "opendyslexic"
+    ? '"OpenDyslexic", system-ui, sans-serif'
+    : textStyle.fontFamily === "system" ? "system-ui, sans-serif" : '"Cormorant Garamond", Georgia, serif';
+  const appFontVariables = {
+    "--reading-font-family": readingFontFamily,
+    "--serif": readingFontFamily,
+    "--sans": readingFontFamily,
+    "--ui-font-size": `${textStyle.uiFontSize}px`,
+    "--ui-font-scale": String(textStyle.uiFontSize / 16),
+  } as React.CSSProperties;
   const themeVariables = {
     "--theme-accent": activeTheme.accent,
     "--theme-accent-muted": activeTheme.accentMuted,
@@ -1700,6 +2491,7 @@ export default function DreamboundApp() {
     "--copper-bright": activeTheme.accent,
     "--rune": activeTheme.accent,
     "--chat-font-size": `${textStyle.fontSize}px`,
+    "--chat-font-family": readingFontFamily,
   } as React.CSSProperties;
   const hasNovelAiToken = Boolean(apiToken.trim());
   const configured = storyProvider === "local"
@@ -1731,8 +2523,13 @@ export default function DreamboundApp() {
   const entranceFeature = entranceFeatures[entranceFeatureIndex] ?? entranceFeatures[0];
   const ollamaOriginSetting = `OLLAMA_ORIGINS=${isHydrated ? window.location.origin : "this-site-origin"}`;
 
-  function openSceneLibrary(characterId: string) {
-    setSelectedId(characterId);
+  function openSceneLibrary(id: string) {
+    const location = locations.find((l) => l.id === id);
+    if (location) {
+      setSelectedId(locationSelectionKey(location.id));
+    } else {
+      setSelectedId(id);
+    }
     setStoryEditor(null);
     setView("scenes");
   }
@@ -1746,7 +2543,7 @@ export default function DreamboundApp() {
         subtitle: "",
         status: "A new story is waiting",
         weather: "The world holds its breath",
-        background: selected.sceneImage || selected.image,
+        background: selected.sceneImage || (selected.cardV2 ? "" : selected.image),
         backgroundFocalPoint: selected.backgroundFocalPoint ?? "center top",
         opening: "",
         theme: {
@@ -1785,7 +2582,9 @@ export default function DreamboundApp() {
           : storyEditor.scene.theme.motif,
       },
     };
-    const currentScenes = storyScenes[selected.id] ?? scenesFor(selected);
+    const currentScenes = selectedLocation
+      ? resolveLocationScenes(selectedLocation, storyScenes[selected.id], createLocationScene)
+      : storyScenes[selected.id] ?? scenesFor(selected);
     const nextScenes = storyEditor.mode === "edit"
       ? currentScenes.map((item) => item.id === scene.id ? scene : item)
       : [...currentScenes, scene];
@@ -1810,6 +2609,83 @@ export default function DreamboundApp() {
     };
   }
 
+  function buildSessionInitialState(
+    character: Character | null,
+    scene: SceneDefinition,
+    location: Location | null = null,
+    overrides: {
+      sandbox?: boolean;
+      autopilot?: boolean;
+      autopilotPaused?: boolean;
+      autopilotPov?: "first" | "third" | "narrator";
+      seedText?: string;
+      description?: string;
+      characterMessage?: string;
+      persona?: PlayerPersona | null;
+      playerRole?: string;
+      playerRoleContext?: string;
+    } = {},
+  ): { session: StorySession; initialMessages: Message[] } {
+    const session = {
+      ...createStorySession(character, scene),
+      ...(location ? locationSessionFields(location.id) : {}),
+      ...personaSnapshot(overrides.persona),
+      sandbox: overrides.sandbox,
+      autopilot: overrides.autopilot,
+      autopilotPaused: overrides.autopilotPaused,
+      autopilotPov: overrides.autopilotPov,
+      playerRole: overrides.playerRole,
+      playerRoleContext: overrides.playerRoleContext,
+    };
+
+    const initialMessages: Message[] = [];
+    let nextId = session.createdAt;
+    if (overrides.description) {
+      initialMessages.push({ id: nextId++, sender: "narrator", text: overrides.description });
+    }
+    if (overrides.seedText) {
+      initialMessages.push({ id: nextId++, sender: "narrator", text: overrides.seedText });
+    }
+    const charName = character?.name ?? location?.name ?? "The story";
+    const userName = (overrides.persona?.name.trim() || session.playerName?.trim() || playerProfile.name).trim();
+    const resolvedScene = {
+      ...scene,
+      title: resolveStoryTemplate(scene.title, { charName, userName }),
+      subtitle: resolveStoryTemplate(scene.subtitle, { charName, userName }),
+      weather: resolveStoryTemplate(scene.weather, { charName, userName }),
+      opening: resolveStoryTemplate(scene.opening, { charName, userName }),
+    };
+    if (overrides.characterMessage) {
+      initialMessages.push({ id: nextId++, sender: "character", text: overrides.characterMessage });
+    } else if (resolvedScene.opening) {
+      initialMessages.push({ id: nextId++, sender: "character", text: resolvedScene.opening });
+    }
+
+    const effectivePlayerName = (overrides.persona?.name.trim() || session.playerName?.trim() || playerProfile.name).trim();
+    const baseCast = character
+      ? createCast({ id: character.id, name: character.name }, effectivePlayerName)
+      : createCast({ id: session.id, name: location?.name ?? "Narrator" }, effectivePlayerName);
+    const detected = initialMessages.length > 0
+      ? detectLivingCast({
+          messages: initialMessages,
+          cast: baseCast,
+          primary: character ? { id: character.id, name: character.name } : { id: session.id, name: location?.name ?? "Narrator" },
+          playerName: effectivePlayerName,
+        })
+      : { cast: baseCast, newNames: [], events: [], pending: null, autoSpeakerId: null, autoSpeakerName: null };
+
+    const seededAutonomy = autonomousAgentsToArray(seedAutonomyFromCast(new Map(), detected.cast));
+
+    return {
+      session: {
+        ...session,
+        livingCast: detected.cast,
+        autonomousCast: seededAutonomy,
+      },
+      initialMessages,
+    };
+  }
+
   function requestPersonaStart(start: NonNullable<PendingPersonaStart>) {
     setPendingPersonaStart(start);
   }
@@ -1825,22 +2701,25 @@ export default function DreamboundApp() {
       setShowAutopilotStart(true);
     }
     else if (start.kind === "imported") startImported(start.characterId, persona ?? null);
+    else if (start.kind === "commonScene") startCommonScene(start.scene, persona ?? null);
+    else if (start.kind === "location") startLocation(start.location, persona ?? null);
   }
 
   function startImported(characterId: string, persona?: PlayerPersona | null) {
     const character =
       characters.find((candidate) => candidate.id === characterId) ?? characters[0];
     const scene = scenesFor(character)[0];
-    const session = { ...createStorySession(character, scene), ...personaSnapshot(persona) };
     const description = character.profile && !character.credit
       ? character.profile
       : "";
+    const { session, initialMessages } = buildSessionInitialState(character, scene, {
+      description,
+      characterMessage: character.reply,
+      persona,
+    });
     setMessages((current) => ({
       ...current,
-      [session.messageKey]: [
-        ...(description ? [{ id: session.createdAt, sender: "narrator" as const, text: description }] : []),
-        { id: session.createdAt + 1, sender: "character" as const, text: character.reply },
-      ],
+      [session.messageKey]: initialMessages,
     }));
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
@@ -1848,25 +2727,77 @@ export default function DreamboundApp() {
     setView("chat");
   }
 
+  function startCommonScene(commonScene: CommonScene, persona?: PlayerPersona | null) {
+    if (selectedLocation) {
+      setChatError("Common scenes are not available for Location sessions.");
+      return;
+    }
+    const character = characters.find((candidate) => candidate.id === selected.id) ?? characters[0];
+    const scene = commonSceneToSceneDefinition(commonScene);
+    const { session, initialMessages } = buildSessionInitialState(character, scene, {
+      persona,
+    });
+    setMessages((current) => ({
+      ...current,
+      [session.messageKey]: initialMessages,
+    }));
+    setSessions((current) => [session, ...current]);
+    setCurrentSessionId(session.id);
+    setAutopilotError("");
+    setChatError("");
+    setView("chat");
+  }
+
+  function startLocation(location: Location, persona?: PlayerPersona | null) {
+    const scene = createLocationScene(location);
+    const { session, initialMessages } = buildSessionInitialState(null, scene, location, {
+      description: buildLocationOpening(location),
+      persona,
+    });
+    setStoryScenes((current) => ({
+      ...current,
+      [locationSelectionKey(location.id)]: [scene],
+    }));
+    setMessages((current) => ({
+      ...current,
+      [session.messageKey]: initialMessages,
+    }));
+    setSessions((current) => [session, ...current]);
+    setCurrentSessionId(session.id);
+    setSelectedId(locationSelectionKey(location.id));
+    setAutopilotError("");
+    setChatError("");
+    setView("chat");
+  }
+
   function startScene(characterId: string, scene: SceneDefinition, persona?: PlayerPersona | null) {
+    if (selectedLocation) {
+      const { session, initialMessages } = buildSessionInitialState(null, scene, selectedLocation, { persona });
+      setMessages((current) => ({ ...current, [session.messageKey]: initialMessages }));
+      setSessions((current) => [session, ...current]);
+      setCurrentSessionId(session.id);
+      setSelectedId(locationSelectionKey(selectedLocation.id));
+      setAutopilotError("");
+      setChatError("");
+      setView("chat");
+      return;
+    }
     const character =
       characters.find((candidate) => candidate.id === characterId) ?? characters[0];
     const role = characterId === "coda"
       ? codaWorldGuide.roles.find((candidate) => candidate.name === selectedCodaRole)
       : null;
     const customRole = customCodaRole.trim().slice(0, 800);
-    const session = {
-      ...createStorySession(character, scene),
+    const { session, initialMessages } = buildSessionInitialState(character, scene, {
       playerRole: role?.name,
       playerRoleContext: role?.name === "Custom Role"
         ? customRole || "No external player-role facts are established."
         : role?.context,
-      ...personaSnapshot(persona),
-    };
-
+      persona,
+    });
     setMessages((current) => ({
       ...current,
-      [session.messageKey]: [{ id: session.createdAt, sender: "character", text: scene.opening }],
+      [session.messageKey]: initialMessages,
     }));
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
@@ -1879,9 +2810,9 @@ export default function DreamboundApp() {
   function deleteCustomScene(scene: SceneDefinition) {
     if (!scene.id.startsWith("custom-")) return;
 
-    const linkedSessions = sessions.filter((session) => (
-      session.characterId === selected.id && session.sceneId === scene.id
-    ));
+    const linkedSessions = sessions.filter((session) => selectedLocation
+      ? session.locationId === selectedLocation.id && session.sceneId === scene.id
+      : session.characterId === selected.id && session.sceneId === scene.id);
     const sessionNote = linkedSessions.length === 0
       ? ""
       : ` This will also delete ${linkedSessions.length} linked ${linkedSessions.length === 1 ? "session" : "sessions"} and their message history.`;
@@ -1891,7 +2822,9 @@ export default function DreamboundApp() {
     const linkedMessageKeys = new Set(linkedSessions.map((session) => session.messageKey));
     setStoryScenes((current) => ({
       ...current,
-      [selected.id]: (current[selected.id] ?? scenesFor(selected))
+       [selected.id]: (selectedLocation
+         ? resolveLocationScenes(selectedLocation, current[selected.id], createLocationScene)
+         : current[selected.id] ?? scenesFor(selected))
         .filter((candidate) => candidate.id !== scene.id),
     }));
     setSessions((current) => current.filter((session) => !linkedSessionIds.has(session.id)));
@@ -1903,12 +2836,18 @@ export default function DreamboundApp() {
   }
 
   function startSandbox(characterId: string, persona?: PlayerPersona | null) {
+    if (selectedLocation) {
+      setChatError("Sandbox mode is not available for Location sessions.");
+      return;
+    }
     const character =
       characters.find((candidate) => candidate.id === characterId) ?? characters[0];
     const scene = sandboxSceneFor(character);
-    const session = { ...createStorySession(character, scene), sandbox: true, ...personaSnapshot(persona) };
-
-    setMessages((current) => ({ ...current, [session.messageKey]: [] }));
+    const { session, initialMessages } = buildSessionInitialState(character, scene, {
+      sandbox: true,
+      persona,
+    });
+    setMessages((current) => ({ ...current, [session.messageKey]: initialMessages }));
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
     setSelectedId(character.id);
@@ -1918,6 +2857,10 @@ export default function DreamboundApp() {
   }
 
   function beginAutopilot(characterId?: string, persona?: PlayerPersona | null) {
+    if (selectedLocation) {
+      setChatError("Whisper Mode is not available for Location sessions.");
+      return;
+    }
     setShowAutopilotStart(false);
     if (!configured) {
       setChatError("Set up and test a story engine before starting Whisper Mode.");
@@ -1930,20 +2873,18 @@ export default function DreamboundApp() {
       ? characters.find((candidate) => candidate.id === characterId) ?? selected
       : selected;
     const scene = sandboxSceneFor(target);
-    const session: StorySession = {
-      ...createStorySession(target, scene),
+    const seed = autopilotSeed.trim();
+    const { session, initialMessages } = buildSessionInitialState(target, scene, {
       sandbox: true,
       autopilot: true,
       autopilotPaused: false,
       autopilotPov: autopilotPov,
-      ...personaSnapshot(resolvedPersona),
-    };
-    const seed = autopilotSeed.trim();
+      seedText: seed || undefined,
+      persona: resolvedPersona,
+    });
     setMessages((current) => ({
       ...current,
-      [session.messageKey]: seed
-        ? [{ id: session.createdAt, sender: "narrator", text: seed }]
-        : [],
+      [session.messageKey]: initialMessages,
     }));
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
@@ -1956,7 +2897,17 @@ export default function DreamboundApp() {
   function continueRoleplay(session: StorySession) {
     setChatError("");
     setAutopilotError("");
-    setSelectedId(session.characterId);
+    if (session.characterId) {
+      setSelectedId(session.characterId);
+    } else if (session.locationId) {
+      const location = locations.find((l) => l.id === session.locationId);
+      if (location) {
+        setSelectedId(locationSelectionKey(location.id));
+      } else {
+        setChatError(`Location "${session.locationId}" no longer exists.`);
+        return;
+      }
+    }
     setCurrentSessionId(session.id);
     setSessions((current) => current.map((item) =>
       item.id === session.id ? { ...item, updatedAt: Date.now() } : item,
@@ -2093,12 +3044,13 @@ export default function DreamboundApp() {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    const startedAt = Date.now();
+    let elapsedStartedAt = 0;
     setTestProgress({ phase: "connecting", elapsedSec: 0, tokens: 0, maxTokens: 24 });
     const elapsedTimer = window.setInterval(() => {
-      setTestProgress((current) => current && {
-        ...current,
-        elapsedSec: Math.floor((Date.now() - startedAt) / 1000),
+      setTestProgress((current) => {
+        if (!current) return current;
+        if (elapsedStartedAt === 0) elapsedStartedAt = Date.now();
+        return { ...current, elapsedSec: Math.floor((Date.now() - elapsedStartedAt) / 1000) };
       });
     }, 1_000);
     try {
@@ -2229,34 +3181,26 @@ export default function DreamboundApp() {
     conversation: Message[],
     action?: "impersonate" | "autopilot" | "skip",
     playerDirection?: string,
-  ): Promise<string> {
+    reroll = false,
+    respondAs?: string,
+  ): Promise<{ reply: string; metadata: StoryMetadata | null }> {
     const controller = new AbortController();
     generationAbortRef.current?.abort();
     generationAbortRef.current = controller;
     const requestSignal = controller.signal;
-    const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
-    const effectivePlayerPersona = (activeSession?.playerPersona?.trim() || compiledActivePersona || playerProfile.persona).trim();
-    const requestBody = {
-        action,
-        playerName: effectivePlayerName,
-        playerPersona: effectivePlayerPersona,
-        impersonationPrompt: playerDirection,
-        provider: storyProvider,
-        apiToken,
-        model: activeModel.value,
-        temperature: creativity / 10,
-        replyLength,
-        initiative,
-        viewpoint,
-        tense: storyTense,
-        proseFormat: "roleplay",
-        autopilotPov: activeSession?.autopilot ? (activeSession.autopilotPov ?? "third") : undefined,
-        character: {
+    const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
+    const effectivePlayerPersona = activePersona ?? (activeSession?.playerPersona?.trim() || compiledActivePersona || playerProfile.persona).trim();
+    const sessionCast = livingCastConfig.enabled
+      ? (activeSession?.livingCast?.length ? activeSession.livingCast : resetCast({ id: selected.id, name: selected.name }, effectivePlayerName))
+      : [];
+    const resolvedSceneTitle = resolveStoryTemplate(activeScene.title, { charName: selected.name, userName: effectivePlayerName });
+    const resolvedSceneWeather = resolveStoryTemplate(`${activeScene.weather}. ${activeScene.subtitle}`, { charName: selected.name, userName: effectivePlayerName });
+    const characterPrompt = isLocationSession ? undefined : {
           id: selected.id,
           name: selected.name,
           role: selected.role,
           profile: selected.profile,
-          canonical: legacyCharacterToCanon({
+          canonical: characterCardV2ToCanon({ ...selected, pronouns: selected.pronouns }, `v2-${packageInfo.version}`) ?? legacyCharacterToCanon({
             id: selected.id,
             revision: `builtin-${packageInfo.version}`,
             name: selected.name,
@@ -2266,30 +3210,63 @@ export default function DreamboundApp() {
             isMinor: selected.isMinor,
             allowedRelationshipTypes: selected.allowedRelationshipTypes,
             disallowedContent: selected.disallowedContent,
+            pronouns: selected.pronouns,
+            traits: selected.traits,
           }),
-          scene: activeSession?.sandbox ? "" : activeScene.title,
+          scene: activeSession?.sandbox ? "" : resolvedSceneTitle,
           sceneId: activeSession?.sandbox ? "" : activeScene.id,
           worldId: activeSession?.sandbox ? "" : selected.id,
-          worldLore: activeSession?.sandbox ? null : legacyCharacterToWorldLore({
+          worldLore: activeSession?.sandbox ? null : characterCardV2BookToWorldLore(
+            selected.id,
+            selected.cardV2?.characterBook,
+          ) ?? legacyCharacterToWorldLore({
             worldId: selected.id,
             revision: `runtime-${packageInfo.version}`,
-            scene: activeScene.title,
-            weather: `${activeScene.weather}. ${activeScene.subtitle}`,
+            scene: resolvedSceneTitle,
+            weather: resolvedSceneWeather,
           }),
-          weather: activeSession?.sandbox
-            ? ""
-            : `${activeScene.weather}. ${activeScene.subtitle}`,
+          weather: activeSession?.sandbox ? "" : resolvedSceneWeather,
           memories: activeSession?.sandbox ? [] : selected.memories,
           sandbox: Boolean(activeSession?.sandbox),
-          relationship: [selected.relationship, `Bond ${selected.bond}/100`].filter(Boolean).join("; "),
-          playerRole: activeSession?.sandbox
-            ? ""
-            : activeSession?.playerRoleContext || activeSession?.playerRole || "",
+          relationship: relationshipContext,
+          relationshipContextEnabled,
+          relationshipContextInstruction: relationshipContextEnabled ? RELATIONSHIP_CONTEXT_INSTRUCTION : undefined,
+          relationshipNote,
+          playerRole: activeSession?.sandbox ? "" : activeSession?.playerRoleContext || activeSession?.playerRole || "",
           contextMode: "balanced",
           matureContentRequested: storyProvider === "local" && activeModel.adult === true,
+        };
+    const requestBody = {
+        action,
+        playerName: effectivePlayerName,
+        playerPersona: effectivePlayerPersona,
+        impersonationPrompt: playerDirection,
+        reroll,
+        provider: storyProvider,
+        apiToken,
+        model: activeModel.value,
+        temperature: creativity / 10,
+        replyLength,
+
+        initiative,
+        viewpoint,
+        tense: storyTense,
+        proseFormat: "roleplay",
+        autopilotPov: activeSession?.autopilot ? (activeSession.autopilotPov ?? "third") : undefined,
+        livingCast: sessionCast,
+        autonomousCast: activeSession?.autonomousCast ?? [],
+        respondAs,
+        locationId: activeSession?.locationId,
+        location: activeSession?.locationId ? locations.find((l) => l.id === activeSession!.locationId) : undefined,
+        character: characterPrompt,
+        contextInput: {
+          memories: contextLibrary.memories,
+          authorNotes: contextLibrary.authorNotes,
+          lorebooks: contextLibrary.lorebooks,
         },
-        messages: conversation.slice(-30).map(({ sender, text }) => ({ sender, text })),
+        messages: conversation.slice(-30).map(({ sender, text, speaker }) => ({ sender, text, speaker })),
     };
+
     if (storyProvider === "device") {
       const preparedResponse = await fetch("/api/novelai", {
         method: "POST",
@@ -2297,12 +3274,13 @@ export default function DreamboundApp() {
         body: JSON.stringify(requestBody),
         signal: requestSignal,
       });
-      const prepared = await preparedResponse.json() as {
+      const prepared = await readResponseJson<{
         ollamaRequest?: Record<string, unknown>;
         finalization?: Record<string, unknown>;
         context?: ContextManifest;
+        autonomy?: AutonomousAgent[];
         error?: string;
-      };
+      }>(preparedResponse, "The story prompt preparation");
       if (!preparedResponse.ok || !prepared.ollamaRequest || !prepared.finalization) {
         throw new Error(prepared.error || "The story prompt could not be prepared.");
       }
@@ -2317,7 +3295,7 @@ export default function DreamboundApp() {
       } catch {
         throw new Error(`This browser could not reach Ollama. Start Ollama and allow this site with ${ollamaOriginSetting}.`);
       }
-      const generated = await ollamaResponse.json() as { response?: string; error?: string };
+      const generated = await readResponseJson<{ response?: string; error?: string }>(ollamaResponse, "Ollama");
       if (!ollamaResponse.ok || !generated.response) {
         throw new Error(generated.error || "Ollama did not return a reply.");
       }
@@ -2331,14 +3309,15 @@ export default function DreamboundApp() {
         }),
         signal: requestSignal,
       });
-      const finalized = await finalizedResponse.json() as { reply?: string; error?: string };
+      const finalized = await readResponseJson<{ reply?: string; metadata?: StoryMetadata | null; error?: string }>(finalizedResponse, "The reply formatting");
       if (!finalizedResponse.ok || !finalized.reply) {
         throw new Error(finalized.error || "The local reply could not be formatted.");
       }
       if (prepared.context) {
         setContextManifests((current) => ({ ...current, [activeMessageKey]: prepared.context! }));
       }
-      return finalized.reply;
+      persistSessionAutonomy(prepared.autonomy);
+      return { reply: finalized.reply, metadata: finalized.metadata ?? null };
     }
     const response = await fetch("/api/novelai", {
       method: "POST",
@@ -2346,14 +3325,15 @@ export default function DreamboundApp() {
       body: JSON.stringify(requestBody),
       signal: requestSignal,
     });
-    const payload = (await response.json()) as { reply?: string; error?: string; context?: ContextManifest };
+    const payload = await readResponseJson<{ reply?: string; metadata?: StoryMetadata | null; error?: string; context?: ContextManifest; autonomy?: AutonomousAgent[] }>(response, providerLabel);
     if (!response.ok || !payload.reply) {
       throw new Error(payload.error || `${providerLabel} did not return a reply.`);
     }
     if (payload.context) {
       setContextManifests((current) => ({ ...current, [activeMessageKey]: payload.context! }));
     }
-    return payload.reply;
+    persistSessionAutonomy(payload.autonomy);
+    return { reply: payload.reply, metadata: payload.metadata ?? null };
   }
 
   const requestStoryReplyRef = useRef<typeof requestStoryReply | null>(null);
@@ -2361,6 +3341,11 @@ export default function DreamboundApp() {
   const isReplyingRef = useRef(isReplying);
   const isImpersonatingRef = useRef(isImpersonating);
   const autopilotBusyRef = useRef(false);
+  const selectedRef = useRef(selected);
+  const sessionsRef = useRef(sessions);
+  const activePersonaRef = useRef(activePersona);
+  const playerProfileRef = useRef(playerProfile);
+  const refreshSessionCastRef = useRef<typeof refreshSessionCast | null>(null);
   const [autopilotBusy, setAutopilotBusy] = useState(false);
   const [autopilotError, setAutopilotError] = useState("");
   const [showAutopilotStart, setShowAutopilotStart] = useState(false);
@@ -2368,11 +3353,18 @@ export default function DreamboundApp() {
   const [autopilotPov, setAutopilotPov] = useState<"first" | "third" | "narrator">("third");
   const [autopilotControlsCollapsed, setAutopilotControlsCollapsed] = useState(false);
   const [storyBackgroundBlur, setStoryBackgroundBlur] = useState(8);
+  const relationshipsRef = useRef(relationships);
   useEffect(() => {
     requestStoryReplyRef.current = requestStoryReply;
     messagesRef.current = messages;
     isReplyingRef.current = isReplying;
     isImpersonatingRef.current = isImpersonating;
+    selectedRef.current = selected;
+    sessionsRef.current = sessions;
+    activePersonaRef.current = activePersona;
+    playerProfileRef.current = playerProfile;
+    relationshipsRef.current = relationships;
+    refreshSessionCastRef.current = refreshSessionCast;
   });
 
   const runAutopilotBeat = useCallback(async (messageKey: string) => {
@@ -2382,18 +3374,27 @@ export default function DreamboundApp() {
     setAutopilotError("");
     try {
       const conversation = messagesRef.current[messageKey] ?? [];
-      const replyText = await requestStoryReplyRef.current?.(conversation, "autopilot") ?? "";
+      const result = await requestStoryReplyRef.current?.(conversation, "autopilot") ?? { reply: "", metadata: null };
+      const replyText = result.reply;
       if (replyText) {
+        const updatedConversation = [...conversation, {
+          id: generateMessageId(),
+          sender: "character" as const,
+          text: replyText,
+          meta: result.metadata ?? null,
+        }];
         setMessages((current) => ({
           ...current,
-          [messageKey]: [
-            ...(current[messageKey] ?? []),
-            { id: Date.now() + 1, sender: "character", text: replyText },
-          ],
+          [messageKey]: updatedConversation,
         }));
-        setSessions((current) => current.map((session) =>
-          session.messageKey === messageKey ? { ...session, updatedAt: Date.now() } : session,
-        ));
+        const session = sessionsRef.current.find((entry) => entry.messageKey === messageKey);
+        const selected = selectedRef.current;
+        refreshSessionCastRef.current?.(updatedConversation, messageKey, {
+          characterId: session?.characterId ?? selected.id,
+          characterName: selected.name,
+          livingCast: session?.livingCast ?? [],
+          playerName: activePersonaRef.current?.name.trim() || session?.playerName?.trim() || "",
+        });
         setProviderState("connected");
       }
     } catch (error) {
@@ -2483,6 +3484,112 @@ export default function DreamboundApp() {
     generationAbortRef.current?.abort();
   }
 
+  function characterTurnId(messageId: number): string {
+    return `c:${String(messageId)}`;
+  }
+
+  function lastPlayerMessageText(conversation: Message[]): string {
+    for (let index = conversation.length - 1; index >= 0; index -= 1) {
+      if (conversation[index].sender === "player") return conversation[index].text;
+    }
+    return "";
+  }
+
+  function advanceRoundRobinCursor(sessionId: string) {
+    setSessions((current) =>
+      current.map((session) =>
+        session.id === sessionId
+          ? { ...session, livingCastRoundRobinIndex: ((session.livingCastRoundRobinIndex ?? 0) + 1) % (session.livingCast?.length ?? 1), updatedAt: Date.now() }
+          : session,
+      ),
+    );
+  }
+
+  function scoreCharacterReply(
+    messageId: number,
+    replyText: string,
+    conversation: Message[],
+    characterId?: string,
+  ): void {
+    const effectiveCharacterId = characterId ?? selected.id;
+    if (isLocationSession || selectedLocation || effectiveCharacterId.startsWith("location:")) return;
+    const personaId = activeRelationshipPersonaId;
+    const playerName = activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim();
+    const previousScore = effectiveScore(
+      relationshipsRef.current,
+      effectiveCharacterId,
+      personaId,
+      selected.bond,
+    );
+    const result = (heuristicRelationshipScorer as RelationshipScorer).evaluate({
+      characterId: effectiveCharacterId,
+      personaId,
+      playerName,
+      characterName: selected.name,
+      previousScore,
+      playerMessage: lastPlayerMessageText(conversation),
+      characterReply: replyText,
+      conversation: conversation.map((message) => ({ sender: message.sender, text: message.text })),
+    });
+    if (!result) {
+      setRelationshipDelta(null);
+      return;
+    }
+    const next: RelationshipState = { ...relationshipsRef.current };
+    commitEvent(next, {
+      characterId: effectiveCharacterId,
+      personaId,
+      turnId: characterTurnId(messageId),
+      delta: result.delta,
+      reason: result.reason,
+    });
+    setRelationships(next);
+    setRelationshipDelta(result.delta);
+  }
+
+  function removeRelationshipTurns(turnIds: string[]): void {
+    if (turnIds.length === 0) return;
+    if (isLocationSession || selectedLocation) return;
+    const next: RelationshipState = { ...relationshipsRef.current };
+    removeEventsForTurns(next, selected.id, activeRelationshipPersonaId, turnIds);
+    setRelationships(next);
+  }
+
+  function recomputeRelationshipForMessage(messageId: number, characterReply: string, conversation: Message[]): void {
+    if (isLocationSession || selectedLocation) return;
+    const message = conversation.find((candidate) => candidate.id === messageId);
+    if (!message || message.sender !== "character") return;
+    const personaId = activeRelationshipPersonaId;
+    const next: RelationshipState = { ...relationshipsRef.current };
+    // Replace whatever event (if any) existed for this character turn, then
+    // re-evaluate the edited text. A zero/empty result clears any prior event.
+    removeEventsForTurns(next, selected.id, personaId, [characterTurnId(messageId)]);
+    const result = (heuristicRelationshipScorer as RelationshipScorer).evaluate({
+      characterId: selected.id,
+      personaId,
+      playerName: activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim(),
+      characterName: selected.name,
+      previousScore: effectiveScore(next, selected.id, personaId, selected.bond),
+      playerMessage: lastPlayerMessageText(conversation),
+      characterReply,
+      conversation: conversation.map((candidate) => ({ sender: candidate.sender, text: candidate.text })),
+    });
+    if (!result || result.delta === 0) {
+      setRelationships(next);
+      setRelationshipDelta(null);
+      return;
+    }
+    commitEvent(next, {
+      characterId: selected.id,
+      personaId,
+      turnId: characterTurnId(messageId),
+      delta: result.delta,
+      reason: result.reason,
+    });
+    setRelationships(next);
+    setRelationshipDelta(result.delta);
+  }
+
   async function sendMessage() {
     const text = draft.trim();
     if (!text || isReplying || isImpersonating) return;
@@ -2504,33 +3611,73 @@ export default function DreamboundApp() {
             : text,
     };
     const conversation = [...activeMessages, playerMessage];
+    const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
+    const baselineCast = activeSession?.livingCast?.length
+      ? activeSession.livingCast
+      : resetCast({ id: selected.id, name: selected.name }, effectivePlayerName);
+
+    let respondAs: string | undefined;
+    if (livingCastConfig.enabled && mode === "Speak" && activeSession) {
+      const selector = createParticipantSelector(
+        livingCastConfig.participationMode,
+        baselineCast,
+        selected.name,
+      );
+      const nextSpeaker = selector.next(conversation);
+      if (nextSpeaker) {
+        respondAs = nextSpeaker.name;
+        if (livingCastConfig.participationMode === "round-robin") {
+          advanceRoundRobinCursor(activeSession.id);
+        }
+      }
+    }
 
     setMessages((current) => ({
       ...current,
       [activeMessageKey]: conversation,
     }));
-    if (activeSession) {
-      setSessions((current) => current.map((session) =>
-        session.id === activeSession.id ? { ...session, updatedAt: Date.now() } : session,
-      ));
-    }
+    refreshSessionCast(conversation, activeMessageKey, {
+      characterId: selected.id,
+      characterName: selected.name,
+      livingCast: activeSession?.livingCast ?? [],
+      playerName: effectivePlayerName,
+    });
     setDraft("");
+    setRelationshipDelta(null);
     setIsReplying(true);
     setChatError("");
 
     try {
-      const replyText = await requestStoryReply(conversation);
+      const result = await requestStoryReply(conversation, undefined, undefined, false, respondAs);
+      const replyMessage: Message = {
+        id: Date.now() + 1,
+        sender: "character",
+        text: result.reply,
+        ...(respondAs ? { speaker: respondAs } : {}),
+        meta: result.metadata ?? null,
+      };
       setMessages((current) => ({
         ...current,
         [activeMessageKey]: [
           ...(current[activeMessageKey] ?? []),
-          { id: Date.now() + 1, sender: "character", text: replyText },
+          replyMessage,
         ],
       }));
-      const newBond = Math.min(100, (selected.bond || 8) + 1);
-      setCharacters((current) => current.map((character) =>
-        character.id === selected.id ? { ...character, bond: newBond } : character,
-      ));
+      const updatedConversation = [...conversation, replyMessage].slice(-30);
+      refreshSessionCast(updatedConversation, activeMessageKey, {
+        characterId: selected.id,
+        characterName: selected.name,
+        livingCast: activeSession?.livingCast ?? [],
+        playerName: effectivePlayerName,
+      });
+      const invitedSpeaker = respondAs
+        ? baselineCast.find((entry) => entry.name === respondAs)
+        : null;
+      if (invitedSpeaker && livingCastConfig.enabled) {
+        scoreCharacterReply(replyMessage.id, replyMessage.text, [...conversation, replyMessage], invitedSpeaker.id);
+      } else {
+        scoreCharacterReply(replyMessage.id, replyMessage.text, [...conversation, replyMessage]);
+      }
       if (activeSession) {
         setSessions((current) => current.map((session) =>
           session.id === activeSession.id ? { ...session, updatedAt: Date.now() } : session,
@@ -2558,13 +3705,19 @@ export default function DreamboundApp() {
     }
   }
 
-  async function impersonateTurn(conversation: Message[], playerDirection: string): Promise<string> {
-    let suggestion = await requestStoryReply(conversation, "impersonate", playerDirection);
+async function impersonateTurn(conversation: Message[], playerDirection: string): Promise<string> {
+    const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
+    let suggestion = formatPlayerTurn(
+      (await requestStoryReply(conversation, "impersonate", playerDirection)).reply,
+      effectivePlayerName,
+    );
     if (isInvalidImpersonationDraft(playerDirection, suggestion, selected.name)) {
-      suggestion = await requestStoryReply(
-        conversation,
-        "impersonate",
-        `${playerDirection}\n\nThe previous draft was written from the character's side and was rejected. Rewrite it strictly from the player's first-person point of view: only the player's own actions and spoken words. Never write ${selected.name}'s actions, dialogue, feelings, or reactions anywhere in the turn, and never call the player by a name ${selected.name} would use. Keep the turn substantial — a concrete action, its physical context, and dialogue.`,
+      const retryGuide = playerDirection
+        ? `The private direction was this, and it must be preserved:\n${playerDirection}\n\nThe previous draft was rejected only because it was written from the character's side: it described ${selected.name}'s actions, dialogue, feelings, or reactions, or used ${selected.name}'s name/persona as the speaker. Retry with the SAME direction — do not replace or expand its intent. Rewrite it strictly from the player's first-person point of view: only the player's own actions and spoken words carry the direction's action and dialogue verbatim. Never write ${selected.name}'s actions, dialogue, feelings, reactions, or inner voice, and never call the player by a name ${selected.name} would use. Keep the player's turn complete but brief.`
+        : `The previous draft was rejected only because it was written from the character's side: it described ${selected.name}'s actions, dialogue, or reactions, or used ${selected.name}'s name as the speaker. The player left the direction empty, so retry with ONE plausible first-person player turn that advances the scene naturally. Write strictly from the player's point of view: only the player's own actions and spoken words. Never write ${selected.name}'s actions, dialogue, feelings, thoughts, or reactions, and never write another speaker. Mentioning or addressing the character by name inside the player's own first-person action or dialogue is valid.`;
+      suggestion = formatPlayerTurn(
+        (await requestStoryReply(conversation, "impersonate", retryGuide)).reply,
+        effectivePlayerName,
       );
     }
     if (isInvalidImpersonationDraft(playerDirection, suggestion, selected.name)) {
@@ -2584,32 +3737,30 @@ export default function DreamboundApp() {
         session.id === activeSession.id ? { ...session, updatedAt: Date.now() } : session,
       ));
     }
-    setIsReplying(true);
-    const characterReply = await requestStoryReply(conversation);
-    setMessages((current) => ({
-      ...current,
-      [activeMessageKey]: [
-        ...(current[activeMessageKey] ?? []),
-        { id: Date.now() + 1, sender: "character", text: characterReply },
-      ],
-    }));
-    const newBond = Math.min(100, (selected.bond || 8) + 1);
-    setCharacters((current) => current.map((character) =>
-      character.id === selected.id ? { ...character, bond: newBond } : character,
-    ));
-    setProviderState("connected");
-  }
+     setIsReplying(true);
+     setRelationshipDelta(null);
+     const result = await requestStoryReply(conversation);
+     const replyMessage: Message = { id: Date.now() + 1, sender: "character", text: result.reply, meta: result.metadata ?? null };
+     setMessages((current) => ({
+       ...current,
+       [activeMessageKey]: [
+         ...(current[activeMessageKey] ?? []),
+         replyMessage,
+       ],
+     }));
+     void scoreCharacterReply(replyMessage.id, replyMessage.text, [...conversation, replyMessage]);
+     setProviderState("connected");
+   }
 
   async function impersonatePlayer() {
-    if (isReplying || isImpersonating || activeMessages.length === 0) return;
+    if (isReplying || isImpersonating) return;
     if (!configured) {
       setChatError("Set up and test a story engine before generating a player draft.");
-      setMode("Dialogue");
       setView("settings");
       return;
     }
 
-    const playerDirection = impersonationPrompt.trim();
+    const playerDirection = draft.trim();
     setIsImpersonating(true);
     setChatError("");
     try {
@@ -2621,8 +3772,7 @@ export default function DreamboundApp() {
         direction: playerDirection || undefined,
       };
       await commitPlayerTurn(activeMessages, playerMessage);
-      setImpersonationPrompt("");
-      setMode("Dialogue");
+      setDraft("");
     } catch (error) {
       if (isAbortError(error)) return;
       setProviderState("error");
@@ -2646,12 +3796,12 @@ export default function DreamboundApp() {
     setIsReplying(true);
     setChatError("");
     try {
-      const replyText = await requestStoryReply(activeMessages, "skip");
+      const result = await requestStoryReply(activeMessages, "skip");
       setMessages((current) => ({
         ...current,
         [activeMessageKey]: [
           ...(current[activeMessageKey] ?? []),
-          { id: Date.now(), sender: "character", text: replyText },
+          { id: Date.now(), sender: "character", text: result.reply, meta: result.metadata ?? null },
         ],
       }));
       if (activeSession) {
@@ -2684,18 +3834,24 @@ export default function DreamboundApp() {
   function saveEditMessage(id: number) {
     const text = editDraft.trim();
     if (!text) return;
-    setMessages((current) => ({
-      ...current,
-      [activeMessageKey]: (current[activeMessageKey] ?? []).map((m) => {
-        if (m.id !== id) return m;
-        const { versions, activeIndex } = messageVersions(m);
-        const pages = versions.map((page, index) => (index === activeIndex ? text : page));
-        return { ...m, text, pages, pageIndex: activeIndex };
-      }),
-    }));
-    setEditingId(null);
-    setEditDraft("");
-  }
+     setMessages((current) => ({
+       ...current,
+       [activeMessageKey]: (current[activeMessageKey] ?? []).map((m) => {
+         if (m.id !== id) return m;
+         const { versions, activeIndex } = messageVersions(m);
+         const pages = versions.map((page, index) => (index === activeIndex ? text : page));
+         return { ...m, text, pages, pageIndex: activeIndex };
+       }),
+     }));
+     const conversation = messages[activeMessageKey] ?? [];
+     const edited = conversation.find((m) => m.id === id);
+     if (edited?.sender === "character") {
+       // Recompute/replace the event for an edited character turn.
+       void Promise.resolve().then(() => recomputeRelationshipForMessage(id, text, conversation));
+     }
+     setEditingId(null);
+     setEditDraft("");
+   }
 
   function setMessageActivePage(id: number, index: number) {
     setMessages((current) => ({
@@ -2735,8 +3891,10 @@ export default function DreamboundApp() {
         (message) => !removedIds.has(message.id),
       ),
     }));
+    removeRelationshipTurns([...removedIds].map((id) => characterTurnId(id)));
     if (editingId !== null && removedIds.has(editingId)) cancelEditMessage();
     setPendingDeleteMessage(null);
+    setRelationshipDelta(null);
   }
 
   async function rerunImpersonation(id: number, directionText: string) {
@@ -2745,6 +3903,12 @@ export default function DreamboundApp() {
     const target = currentMessages.find((m) => m.id === id);
     const truncated = currentMessages.filter((m) => m.id < id);
     if (!target || truncated.length === 0) return;
+    // The re-run rewrites the player turn and everything after it. Reverse any
+    // relationship events that belonged to the character turns being discarded.
+    const removedCharacterTurnIds = currentMessages
+      .filter((m) => m.id >= id && m.sender === "character")
+      .map((m) => characterTurnId(m.id));
+    removeRelationshipTurns(removedCharacterTurnIds);
     const nextDirection = directionText.trim();
     setDirectionEditor(null);
     setChatError("");
@@ -2785,20 +3949,32 @@ export default function DreamboundApp() {
     const truncated = (messages[activeMessageKey] ?? []).filter((m) => m.id < message.id);
     if (truncated.length === 0) return;
     setChatError("");
+    setRelationshipDelta(null);
     setIsReplying(true);
 
     try {
-      const reply = await requestStoryReply(truncated);
+      const result = await requestStoryReply(
+        truncated,
+        undefined,
+        undefined,
+        true,
+        message.speaker && !matchesName(message.speaker, selected.name) ? message.speaker : undefined,
+      );
+      const reply = result.reply;
+      const meta = result.metadata ?? null;
 
-      setMessages((current) => ({
-        ...current,
-        [activeMessageKey]: (current[activeMessageKey] ?? []).map((m) => {
-          if (m.id !== message.id) return m;
-          const pages = m.pages && m.pages.length > 0 ? [...m.pages, reply] : [m.text, reply];
-          return { ...m, text: reply, pages, pageIndex: pages.length - 1 };
-        }),
-      }));
-      setProviderState("connected");
+       setMessages((current) => ({
+         ...current,
+         [activeMessageKey]: (current[activeMessageKey] ?? []).map((m) => {
+           if (m.id !== message.id) return m;
+           const pages = m.pages && m.pages.length > 0 ? [...m.pages, reply] : [m.text, reply];
+           return { ...m, text: reply, pages, pageIndex: pages.length - 1, ...(meta ? { meta } : {}) };
+         }),
+       }));
+       // Same turnId as the original reply -> commitEvent replaces the old event
+       // instead of stacking another one, so rerolls cannot farm points.
+       void scoreCharacterReply(message.id, reply, [...truncated, { id: message.id, sender: "character", text: reply }]);
+       setProviderState("connected");
     } catch (error) {
       if (isAbortError(error)) return;
       setProviderState("error");
@@ -2845,6 +4021,7 @@ export default function DreamboundApp() {
       messageKey: id,
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      livingCast: createCast({ id, name }),
     };
     setCharacters((current) => [...current, newCharacter]);
     setMessages((current) => ({
@@ -2865,59 +4042,85 @@ export default function DreamboundApp() {
     setView("chat");
   }
 
-  async function importCharacterCard(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
+  async function handleCharacterImport(file: File) {
+    setImportError("");
+    setCharacterBackupError("");
+    setCharacterBackupMsg("");
     try {
-      const parsed = JSON.parse(await file.text());
-      const data = parsed?.data ?? parsed;
-      const name = String(data?.name || "").trim();
-      if (!name) throw new Error("This card does not contain a character name.");
+      if (file.name.toLowerCase().endsWith(".png") || file.type === "image/png") {
+        if (file.size > CHARACTER_CARD_V2_LIMITS.pngBytes) {
+          throw new Error("This PNG is too large to import safely.");
+        }
+        const png = new Uint8Array(await file.arrayBuffer());
+        const result = extractCharacterCardV2FromPng(png);
+        if (!result.ok) throw new Error(result.error);
+        const imported = characterCardV2ToHowling(result.card);
+        const [unique] = ensureUniqueCharacterIds(
+          [imported],
+          characters.map((character) => character.id),
+        );
+        unique.image = await persistCharacterPortrait(unique.id, png);
+        setCharacters((current) => [...current, unique]);
+        setSelectedId(unique.id);
+        setIsCreating(false);
+        setCharacterBackupMsg(`Imported ${unique.name} from a Character Card V2 PNG.`);
+        return;
+      }
 
-      const id = `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
-      const tags = Array.isArray(data.tags) ? data.tags.slice(0, 2).join(" · ") : "";
-      const description = String(data.description || "").trim();
-      const personality = String(data.personality || "").trim();
-      const scenario = String(data.scenario || "").trim();
-      const opening = String(data.first_mes || "I was wondering when you would arrive.")
-        .replaceAll("*", "")
-        .trim();
-      const backstory = String(data?.extensions?.backstory || "");
-      const importedMemories = backstory
-        .split(".")
-        .map((item: string) => item.trim())
-        .filter(Boolean)
-        .slice(0, 2);
+      if (file.size > CHARACTER_CARD_V2_LIMITS.jsonBytes) {
+        throw new Error("This character JSON is too large to import safely.");
+      }
+      const json = await file.text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(json);
+      } catch {
+        throw new Error("This JSON is malformed and could not be read.");
+      }
 
-      const importedCharacter: Character = {
-        id,
-        name,
-        role: tags || "Imported character",
-        status: "Ready to meet",
-        image: "",
-        sceneImage: "",
-        scene: "An Imported Story",
-        weather: "The world waits for your first choice",
-        bond: 12,
-        memories: importedMemories.length
-          ? importedMemories
-          : ["Their history is waiting to be discovered"],
-        reply: opening,
-        profile:
-          [description, personality, scenario].filter(Boolean).join("\n\n") ||
-          `${name} is an imported character whose personality should stay consistent with their opening message.`,
-        accent: "#d78a5e",
-      };
-      setCharacters((current) => [...current, importedCharacter]);
-      setSelectedId(id);
+      if (isCharacterCardV2(parsed) || (parsed && typeof parsed === "object" && "spec" in parsed)) {
+        const result = parseCharacterCardV2Json(json);
+        if (!result.ok) throw new Error(result.error);
+        const [unique] = ensureUniqueCharacterIds(
+          [characterCardV2ToHowling(result.card)],
+          characters.map((character) => character.id),
+        );
+        setCharacters((current) => [...current, unique]);
+        setSelectedId(unique.id);
+        setIsCreating(false);
+        setCharacterBackupMsg(`Imported ${unique.name} from Character Card V2 JSON.`);
+        return;
+      }
+
+      const native = parseCharacterImport(json);
+      if (!native.ok) {
+        const format = parsed && typeof parsed === "object" && "format" in parsed
+          ? String((parsed as { format?: unknown }).format ?? "")
+          : "";
+        if (!format.startsWith("howling-whispers-character")) {
+          throw new Error("This JSON is not a supported character format.");
+        }
+        throw new Error(native.error);
+      }
+      const unique = ensureUniqueCharacterIds(
+        native.characters,
+        characters.map((character) => character.id),
+      );
+      setCharacters((current) => [...current, ...unique]);
+      if (unique.length === 1) setSelectedId(unique[0].id);
       setIsCreating(false);
-      requestPersonaStart({ kind: "imported", characterId: id });
+      setCharacterBackupMsg(`Imported ${unique.length} ${unique.length === 1 ? "character" : "characters"}.`);
     } catch (error) {
-      setImportError(error instanceof Error ? error.message : "That character card could not be read.");
-    } finally {
-      event.target.value = "";
+      const message = error instanceof Error ? error.message : "That character file could not be read.";
+      setImportError(message);
+      setCharacterBackupError(message);
     }
+  }
+
+  function importCharacterFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) void handleCharacterImport(file);
+    event.target.value = "";
   }
 
   function importArchiveCharacter(publication: ArchivePublication) {
@@ -2962,7 +4165,7 @@ export default function DreamboundApp() {
       ),
     );
     setSelectedId(id);
-    setView("home");
+    setView("roleplay");
     requestPersonaStart({ kind: "imported", characterId: id });
   }
 
@@ -2978,53 +4181,141 @@ export default function DreamboundApp() {
     URL.revokeObjectURL(url);
   }
 
-  function exportCharacterLibrary() {
-    downloadTextFile(
-      "howling-whispers-character-library.json",
-      serializeCharacterLibrary(characters),
-    );
-    setCharacterBackupMsg("Character library exported.");
+  function downloadBinaryFile(filename: string, bytes: Uint8Array, type: string) {
+    const blob = new Blob([bytes], { type });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
   }
 
-  function exportSingleCharacter(character: Character) {
+  function exportCharacterLibrary() {
+    const ownedCharacters = characters.filter((character) => isUserOwnedCharacter(character));
+    if (ownedCharacters.length === 0) {
+      setCharacterBackupMsg("You have no characters of your own to export yet.");
+      return;
+    }
+    downloadTextFile(
+      "howling-whispers-character-library.json",
+      serializeCharacterLibrary(ownedCharacters),
+    );
+    setCharacterBackupMsg("Your own characters exported.");
+  }
+
+  function exportNativeCharacter(character: Character) {
+    if (!isUserOwnedCharacter(character)) return;
     downloadTextFile(
       `howling-whispers-character-${character.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`,
       serializeCharacter(character),
     );
+    setDownloadingCharacter(null);
   }
 
-  function handleCharacterBackupImport(file: File) {
-    setCharacterBackupError("");
-    setCharacterBackupMsg("");
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = parseCharacterImport(String(reader.result ?? ""));
-      if (!result.ok) {
-        setCharacterBackupError(result.error);
-        return;
-      }
-      const unique = ensureUniqueCharacterIds(
-        result.characters,
-        characters.map((character) => character.id),
-      );
-      const nextCharacters = [...characters, ...unique];
-      setCharacters(nextCharacters);
-      if (unique.length === 1) setSelectedId(unique[0].id);
-      setCharacterBackupMsg(`Imported ${unique.length} ${unique.length === 1 ? "character" : "characters"}.`);
+  function exportV2Json(character: Character) {
+    downloadTextFile(
+      `${fileSlug(character.name)}.v2.json`,
+      serializeCharacterCardV2(portableExportSource(character)),
+    );
+    setDownloadingCharacter(null);
+  }
+
+  async function exportV2Png(character: Character) {
+    setCharacterDownloadError("");
+    try {
+      const portrait = await portraitPngBytes(character);
+      const png = embedCharacterCardV2InPng(portrait, howlingCharacterToV2(portableExportSource(character)));
+      downloadBinaryFile(`${fileSlug(character.name)}.card.png`, png, "image/png");
+      setDownloadingCharacter(null);
+    } catch (error) {
+      setCharacterDownloadError(error instanceof Error ? error.message : "The V2 card could not be created.");
+    }
+  }
+
+  async function portraitPngBytes(character: Character): Promise<Uint8Array> {
+    if (isStoredPortraitReference(character.image)) {
+      const bytes = await loadCharacterPortrait(character.image);
+      if (!bytes) throw new Error("The stored portrait is unavailable. Assign artwork before downloading a V2 PNG.");
+      return bytes;
+    }
+    if (!character.image) throw new Error("This character has no portrait. Use V2 JSON or assign artwork first.");
+    const response = await fetch(character.image);
+    if (!response.ok) throw new Error("The character portrait could not be loaded for export.");
+    const blob = await response.blob();
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71) return bytes;
+    const bitmap = await createImageBitmap(blob);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("The portrait could not be converted to PNG.");
+      context.drawImage(bitmap, 0, 0);
+      const pngBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!pngBlob) throw new Error("The portrait could not be converted to PNG.");
+      return new Uint8Array(await pngBlob.arrayBuffer());
+    } finally {
+      bitmap.close();
+    }
+  }
+
+  function fileSlug(name: string): string {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "character";
+  }
+
+  function portableExportSource(character: Character) {
+    return {
+      ...character,
+      portableCharacterBook: character.cardV2?.characterBook
+        ? undefined
+        : howlingWorldLoreToCharacterBook(resolveBuiltinWorldLore(character.id)),
     };
-    reader.onerror = () => setCharacterBackupError("The character file could not be read.");
-    reader.readAsText(file);
   }
 
-  function updateCharacter(id: string, updates: Partial<Character>) {
-    setCharacters((current) => current.map((character) => (
-      character.id === id ? { ...character, ...updates } : character
-    )));
-    setEditingCharacter(null);
+  function formatBackupSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatBackupDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
   }
+}
+
+function describeBackupDevice(): string {
+  if (typeof navigator === "undefined") return "web";
+  const ua = navigator.userAgent || "";
+  if (/iphone|ipad|ipod/i.test(ua)) return "iOS";
+  if (/android/i.test(ua)) return "Android";
+  if (/windows/i.test(ua)) return "Windows";
+  if (/mac os x|macintosh/i.test(ua)) return "macOS";
+  if (/linux/i.test(ua)) return "Linux";
+  return "web";
+}
+
+function updateCharacter(id: string, updates: Partial<Character>) {
+  const previousImage = characters.find((character) => character.id === id)?.image;
+  if (updates.image !== undefined && previousImage && updates.image !== previousImage
+    && isStoredPortraitReference(previousImage)) {
+    void deleteCharacterPortrait(previousImage);
+  }
+  setCharacters((current) => current.map((character) => (
+    character.id === id ? { ...character, ...updates } : character
+  )));
+  setEditingCharacter(null);
+}
 
   function deleteCharacter(character: Character) {
     if (!isUserOwnedCharacter(character)) return;
+    if (isStoredPortraitReference(character.image)) void deleteCharacterPortrait(character.image);
 
     const removedSessionMessageKeys = new Set(
       sessions
@@ -3069,214 +4360,499 @@ export default function DreamboundApp() {
     if (selectedId === character.id) {
       setSelectedId("coda");
     }
-    setView("home");
+    setView("roleplay");
   }
 
-  function renderText(text: string, forceAction = false) {
-    if (forceAction) {
-      return <span style={{ color: textStyle.action, fontStyle: "italic" }}>{text}</span>;
-    }
+  const MAX_LOCATIONS = 60;
 
-    const parts: React.ReactNode[] = [];
-    const regex = /(\[[^\]]+\]|\*\*[^*]+\*\*|\*[^*]+\*)/g;
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(<span key={lastIndex} style={{ color: textStyle.dialogue }}>{text.slice(lastIndex, match.index)}</span>);
-      }
-      const inner = match[0];
-      if (inner.startsWith("**")) {
-        parts.push(<span key={match.index} style={{ color: textStyle.dialogue, fontWeight: 700 }}>{inner.slice(2, -2)}</span>);
-      } else if (inner.startsWith("*")) {
-        parts.push(<span key={match.index} style={{ color: textStyle.action, fontStyle: "italic" }}>{inner.slice(1, -1)}</span>);
-      } else {
-        parts.push(<span key={match.index} style={{ color: textStyle.narration }}>{inner.slice(1, -1)}</span>);
-      }
-      lastIndex = regex.lastIndex;
+  function createLocation(input: Partial<Location>) {
+    const now = new Date().toISOString();
+    const location = sanitizeLocation({
+      ...input,
+      id: `location-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      source: "custom",
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (!location) {
+      setLocationError("That location could not be created.");
+      return;
     }
-    if (lastIndex < text.length) {
-      parts.push(<span key={lastIndex} style={{ color: textStyle.dialogue }}>{text.slice(lastIndex)}</span>);
-    }
-    return parts.length > 0 ? parts : <span style={{ color: textStyle.dialogue }}>{text}</span>;
+    setLocations((current) => {
+      if (current.length >= MAX_LOCATIONS) {
+        setLocationError("You have reached the maximum number of locations.");
+        return current;
+      }
+      return [...current, location];
+    });
+    setIsCreatingLocation(false);
   }
 
-  function renderMessageText(text: string, sender: Message["sender"]) {
-    const formattedText = text
-      .replace(/\s*(?<!\*)(\*[^*]+\*)(?!\*)\s*/g, "\n\n$1\n\n")
-      .replace(
-        /(?:^|\s+)([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2})(?:\s*\(as\))?:\s*/g,
-        "\n\n$1\n\n",
-      )
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-    const paragraphs = formattedText
-      .split(/\n\s*\n/)
-      .map((paragraph) => paragraph.trim())
-      .filter(Boolean);
+  function updateLocation(id: string, updates: Partial<Location>) {
+    setLocations((current) => current.map((location) => {
+      if (location.id !== id || !isUserOwnedLocation(location)) return location;
+      const merged = { ...location, ...updates, id, source: "custom" as const, updatedAt: new Date().toISOString() };
+      const sanitized = sanitizeLocation(merged);
+      if (!sanitized) return location;
+      return sanitized;
+    }));
+    setEditingLocation(null);
+  }
 
-    return (
-      <div className="message-copy-text">
-        {(paragraphs.length > 0 ? paragraphs : [formattedText]).map((paragraph, index) => {
-          const isSpeakerLabel = /^[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,2}(?:\s*\(as\))?:$/.test(paragraph);
-          const escapedName = selected.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          const isUnmarkedAction = sender === "character"
-            && !paragraph.startsWith("*")
-            && new RegExp(`^(?:${escapedName}|she|he|they)\\b`, "i").test(paragraph);
-          return (
-            <p
-              className={isSpeakerLabel ? "speaker-label" : undefined}
-              key={`${index}:${paragraph.slice(0, 24)}`}
-            >
-              {renderText(paragraph, isUnmarkedAction)}
-            </p>
-          );
-        })}
-      </div>
+  function deleteLocation(location: Location) {
+    if (!isUserOwnedLocation(location)) return;
+    const removedSessionMessageKeys = new Set(
+      sessions
+        .filter((session) => session.locationId === location.id)
+        .map((session) => session.messageKey),
+    );
+    setLocations((current) => current.filter((candidate) => candidate.id !== location.id));
+    setSessions((current) => current.filter((session) => session.locationId !== location.id));
+    setMessages((current) => {
+      const next = { ...current };
+      removedSessionMessageKeys.forEach((messageKey) => delete next[messageKey]);
+      return next;
+    });
+    setStoryScenes((current) => {
+      const next = { ...current };
+      delete next[`location-${location.id}`];
+      return next;
+    });
+    setEditingLocation(null);
+    setConfirmDeleteLocation(null);
+  }
+
+  async function handleLocationImport(file: File) {
+    setLocationError("");
+    setLocationImportMsg("");
+    try {
+      if (file.size > 256 * 1024) {
+        throw new Error("This location file is too large to import safely.");
+      }
+      const json = await file.text();
+      const result = parseLocationImport(json);
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+      const unique = ensureUniqueLocationIds(
+        result.locations.map((location) => ({ ...location, source: "custom" as const })),
+        locations.map((location) => location.id),
+      );
+      setLocations((current) => {
+        if (current.length + unique.length > MAX_LOCATIONS) {
+          throw new Error("Importing these locations would exceed the maximum number of locations.");
+        }
+        return [...current, ...unique];
+      });
+      setLocationImportMsg(`Imported ${unique.length} ${unique.length === 1 ? "location" : "locations"}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "That location file could not be read.";
+      setLocationError(message);
+    }
+  }
+
+  function importLocationFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) void handleLocationImport(file);
+    event.target.value = "";
+  }
+
+  function exportLocation(location: Location) {
+    if (!isUserOwnedLocation(location)) return;
+    downloadTextFile(
+      `howling-whispers-location-${location.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`,
+      serializeLocation(location),
+    );
+    setEditingLocation(null);
+  }
+
+  const MAX_SCENARIOS = 60;
+
+  function isUserOwnedScenario(scenario: Scenario) {
+    return scenario.source === "custom";
+  }
+
+  function createScenario(input: Partial<Scenario>) {
+    const now = new Date().toISOString();
+    const scenario = sanitizeScenario({
+      ...input,
+      id: newScenarioId(),
+      source: "custom",
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (!scenario) {
+      setScenarioError("That scenario could not be created.");
+      return;
+    }
+    setScenarios((current) => {
+      if (current.length >= MAX_SCENARIOS) {
+        setScenarioError("You have reached the maximum number of scenarios.");
+        return current;
+      }
+      return [...current, scenario];
+    });
+    setIsCreatingScenario(false);
+  }
+
+  function updateScenario(id: string, updates: Partial<Scenario>) {
+    setScenarios((current) => current.map((scenario) => {
+      if (scenario.id !== id || !isUserOwnedScenario(scenario)) return scenario;
+      const merged = { ...scenario, ...updates, id, source: "custom" as const, updatedAt: new Date().toISOString() };
+      const sanitized = sanitizeScenario(merged);
+      if (!sanitized) return scenario;
+      return sanitized;
+    }));
+    setEditingScenario(null);
+  }
+
+  function deleteScenario(scenario: Scenario) {
+    if (!isUserOwnedScenario(scenario)) return;
+    setScenarios((current) => current.filter((candidate) => candidate.id !== scenario.id));
+    setEditingScenario(null);
+    setConfirmDeleteScenario(null);
+  }
+
+  async function handleScenarioImport(file: File) {
+    setScenarioError("");
+    setScenarioImportMsg("");
+    try {
+      if (file.size > 256 * 1024) {
+        throw new Error("This scenario file is too large to import safely.");
+      }
+      const json = await file.text();
+      const result = parseScenarioImport(json);
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+      const unique = ensureUniqueScenarioIds(
+        result.scenarios.map((scenario) => ({ ...scenario, source: "custom" as const })),
+        scenarios.map((scenario) => scenario.id),
+      );
+      setScenarios((current) => {
+        if (current.length + unique.length > MAX_SCENARIOS) {
+          throw new Error("Importing these scenarios would exceed the maximum number of scenarios.");
+        }
+        return [...current, ...unique];
+      });
+      setScenarioImportMsg(`Imported ${unique.length} ${unique.length === 1 ? "scenario" : "scenarios"}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "That scenario file could not be read.";
+      setScenarioError(message);
+    }
+  }
+
+  function importScenarioFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) void handleScenarioImport(file);
+    event.target.value = "";
+  }
+
+  function exportScenario(scenario: Scenario) {
+    if (!isUserOwnedScenario(scenario)) return;
+    downloadTextFile(
+      `howling-whispers-scenario-${scenario.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`,
+      serializeScenario(scenario),
+    );
+    setEditingScenario(null);
+  }
+
+  // ----- Private-data backup & restore ---------------------------------------
+  function buildPortableBackup(): BackupPayload {
+    return buildBackupPayload(
+      {
+        characters,
+        messages,
+        sessions,
+        currentSessionId,
+        storyScenes,
+         personas,
+         activePersonaId: resolvedActivePersonaId,
+         playerName: playerProfile.name,
+         relationships,
+         memoryCards,
+         contextLibrary,
+         preferences: {
+          storyProvider,
+          model: selectedModel,
+          localModel: selectedLocalModel,
+          deviceModel: deviceModel,
+          creativity,
+          replyLength,
+          initiative,
+          viewpoint,
+          storyTense,
+          textStyle,
+          shareCount,
+          shareCaptions,
+          shareHeader,
+          entranceCodaLocked,
+          showCharacterRail,
+          showContextRail,
+        },
+      },
+      { appVersion: packageInfo.version, device: describeBackupDevice(), source: "web" },
     );
   }
 
-  function renderMessageBubble(
-    message: Message,
-    isLastCharacter: boolean,
-    options: { live: boolean; showCaption: boolean },
-  ) {
-    const isEditing = options.live && editingId === message.id;
-    const caption =
-      options.showCaption && message.sender !== "narrator"
-        ? message.sender === "character"
-          ? selected.name
-          : activePlayerName || "You"
-        : "";
-    const { versions: pageVersions, activeIndex: activePage } = messageVersions(message);
-    const showPageControl =
-      message.sender === "character" && isLastCharacter && pageVersions.length > 1;
-    return (
-      <article
-        className={`message ${message.sender}${options.live && !seenMessageIds.has(`${activeMessageKey}:${message.id}`) ? " message-new" : ""}`}
-        key={message.id}
-      >
-        {message.sender === "character" && <Portrait character={selected} accent={activeTheme.accent} />}
-        <div className="message-body">
-          {caption && <span className="message-name">{caption}</span>}
-          {isEditing ? (
-            <div className="message-edit">
-              <textarea
-                className="message-edit-textarea"
-                value={editDraft}
-                onChange={(event) => {
-                  setEditDraft(event.target.value);
-                  const el = event.currentTarget;
-                  el.style.height = "auto";
-                  el.style.height = `${el.scrollHeight}px`;
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    saveEditMessage(message.id);
-                  }
-                  if (event.key === "Escape") cancelEditMessage();
-                }}
-                autoFocus
-                rows={3}
-                ref={(el) => {
-                  if (el) {
-                    el.style.height = "auto";
-                    el.style.height = `${el.scrollHeight}px`;
-                  }
-                }}
-              />
-              <div className="message-edit-actions">
-                <button onClick={() => saveEditMessage(message.id)}>Save</button>
-                <button onClick={cancelEditMessage}>Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {renderMessageText(message.text, message.sender)}
-              {options.live && (
-                <div className="message-controls-bar">
-                  <div className="message-controls-left">
-                    {showPageControl && (
-                      <div className="page-control">
-                        <button
-                          onClick={() => setMessageActivePage(message.id, activePage - 1)}
-                          aria-label="Previous version"
-                          title="Previous version"
-                          disabled={isReplying || activePage === 0}
-                        >
-                          ‹
-                        </button>
-                        <span className="page-badge" aria-label={`Version ${activePage + 1} of ${pageVersions.length}`}>
-                          &lt;{activePage + 1}/{pageVersions.length}&gt;
-                        </span>
-                        <button
-                          onClick={() => setMessageActivePage(message.id, activePage + 1)}
-                          aria-label="Next version"
-                          title="Next version"
-                          disabled={isReplying || activePage === pageVersions.length - 1}
-                        >
-                          ›
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="message-actions">
-                    <button
-                      onClick={() => {
-                        if (typeof navigator !== "undefined" && navigator.clipboard) {
-                          navigator.clipboard.writeText(message.text);
-                          setCopyFeedbackId(message.id);
-                          setTimeout(() => setCopyFeedbackId(null), 1500);
-                        }
-                      }}
-                      aria-label="Copy message text"
-                      title={copyFeedbackId === message.id ? "Copied!" : "Copy text"}
-                    >
-                      {copyFeedbackId === message.id ? "✓" : "📋"}
-                    </button>
-                    <button
-                      onClick={() => startEditMessage(message.id, message.text)}
-                      aria-label="Edit message"
-                      title="Edit"
-                    >
-                      ✎
-                    </button>
-                    <button
-                      onClick={() => setPendingDeleteMessage(message)}
-                      aria-label="Delete message"
-                      title="Delete"
-                    >
-                      ✕
-                    </button>
-                    {message.direction && (
-                      <button
-                        onClick={() => setDirectionEditor({ id: message.id, text: message.direction ?? "" })}
-                        aria-label="View or edit impersonation direction"
-                        title="Impersonation direction"
-                      >
-                        ◉
-                      </button>
-                    )}
-                    {isLastCharacter && (
-                      <button
-                        onClick={() => rerollMessage(message)}
-                        aria-label="Re-roll reply"
-                        title="Re-roll reply"
-                        disabled={isReplying}
-                      >
-                        ↻
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </article>
+  function downloadBackupPayload(payload: BackupPayload) {
+    const date = payload.createdAt ? payload.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10);
+    downloadTextFile(
+      `howling-whispers-backup-${date}.hwb`,
+      serializeBackupPayload(payload),
     );
   }
+
+  function applyBackupPayload(payload: BackupPayload) {
+    const data = payload.data;
+
+    // Curated characters: restore only the user's own state onto the shipped
+    // character package. The curated profiles, openers, art, and canon are never
+    // replaced from a backup.
+    setCharacters((current) =>
+      current.map((character) => {
+        const curated = data.curatedState.find((state) => state.id === character.id);
+        if (!curated) return character;
+        return {
+          ...character,
+          bond: curated.bond,
+          relationship: curated.relationship ?? character.relationship,
+          memories: curated.memories.length > 0 ? curated.memories : character.memories,
+        };
+      }),
+    );
+
+    // User-owned characters: add fresh copies (never the curated package).
+    const ownedCharacters = ensureUniqueCharacterIds(
+      data.characters,
+      characters.map((character) => character.id),
+    );
+    if (ownedCharacters.length > 0) {
+      setCharacters((current) => [...current, ...ownedCharacters]);
+    }
+
+    setPersonas((current) => {
+      const merged = ensureUniquePersonaIds(data.personas, current);
+      return merged.length > 0 ? [...current, ...merged] : current;
+    });
+    const personaIdKnown = (id: string) =>
+      personas.some((persona) => persona.id === id) ||
+      data.personas.some((persona) => persona.id === id);
+    if (data.activePersonaId && personaIdKnown(data.activePersonaId)) {
+      setActivePersonaId(data.activePersonaId);
+    }
+
+    if (data.relationships && typeof data.relationships === "object") {
+      setRelationships((current) => ({ ...current, ...data.relationships }));
+    }
+
+    if (data.memoryCards && typeof data.memoryCards === "object") {
+      setRawMemoryCards((current) => ({ ...current, ...data.memoryCards }));
+    }
+
+    if (data.contextLibrary && typeof data.contextLibrary === "object") {
+      setContextLibrary(data.contextLibrary as ContextLibrary);
+    }
+
+    if (data.player.name.trim()) {
+      updatePlayerProfile({ name: data.player.name });
+    }
+
+    setMessages((current) => {
+      const next = { ...current };
+      for (const [key, list] of Object.entries(data.messages)) {
+        if (list.length > 0) next[key] = list;
+      }
+      return next;
+    });
+
+    setSessions((current) => {
+      const byId = new Map(current.map((session) => [session.id, session]));
+      for (const session of data.sessions) {
+        if (!byId.has(session.id)) byId.set(session.id, session);
+      }
+      return [...byId.values()];
+    });
+
+    setStoryScenes((current) => {
+      const next = { ...current };
+      for (const [characterId, scenes] of Object.entries(data.storyScenes)) {
+        if (scenes.length > 0) next[characterId] = scenes as SceneDefinition[];
+      }
+      return next;
+    });
+
+    if (
+      data.currentSessionId &&
+      sessions.some((session) => session.id === data.currentSessionId)
+    ) {
+      setCurrentSessionId(data.currentSessionId);
+    }
+
+    applyBackupPreferences(data.preferences);
+  }
+
+  function applyBackupPreferences(preferences: BackupPayload["data"]["preferences"]) {
+    if (!preferences) return;
+    if (
+      preferences.storyProvider === "novelai" ||
+      preferences.storyProvider === "local" ||
+      preferences.storyProvider === "device"
+    ) {
+      setStoryProvider(preferences.storyProvider);
+    }
+    if (preferences.model === "xialong-v1" || preferences.model === "glm-4-6") {
+      setSelectedModel(preferences.model);
+    }
+    if (typeof preferences.localModel === "string") setSelectedLocalModel(preferences.localModel);
+    if (typeof preferences.deviceModel === "string") setDeviceModel(preferences.deviceModel);
+    if (typeof preferences.creativity === "number") setCreativity(preferences.creativity);
+    if (typeof preferences.replyLength === "string") setReplyLength(preferences.replyLength as ReplyLength);
+    if (typeof preferences.initiative === "string") setInitiative(preferences.initiative as Initiative);
+    if (typeof preferences.viewpoint === "string") setViewpoint(preferences.viewpoint as Viewpoint);
+    if (typeof preferences.storyTense === "string") setStoryTense(preferences.storyTense as StoryTense);
+    if (preferences.textStyle) {
+      setTextStyle((current) => ({
+        ...current,
+        ...preferences.textStyle,
+        fontFamily: preferences.textStyle?.fontFamily === "opendyslexic" || preferences.textStyle?.fontFamily === "system"
+          ? preferences.textStyle.fontFamily
+          : current.fontFamily,
+        uiFontSize: typeof preferences.textStyle?.uiFontSize === "number"
+          ? Math.min(22, Math.max(12, preferences.textStyle.uiFontSize))
+          : current.uiFontSize,
+      }));
+    }
+    if (typeof preferences.shareCount === "number") setShareCount(preferences.shareCount);
+    if (typeof preferences.shareCaptions === "boolean") setShareCaptions(preferences.shareCaptions);
+    if (typeof preferences.shareHeader === "boolean") setShareHeader(preferences.shareHeader);
+    if (typeof preferences.entranceCodaLocked === "boolean") setEntranceCodaLocked(preferences.entranceCodaLocked);
+    if (typeof preferences.showCharacterRail === "boolean") setShowCharacterRail(preferences.showCharacterRail);
+    if (typeof preferences.showContextRail === "boolean") setShowContextRail(preferences.showContextRail);
+  }
+
+  function handleLocalBackupImport(file: File) {
+    setLocalBackupError("");
+    setLocalRestoreMsg("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = parsePortableBackup(String(reader.result ?? ""));
+      if (!result.ok) {
+        setLocalBackupError(result.error);
+        return;
+      }
+      applyBackupPayload(result.payload);
+      setLocalRestoreMsg("Backup restored. Characters, conversations, personas, and preferences are back.");
+    };
+    reader.onerror = () => setLocalBackupError("The backup file could not be read.");
+    reader.readAsText(file);
+  }
+
+  async function exportAllPrivateData() {
+    setLocalBackupMsg("");
+    setLocalBackupError("");
+    setServerBackupsError("");
+
+    const payload = buildPortableBackup();
+    try {
+      downloadBackupPayload(payload);
+      setLocalBackupMsg("Private-data backup downloaded.");
+    } catch {
+      setLocalBackupError("The local backup could not be downloaded.");
+    }
+
+    // The server backup runs independently: a failure here must never take the
+    // local file away from the user.
+    if (!archiveUser) return;
+    setServerBackupBusy(true);
+    try {
+      const created = await archive.backups.create({
+        payload,
+        device: payload.device,
+        source: payload.source,
+      });
+      setLocalBackupMsg(
+        `Local backup downloaded and server backup saved (${formatBackupSize(created.backup.size_bytes)}).`,
+      );
+      await refreshServerBackups();
+    } catch (err) {
+      setServerBackupsError(
+        `Server backup failed: ${err instanceof Error ? err.message : "unknown error"}. Your local backup was still downloaded.`,
+      );
+    } finally {
+      setServerBackupBusy(false);
+    }
+  }
+
+  async function createServerBackupNow() {
+    if (!archiveUser) return;
+    setServerBackupBusy(true);
+    setServerBackupsError("");
+    try {
+      const payload = buildPortableBackup();
+      const created = await archive.backups.create({
+        payload,
+        device: payload.device,
+        source: payload.source,
+      });
+      setServerBackupMsg(`Server backup saved (${formatBackupSize(created.backup.size_bytes)}).`);
+    } catch (err) {
+      setServerBackupsError(err instanceof Error ? err.message : "The server backup could not be created.");
+    } finally {
+      setServerBackupBusy(false);
+      void refreshServerBackups();
+    }
+  }
+
+  async function downloadServerBackup(id: string) {
+    if (!archiveUser) return;
+    setServerBackupBusy(true);
+    setServerBackupsError("");
+    try {
+      const { backup } = await archive.backups.get(id);
+      const payload = validatePayload(backup.payload);
+      if (!payload) throw new Error("This server backup is not a valid Howling Whispers backup.");
+      downloadBackupPayload(payload);
+      setLocalBackupMsg("Server backup downloaded as a local file.");
+    } catch (err) {
+      setServerBackupsError(err instanceof Error ? err.message : "The backup could not be downloaded.");
+    } finally {
+      setServerBackupBusy(false);
+    }
+  }
+
+  async function restoreServerBackup(id: string) {
+    if (!archiveUser) return;
+    setServerBackupBusy(true);
+    setServerBackupsError("");
+    try {
+      const { backup } = await archive.backups.get(id);
+      const payload = validatePayload(backup.payload);
+      if (!payload) throw new Error("This server backup is not a valid Howling Whispers backup.");
+      applyBackupPayload(payload);
+      setServerBackupMsg("Backup restored from your account.");
+    } catch (err) {
+      setServerBackupsError(err instanceof Error ? err.message : "The backup could not be restored.");
+    } finally {
+      setServerBackupBusy(false);
+    }
+  }
+
+  async function deleteServerBackup(id: string) {
+    if (!archiveUser) return;
+    setServerBackupBusy(true);
+    setServerBackupsError("");
+    try {
+      await archive.backups.remove(id);
+      setServerBackupMsg("Server backup deleted.");
+    } catch (err) {
+      setServerBackupsError(err instanceof Error ? err.message : "The backup could not be deleted.");
+    } finally {
+      setServerBackupBusy(false);
+      void refreshServerBackups();
+    }
+  }
+
 
   async function captureChatImage(): Promise<Blob | null> {
     if (shareMessages.length === 0) return null;
@@ -3288,7 +4864,9 @@ export default function DreamboundApp() {
     const maxBubbleWidth = contentWidth * 0.86;
     const gap = 20;
 
-    const serifFamily = '"Cormorant Garamond", Georgia, serif';
+    const serifFamily = textStyle.fontFamily === "opendyslexic"
+      ? '"OpenDyslexic", system-ui, sans-serif'
+      : textStyle.fontFamily === "system" ? "system-ui, sans-serif" : '"Cormorant Garamond", Georgia, serif';
     const sansFamily = '"Inter", system-ui, sans-serif';
     const serifFont = (size: number, italic = false, bold = false) =>
       `${italic ? "italic " : ""}${bold ? "600 " : "400 "}${size}px ${serifFamily}`;
@@ -3316,10 +4894,10 @@ export default function DreamboundApp() {
     await document.fonts.ready;
 
     let portraitImage: HTMLImageElement | null = null;
-    if (selected.image) {
+    if (portraitUrl(selected)) {
       portraitImage = new Image();
       portraitImage.crossOrigin = "anonymous";
-      portraitImage.src = selected.image;
+      portraitImage.src = portraitUrl(selected);
       try {
         await portraitImage.decode();
       } catch {
@@ -3543,7 +5121,7 @@ export default function DreamboundApp() {
       const caption =
         shareCaptions && sender !== "narrator"
           ? sender === "character"
-            ? selected.name
+            ? message.speaker ?? selected.name
             : playerName
           : "";
       const paragraphs = buildParagraphs(message.text, sender, selected.name, textStyle);
@@ -3800,6 +5378,14 @@ export default function DreamboundApp() {
             <button className="primary-button" type="button" onClick={handleEnter} autoFocus>
               Enter The Howling Whispers
             </button>
+            <a
+              href={COMMUNITY_DISCORD_URL}
+              className="login-community-button"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Join the Community
+            </a>
             <p className="login-hint">No account required. Your characters and stories stay in this browser.</p>
           </div>
           <div className="login-details" aria-label="The Howling Whispers features">
@@ -3862,19 +5448,107 @@ export default function DreamboundApp() {
               <span aria-hidden="true">{entranceCodaLocked ? "◆" : "◇"}</span>
               {entranceCodaLocked ? "Resume rotation" : "Keep Coda"}
             </button>
+            <RadioPlayer placement="above" />
           </div>
         </aside>
       </main>
     );
   }
 
+  function createContextEntry(kind: "memory" | "author-note") {
+    const now = Date.now();
+    if (kind === "memory") {
+      setContextLibrary((current) => ({
+        ...current,
+        memories: [...current.memories, {
+          id: `memory-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+          text: "",
+          enabled: true,
+          source: "manual",
+          createdAt: now,
+          updatedAt: now,
+        }],
+      }));
+    } else {
+      setContextLibrary((current) => ({
+        ...current,
+        authorNotes: [...current.authorNotes, {
+          id: `note-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+          text: "",
+          enabled: true,
+          scope: "character",
+          characterId: selected.id,
+          createdAt: now,
+          updatedAt: now,
+        }],
+      }));
+    }
+  }
+
+  function updateContextEntry(kind: "memory" | "author-note", id: string, patch: Partial<MemoryEntry | AuthorNoteEntry>) {
+    setContextLibrary((current) => ({
+      ...current,
+      [kind === "memory" ? "memories" : "authorNotes"]: current[kind === "memory" ? "memories" : "authorNotes"].map((entry) =>
+        entry.id === id ? { ...entry, ...patch, updatedAt: Date.now() } : entry,
+      ),
+    }));
+  }
+
+  function deleteContextEntry(kind: "memory" | "author-note", id: string) {
+    setContextLibrary((current) => ({
+      ...current,
+      [kind === "memory" ? "memories" : "authorNotes"]: current[kind === "memory" ? "memories" : "authorNotes"].filter((entry) => entry.id !== id),
+    }));
+  }
+
+  function addLorebook(record: import("../lib/context/types.ts").LorebookRecord) {
+    setContextLibrary((current) => ({
+      ...current,
+      lorebooks: [...current.lorebooks, record],
+    }));
+  }
+
+  function removeLorebook(id: string) {
+    setContextLibrary((current) => ({
+      ...current,
+      lorebooks: current.lorebooks.filter((book) => book.id !== id),
+    }));
+  }
+
+  function updateLorebook(id: string, patch: Partial<import("../lib/context/types.ts").LorebookRecord>) {
+    setContextLibrary((current) => ({
+      ...current,
+      lorebooks: current.lorebooks.map((book) => book.id === id ? { ...book, ...patch, updatedAt: Date.now() } : book),
+    }));
+  }
+
+  function importContextFile(file: File, kind: "memory" | "author-note" | "lorebook") {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result ?? "");
+      if (kind === "memory") {
+        const entries = importMemory(text);
+        setContextLibrary((current) => ({ ...current, memories: [...current.memories, ...entries] }));
+      } else if (kind === "author-note") {
+        const entries = importAuthorNote(text);
+        setContextLibrary((current) => ({ ...current, authorNotes: [...current.authorNotes, ...entries] }));
+      } else {
+        const record = decodeLorebookFile(text);
+        if (record) {
+          setContextLibrary((current) => ({ ...current, lorebooks: [...current.lorebooks, record] }));
+        }
+      }
+    };
+    reader.readAsText(file);
+  }
+
   return (
-    <main className="app-shell">
+    <main className={`app-shell reading-font-${textStyle.fontFamily}`} style={appFontVariables}>
       <header className="topbar">
         <button
           className="brand brand-button"
-          onClick={() => setView("home")}
-          aria-label="The Howling Whispers home"
+          onClick={() => setView("roleplay")}
+          aria-label="The Howling Whispers roleplay"
         >
           <span className="brand-mark" aria-hidden="true">
             ◒
@@ -3884,10 +5558,10 @@ export default function DreamboundApp() {
         <div className="top-divider" />
         <nav className="app-nav" aria-label="Primary navigation">
           <button
-            className={view === "home" ? "active" : ""}
-            onClick={() => setView("home")}
+            className={view === "roleplay" ? "active" : ""}
+            onClick={() => setView("roleplay")}
           >
-            Characters
+Roleplay
           </button>
             <button
               className={view === "personas" ? "active" : ""}
@@ -3896,16 +5570,10 @@ export default function DreamboundApp() {
               Personas
             </button>
           <button
-            className={`changelog-nav-button ${view === "changelog" ? "active" : ""}`}
-            onClick={() => setView("changelog")}
+            className={view === "addons" ? "active" : ""}
+            onClick={() => setView("addons")}
           >
-            What&apos;s new
-          </button>
-          <button
-            className={view === "settings" ? "active" : ""}
-            onClick={() => setView("settings")}
-          >
-            Settings
+            Add-ons
           </button>
           <button
             className={view === "archive" ? "active" : ""}
@@ -3915,24 +5583,29 @@ export default function DreamboundApp() {
           </button>
         </nav>
         <div className="current-scene">
-          <span aria-hidden="true">{view === "chat" ? "♜" : view === "scenes" ? "◈" : view === "changelog" ? "◇" : view === "settings" ? "⚙" : view === "archive" ? "☍" : view === "personas" ? "👤" : "✦"}</span>
+          <span aria-hidden="true">{view === "chat" ? "♜" : view === "scenes" ? "◈" : view === "changelog" ? "◇" : view === "settings" ? "⚙" : view === "archive" ? "☍" : view === "personas" ? "👤" : view === "addons" ? "◈" : view === "living-cast" ? "🎭" : "✦"}</span>
           <span>
             {view === "chat"
               ? activeScene.title
               : view === "scenes"
                 ? `${selected.name} · scenes`
-              : view === "changelog"
-                ? "What's new"
-                : view === "settings"
-                  ? "User settings"
-                  : view === "archive"
-                    ? "The Whispering Archive"
-                    : view === "personas"
-                      ? "Persona Library"
-                      : "Choose a character"}
+                : view === "changelog"
+                  ? "What's new"
+                  : view === "settings"
+                    ? "User settings"
+                    : view === "archive"
+                      ? "The Whispering Archive"
+                      : view === "personas"
+                        ? "Persona Library"
+                        : view === "addons"
+                          ? "Howling Add-ons"
+                          : view === "living-cast"
+                            ? "Living Cast"
+                             : "Begin a roleplay"}
           </span>
           <span aria-hidden="true">›</span>
         </div>
+        <RadioPlayer placement="below" />
         <div className="top-actions">
           <button
             className={`connection-pill ${providerState}`}
@@ -3950,14 +5623,36 @@ export default function DreamboundApp() {
                   ? storyProvider === "novelai" ? "Token entered" : "Ollama model selected"
                   : "Set up story engine"}
           </button>
-          <div className="account-chip" title="Local story space">
-            <span aria-hidden="true">
-              {currentUser?.displayName.trim().charAt(0).toUpperCase() || "U"}
-            </span>
-            <div>
-              <strong>{currentUser?.displayName.trim() || "Local player"}</strong>
-              <button className="link-button" onClick={handleSignOut}>Return to entrance</button>
-            </div>
+          <div className="account-menu">
+            <button
+              className="account-menu-trigger"
+              onClick={() => setAccountMenuOpen((current) => !current)}
+              aria-expanded={accountMenuOpen}
+              aria-haspopup="true"
+            >
+              <span className="account-chip" aria-hidden="true">
+                <span aria-hidden="true">
+                  {currentUser?.displayName.trim().charAt(0).toUpperCase() || "U"}
+                </span>
+                <div>
+                  <strong>{currentUser?.displayName.trim() || "Local player"}</strong>
+                </div>
+              </span>
+            </button>
+            {accountMenuOpen && (
+              <div className="account-menu-dropdown" role="menu">
+                <button onClick={() => { setAccountMenuOpen(false); setView("settings"); }} role="menuitem">
+                  Settings
+                </button>
+                <button onClick={() => { setAccountMenuOpen(false); setView("changelog"); }} role="menuitem">
+                  What&apos;s new
+                </button>
+                <div className="account-menu-divider" />
+                <button onClick={() => { setAccountMenuOpen(false); handleSignOut(); }} role="menuitem">
+                  Return to entrance
+                </button>
+              </div>
+            )}
           </div>
           <button className="outline-button create-button" onClick={() => setIsCreating(true)}>
             <span aria-hidden="true">＋</span>
@@ -3966,1579 +5661,410 @@ export default function DreamboundApp() {
         </div>
       </header>
 
-      {view === "home" && (
-        <section className="character-home">
-          <div className="home-hero">
-            <div>
-              <p className="eyebrow">
-                Welcome back{currentUser?.displayName.trim() ? `, ${currentUser.displayName}` : ""}
-              </p>
-              <h1>Who will answer tonight?</h1>
-              <p>
-                Every whisper becomes a world. Choose a soul, then enter a new
-                scene or return to one already unfolding.
-              </p>
-              <button className="home-changelog-link" onClick={() => setView("changelog")}>
-                See what&apos;s new <span aria-hidden="true">→</span>
-              </button>
-            </div>
-            <button
-              className={`home-connection ${providerState}`}
-              onClick={() => setView("settings")}
-            >
-              <span className="home-connection-icon" aria-hidden="true">
-                {connected ? "✓" : configured ? "!" : "＋"}
-              </span>
-              <span>
-                <small>Story engine</small>
-                <strong>
-                  {connected
-                    ? `${activeModel.label} verified`
-                    : providerState === "error"
-                      ? "Connection failed · check settings"
-                    : configured
-                      ? storyProvider === "novelai"
-                        ? "Token entered · test required"
-                        : `${activeModel.label} · test required`
-                      : "Choose an engine to begin"}
-                </strong>
-              </span>
-              <i aria-hidden="true">›</i>
-            </button>
-          </div>
+      <input
+        type="file"
+        id="context-memory-import"
+        accept=".json,text/plain"
+        style={{ display: "none" }}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void importContextFile(file, "memory");
+          event.target.value = "";
+        }}
+      />
+      <input
+        type="file"
+        id="context-note-import"
+        accept=".json,text/plain"
+        style={{ display: "none" }}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void importContextFile(file, "author-note");
+          event.target.value = "";
+        }}
+      />
+      <input
+        type="file"
+        id="context-lorebook-import"
+        accept=".lorebook,.json"
+        style={{ display: "none" }}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void importContextFile(file, "lorebook");
+          event.target.value = "";
+        }}
+      />
 
-          <div className="home-section-heading">
-            <div>
-              <p className="eyebrow">Your characters</p>
-              <h2>Begin a new roleplay</h2>
-            </div>
-            <span className="home-section-count">{characters.length} souls waiting</span>
-          </div>
-
-          <div className="character-backup-bar">
-            <label className="outline-button import-browse">
-              Import characters
-              <input
-                type="file"
-                accept=".json,application/json"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) handleCharacterBackupImport(file);
-                  event.target.value = "";
-                }}
-              />
-            </label>
-            <button
-              className="outline-button"
-              onClick={exportCharacterLibrary}
-            >
-              Export library
-            </button>
-            {characterBackupMsg && <span className="backup-feedback ok">{characterBackupMsg}</span>}
-            {characterBackupError && <span className="backup-feedback err">{characterBackupError}</span>}
-          </div>
-
-          <div className="character-gallery">
-            {characters.map((character) => {
-              const characterTheme = scenesFor(character)[0].theme;
-              return (
-                <article
-                  className="home-character"
-                  key={character.id}
-                  onClick={() => openSceneLibrary(character.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      openSceneLibrary(character.id);
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  style={
-                    {
-                      "--card-image": character.image
-                        ? `url("${character.image}")`
-                        : "linear-gradient(145deg, #2b1c1e, #0c0c0e)",
-                      "--character-accent": characterTheme.accent,
-                      "--card-position": character.portraitFocalPoint ?? "center",
-                    } as React.CSSProperties
-                  }
-                >
-                  <div className="home-character-wash" />
-                  <div className="home-character-copy">
-                    <span className="home-character-status">
-                      <i />
-                      {character.status}
-                    </span>
-                    <h3>
-                      {character.creditUrl ? (
-                        <a
-                          href={character.creditUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          {character.name}
-                        </a>
-                      ) : (
-                        character.name
-                      )}
-                    </h3>
-                    <p>{character.role}</p>
-                    <small>{character.scene}</small>
-                    {character.credit && (
-                      <small className="home-character-credit">{character.credit}</small>
-                    )}
-                    <button onClick={(event) => {
-                      event.stopPropagation();
-                      openSceneLibrary(character.id);
-                    }}>
-                      Open their stories <span aria-hidden="true">→</span>
-                    </button>
-                    {isUserOwnedCharacter(character) && (
-                      <span className="home-character-actions">
-                        <button
-                          className="home-character-edit"
-                          aria-label={`Edit ${character.name}`}
-                          title="Edit character"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setEditingCharacter(character);
-                          }}
-                        >
-                          ✎ Edit
-                        </button>
-                        <button
-                          className="home-character-delete"
-                          aria-label={`Delete ${character.name}`}
-                          title="Delete character"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setConfirmDeleteCharacter(character);
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </span>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
-            <article
-              className="home-character home-character-teaser"
-              aria-label="Valerie Whiteclaw, coming soon"
-              style={
-                {
-                  "--card-image": `url("/assets/Heather/valerie-whiteclaw-teaser.png")`,
-                  "--character-accent": "#c8a94f",
-                  "--card-position": "center",
-                } as React.CSSProperties
-              }
-            >
-              <div className="home-character-wash" />
-              <span className="home-character-teaser-badge">Coming soon</span>
-              <div className="home-character-copy">
-                <span className="home-character-status">
-                  <i />
-                  A new scent on the wind
-                </span>
-                <h3>Valerie Whiteclaw</h3>
-                <p>Heather&apos;s daughter · The pack&apos;s future</p>
-                <small className="home-character-teaser-tagline">
-                  Coming to a forest near you.
-                </small>
-                <small className="home-character-credit">Character by Gigasad</small>
-              </div>
-            </article>
-            <button className="new-character-card" onClick={() => setIsCreating(true)}>
-              <span aria-hidden="true">＋</span>
-              <strong>Awaken someone new</strong>
-              <small>Create a character or import a character-card JSON.</small>
-            </button>
-          </div>
-        </section>
+      {(view === "roleplay" || view === "scenes" || isCreating || editingCharacter || downloadingCharacter || confirmDeleteCharacter || isCreatingLocation || editingLocation || confirmDeleteLocation || isCreatingScenario || editingScenario || confirmDeleteScenario) && (
+        <RoleplayArea
+          view={view}
+          currentUser={currentUser}
+          setView={setView}
+          connected={connected}
+          providerState={providerState}
+          configured={configured}
+          storyProvider={storyProvider}
+          activeModel={activeModel}
+          characters={characters}
+          scenesFor={scenesFor}
+          portraitUrl={portraitUrl}
+          isUserOwnedCharacter={isUserOwnedCharacter}
+          openSceneLibrary={openSceneLibrary}
+          setCharacterDownloadError={setCharacterDownloadError}
+          setDownloadingCharacter={setDownloadingCharacter}
+          setEditingCharacter={setEditingCharacter}
+          setConfirmDeleteCharacter={setConfirmDeleteCharacter}
+          setIsCreating={setIsCreating}
+          isCreating={isCreating}
+          setIsCreatingLocation={setIsCreatingLocation}
+          isCreatingLocation={isCreatingLocation}
+          characterBackupMsg={characterBackupMsg}
+          characterBackupError={characterBackupError}
+          importCharacterFile={importCharacterFile}
+          exportCharacterLibrary={exportCharacterLibrary}
+          importError={importError}
+          createCharacter={createCharacter}
+          editingCharacter={editingCharacter}
+          updateCharacter={updateCharacter}
+          isStoredPortraitReference={isStoredPortraitReference}
+          downloadingCharacter={downloadingCharacter}
+          exportV2Png={exportV2Png}
+          exportV2Json={exportV2Json}
+          exportNativeCharacter={exportNativeCharacter}
+          characterDownloadError={characterDownloadError}
+          confirmDeleteCharacter={confirmDeleteCharacter}
+          deleteCharacter={deleteCharacter}
+          locations={locations}
+          isUserOwnedLocation={isUserOwnedLocation}
+          createLocation={createLocation}
+          updateLocation={updateLocation}
+          deleteLocation={deleteLocation}
+          editingLocation={editingLocation}
+          setEditingLocation={setEditingLocation}
+          confirmDeleteLocation={confirmDeleteLocation}
+          setConfirmDeleteLocation={setConfirmDeleteLocation}
+          locationError={locationError}
+          locationImportMsg={locationImportMsg}
+          importLocationFile={importLocationFile}
+          exportLocation={exportLocation}
+          scenarios={scenarios}
+          isUserOwnedScenario={isUserOwnedScenario}
+          createScenario={createScenario}
+          updateScenario={updateScenario}
+          deleteScenario={deleteScenario}
+          isCreatingScenario={isCreatingScenario}
+          setIsCreatingScenario={setIsCreatingScenario}
+          editingScenario={editingScenario}
+          setEditingScenario={setEditingScenario}
+          confirmDeleteScenario={confirmDeleteScenario}
+          setConfirmDeleteScenario={setConfirmDeleteScenario}
+          scenarioError={scenarioError}
+          scenarioImportMsg={scenarioImportMsg}
+          importScenarioFile={importScenarioFile}
+          exportScenario={exportScenario}
+          selected={selected}
+          themeVariables={themeVariables}
+          codaWorldGuide={codaWorldGuide}
+          selectedCodaRole={selectedCodaRole}
+          setSelectedCodaRole={setSelectedCodaRole}
+          customCodaRole={customCodaRole}
+          setCustomCodaRole={setCustomCodaRole}
+          storyEditor={storyEditor}
+          saveStory={saveStory}
+          commonSceneEditor={commonSceneEditor}
+          setCommonSceneEditor={setCommonSceneEditor}
+          openStoryCreator={openStoryCreator}
+          requestPersonaStart={requestPersonaStart}
+          selectedScenes={selectedScenes}
+          commonScenes={commonScenes}
+          addonCommonScenes={addonCommonScenes}
+          starterCommonScenes={starterCommonScenes}
+          startCommonScene={startCommonScene}
+          deleteCustomScene={deleteCustomScene}
+          selectedSessions={selectedSessions}
+          messages={messages}
+          continueRoleplay={continueRoleplay}
+          deleteSession={deleteSession}
+          sandboxSceneFor={sandboxSceneFor}
+          relationshipScore={relationshipScore}
+          relationshipLabel={deriveRelationshipLabel(relationshipScore)}
+          relationshipMeterPercent={relationshipMeterPercent(relationshipScore)}
+          isLocationSession={isLocationSession}
+          activePersonaName={activePersona?.name ?? null}
+          memoryCardStatus={(() => {
+            const card = getMemoryCard(memoryCards, activeRelationshipPersonaId);
+            if (!card) return "No card";
+            const relCount = Object.keys(card.relationships).length;
+            const memCount = card.memoryRefs.length;
+            return `${memCount} memories · ${relCount} relationships`;
+          })()}
+          onResumeLatest={() => {
+            const latest = selectedSessions[0];
+            if (latest) continueRoleplay(latest);
+          }}
+          hasLatestSession={selectedSessions.length > 0}
+          Portrait={Portrait}
+        />
       )}
 
-      {view === "scenes" && (
-        <section className="scene-library" style={themeVariables}>
-          <div
-            className="scene-library-backdrop"
-            style={{
-              "--scene-library-image": selected.image
-                ? `url("${selected.image}")`
-                : "linear-gradient(145deg, #211416, #09090b)",
-              "--scene-library-position": selected.portraitFocalPoint ?? "center",
-            } as React.CSSProperties}
-          />
-          <div className="scene-library-content">
-            <header className="scene-library-header">
-              <button className="outline-button" onClick={() => setView("home")}>
-                ← All characters
-              </button>
-              {isUserOwnedCharacter(selected) && (
-                <span className="scene-library-actions">
-                  <button
-                    className="outline-button"
-                    aria-label={`Edit ${selected.name}`}
-                    onClick={() => setEditingCharacter(selected)}
-                  >
-                    ✎ Edit</button>
-                  <button
-                    className="outline-button character-delete"
-                    aria-label={`Delete ${selected.name}`}
-                    onClick={() => setConfirmDeleteCharacter(selected)}
-                  >
-                    Delete
-                  </button>
-                </span>
-              )}
-              <div>
-                <p className="eyebrow">Stories with {selected.name}</p>
-                <h1>Choose where the story begins.</h1>
-                <p>{selected.role} · {selected.status}</p>
-              </div>
-              <Portrait character={selected} />
-            </header>
-
-            {selected.id === "coda" && (
-              <section className="coda-world-draft" aria-labelledby="coda-world-title">
-                <div className="coda-world-intro">
-                  <div>
-                    <p className="eyebrow">World draft · awaiting your approval</p>
-                    <h2 id="coda-world-title">{codaWorldGuide.title}</h2>
-                  </div>
-                  <p>{codaWorldGuide.summary}</p>
-                </div>
-                <div className="coda-world-foundations">
-                  {codaWorldGuide.foundations.map((foundation) => (
-                    <article key={foundation.title}>
-                      <span>{foundation.mark}</span>
-                      <h3>{foundation.title}</h3>
-                      <p>{foundation.text}</p>
-                    </article>
-                  ))}
-                </div>
-                <div className="coda-world-index">
-                  <div>
-                    <span>Places currently in the draft</span>
-                    <div className="coda-world-tags">
-                      {codaWorldGuide.places.map((place) => <i key={place}>{place}</i>)}
-                    </div>
-                  </div>
-                  <div>
-                    <span>Optional player roles</span>
-                    <div className="coda-world-tags role-tags" role="group" aria-label="Choose your role">
-                      {codaWorldGuide.roles.map((role) => (
-                        <button
-                          type="button"
-                          className={selectedCodaRole === role.name ? "active" : ""}
-                          key={role.name}
-                          onClick={() => setSelectedCodaRole(role.name)}
-                          aria-pressed={selectedCodaRole === role.name}
-                        >
-                          {role.name}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="coda-role-description">
-                      {codaWorldGuide.roles.find((role) => role.name === selectedCodaRole)?.context}
-                    </p>
-                    {selectedCodaRole === "Custom Role" && (
-                      <label className="coda-custom-role">
-                        <span>Describe only your role, knowledge, and connection to Coda</span>
-                        <textarea
-                          value={customCodaRole}
-                          onChange={(event) => setCustomCodaRole(event.target.value)}
-                          maxLength={800}
-                          rows={3}
-                          placeholder="Example: I am a bookbinder from the court who met Coda for the first time this morning."
-                        />
-                      </label>
-                    )}
-                  </div>
-                </div>
-                <p className="coda-world-note">
-                  The origin of Coda&apos;s collar, the purpose of its red pendant, and the names
-                  of the world and city remain intentionally unresolved.
-                </p>
-              </section>
-            )}
-
-            <section className="scene-library-section">
-              <div className="scene-library-heading">
-                <div>
-                  <p className="eyebrow">Create new</p>
-                  <h2>Opening scenes</h2>
-                  {selected.id === "coda" && <p className="selected-role-note">Your role: {selectedCodaRole}</p>}
-                </div>
-                <div className="scene-heading-actions">
-                  <span>Each choice creates a separate local session</span>
-                  <button className="outline-button" onClick={openStoryCreator}>
-                    + Create a story
-                  </button>
-                </div>
-              </div>
-              {storyEditor && (
-                <form
-                  className="story-editor"
-                  key={`${storyEditor.mode}:${storyEditor.scene.id || "new"}`}
-                  onSubmit={saveStory}
-                >
-                  <div className="story-editor-heading">
-                    <div>
-                      <p className="eyebrow">
-                        {storyEditor.mode === "create" ? "New opening" : "Edit opening"}
-                      </p>
-                      <h3>
-                        {storyEditor.mode === "create"
-                          ? `Create a story with ${selected.name}`
-                          : `Edit ${storyEditor.scene.title}`}
-                      </h3>
-                    </div>
-                    <button type="button" className="editor-close" onClick={() => setStoryEditor(null)}>
-                      Close
-                    </button>
-                  </div>
-                  <div className="story-editor-grid">
-                    <label>
-                      <span>Story title</span>
-                      <input name="title" defaultValue={storyEditor.scene.title} required />
-                    </label>
-                    <label>
-                      <span>Short setup</span>
-                      <input name="subtitle" defaultValue={storyEditor.scene.subtitle} required />
-                    </label>
-                    <label>
-                      <span>Character status</span>
-                      <input name="status" defaultValue={storyEditor.scene.status} />
-                    </label>
-                    <label>
-                      <span>Atmosphere</span>
-                      <input name="weather" defaultValue={storyEditor.scene.weather} />
-                    </label>
-                    <label className="story-opening-field">
-                      <span>Opening message</span>
-                      <textarea
-                        name="opening"
-                        defaultValue={storyEditor.scene.opening}
-                        rows={7}
-                        required
-                      />
-                      <small>Use *asterisks* for actions, [brackets] for inner voice, and **double asterisks** for shouts.</small>
-                    </label>
-                  </div>
-                  <div className="story-editor-footer">
-                    <button type="button" className="outline-button" onClick={() => setStoryEditor(null)}>
-                      Cancel
-                    </button>
-                    <button type="submit" className="story-save-button">
-                      {storyEditor.mode === "create" ? "Create story" : "Save changes"}
-                    </button>
-                  </div>
-                </form>
-              )}
-              <div className="scene-preset-grid">
-                <article
-                  className="scene-preset-card sandbox-preset-card"
-                  style={{
-                    "--theme-accent": selected.accent,
-                    "--theme-glow": `${selected.accent}45`,
-                  } as React.CSSProperties}
-                >
-                  <div className="sandbox-grid" aria-hidden="true" />
-                  <span className="scene-motif">UNWRITTEN</span>
-                  <div className="scene-preset-copy">
-                    <span>Context-free roleplay</span>
-                    <h3>Open Sandbox</h3>
-                    <p>Start with nothing but {selected.name}&apos;s core identity.</p>
-                    <small>No preset setting, memories, or opening move. Your first message defines what happens.</small>
-                    <div className="scene-preset-actions">
-                      <button onClick={() => requestPersonaStart({ kind: "sandbox", characterId: selected.id })}>
-                        Enter sandbox <span aria-hidden="true">→</span>
-                      </button>
-                    </div>
-                  </div>
-                </article>
-                <article
-                  className="scene-preset-card autopilot-preset-card"
-                  style={{
-                    "--theme-accent": selected.accent,
-                    "--theme-glow": `${selected.accent}45`,
-                  } as React.CSSProperties}
-                >
-                  <div className="autopilot-grid" aria-hidden="true" />
-                  <span className="scene-motif">LIVE</span>
-                  <div className="scene-preset-copy">
-                    <span>Self-driven roleplay</span>
-                    <h3>Whisper Mode</h3>
-                    <p>Nothing but {selected.name}&apos;s core identity — and they act on their own.</p>
-                    <small>No preset opening. {selected.name} writes the first beat and keeps living while you step in whenever you like.</small>
-                    <div className="scene-preset-actions">
-                      <button onClick={() => requestPersonaStart({ kind: "autopilot", characterId: selected.id })}>
-                        Enter Whisper Mode <span aria-hidden="true">→</span>
-                      </button>
-                    </div>
-                  </div>
-                </article>
-                {selectedScenes.map((scene) => (
-                  <article
-                    className="scene-preset-card"
-                    key={scene.id}
-                    style={{
-                      "--preset-image": scene.background
-                        ? `url("${scene.background}")`
-                        : "linear-gradient(145deg, #211416, #09090b)",
-                      "--preset-position": scene.backgroundFocalPoint,
-                      "--theme-accent": scene.theme.accent,
-                      "--theme-glow": scene.theme.glow,
-                      "--scene-wash": scene.theme.wash,
-                    } as React.CSSProperties}
-                  >
-                    <div className="scene-preset-wash" />
-                    <span className="scene-motif">{scene.theme.motif}</span>
-                    <div className="scene-preset-copy">
-                      <span>{scene.status}</span>
-                      <h3>{scene.title}</h3>
-                      <p>{scene.subtitle}</p>
-                      <small>{scene.weather}</small>
-                      <div className="scene-preset-actions">
-                        <button onClick={() => requestPersonaStart({ kind: "scene", characterId: selected.id, scene })}>
-                          Begin this scene <span aria-hidden="true">→</span>
-                        </button>
-                        {scene.id.startsWith("custom-") && (
-                          <button
-                            className="scene-edit-button"
-                            onClick={() => setStoryEditor({ mode: "edit", scene })}
-                          >
-                            Edit story
-                          </button>
-                        )}
-                        {scene.id.startsWith("custom-") && (
-                          <button
-                            className="scene-delete-button"
-                            onClick={() => deleteCustomScene(scene)}
-                          >
-                            Delete story
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="scene-library-section existing-scenes">
-              <div className="scene-library-heading">
-                <div>
-                  <p className="eyebrow">Continue</p>
-                  <h2>Existing sessions</h2>
-                </div>
-                <span>{selectedSessions.length} saved locally</span>
-              </div>
-              {selectedSessions.length > 0 ? (
-                <div className="session-list">
-                  {selectedSessions.map((session) => {
-                    const scene = session.sandbox
-                      ? sandboxSceneFor(selected)
-                      : selectedScenes.find((candidate) => candidate.id === session.sceneId)
-                        ?? selectedScenes[0];
-                    const sessionMessages = messages[session.messageKey] ?? [];
-                    const preview = sessionMessages.at(-1)?.text
-                      .replace(/\*|\[|\]/g, "")
-                      .replace(/\s+/g, " ")
-                      .trim() || scene.subtitle;
-                    return (
-                      <div
-                        className="session-card"
-                        key={session.id}
-                        style={{
-                          "--session-accent": scene.theme.accent,
-                          "--session-glow": scene.theme.glow,
-                        } as React.CSSProperties}
-                      >
-                        <button className="session-resume" onClick={() => continueRoleplay(session)}>
-                          <span className="session-mark">{scene.theme.motif.slice(0, 2)}</span>
-                          <span className="session-copy">
-                            <small>{scene.title}</small>
-                            <strong>{session.title}</strong>
-                            <span>{preview.slice(0, 150)}</span>
-                          </span>
-                          <span className="session-meta">
-                            <small>{new Date(session.updatedAt).toLocaleDateString()}</small>
-                            <i aria-hidden="true">→</i>
-                          </span>
-                        </button>
-                        <button
-                          className="session-delete"
-                          onClick={() => deleteSession(session)}
-                          aria-label={`Delete ${session.title}`}
-                          title="Delete session"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="empty-sessions">
-                  <span aria-hidden="true">◇</span>
-                  <p>No saved sessions with {selected.name} yet.</p>
-                </div>
-              )}
-            </section>
-          </div>
-        </section>
-      )}
-
-      {view === "changelog" && (
-        <section className="changelog-page">
-          <header className="changelog-heading">
-            <div>
-              <p className="eyebrow">Version {packageInfo.version}</p>
-              <h1>What&apos;s new</h1>
-              <p>Only the changes that affect how you use The Howling Whispers.</p>
-            </div>
-            <button className="outline-button" onClick={() => setView("home")}>← Back to characters</button>
-          </header>
-
-          <div className="changelog-list">
-            <article className="changelog-entry featured latest">
-              <div className="changelog-mark">✦</div>
-              <div>
-                <span>Version 0.5.0 · A full life for your characters</span>
-                <h2>From your page to the Whispering Archive</h2>
-                <p>
-                  Your characters are no longer fixed in place. Shape them, play them with a
-                  consistent identity, carry them between devices, and publish them into a
-                  public archive whenever you choose — while what you privately play stays
-                  yours and yours alone.
-                </p>
-                <h3>The Whispering Archive</h3>
-                <ul>
-                  <li>Publish an explicit snapshot of a character; it stays link-only until you make it public.</li>
-                  <li>Browse and search shared characters by name, tag, age, and content rating.</li>
-                  <li>Open a readable share page for anything you have published.</li>
-                  <li>Import any archived character as an independent copy you are free to edit.</li>
-                  <li>Sign in to publish and report; keepers review everything that reaches Browse.</li>
-                </ul>
-                <h3>Player personas</h3>
-                <ul>
-                  <li>Create, edit, duplicate, or delete personas from a single library in Settings.</li>
-                  <li>Choose which persona you play before every scene, sandbox, or Whisper Mode session.</li>
-                  <li>Each conversation records the persona you were, so old stories stay consistent.</li>
-                  <li>Continue without a persona any time you prefer to be simply yourself.</li>
-                </ul>
-                <h3>Characters you own</h3>
-                <ul>
-                  <li>Edit any detail of a character you made or imported, from name to memories to portrait.</li>
-                  <li>Delete a character and everything tied to it in one clean sweep.</li>
-                  <li>The curated cast &mdash; Coda, Heather, Peony, and Senako &mdash; stays locked from editing and deletion.</li>
-                </ul>
-                <h3>Backups</h3>
-                <ul>
-                  <li>Export your whole character library to a file and import it back anywhere.</li>
-                  <li>Back up and restore your persona library the same way in Settings.</li>
-                  <li>Re-imports stay conflict-free, so nothing is ever accidentally replaced or lost.</li>
-                </ul>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">◐</div>
-              <div>
-                <span>Version 0.4.2.9 · Anchor the player identity</span>
-                <h2>Impersonate knows who is speaking</h2>
-                <p>
-                  Even without a display name or persona, the model now receives an explicit
-                  fallback player identity. Character-style drafts are rejected wherever they
-                  appear, not only when they start the message.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">◐</div>
-              <div>
-                <span>Version 0.4.2.7 · Make Impersonate directional</span>
-                <h2>Your prompt becomes a road sign</h2>
-                <p>
-                  Impersonate now keeps your direction private and turns its intent into a new
-                  player-side action or line of dialogue. Echoed directions and character-side
-                  drafts are rejected and retried instead of being posted in your bubble.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">◐</div>
-              <div>
-                <span>Version 0.4.2.6 · Send direct player turns correctly</span>
-                <h2>Your first-person line stays yours</h2>
-                <p>
-                  A complete line such as “I want…” is now sent directly as the player turn, so
-                  the character gets to respond in the character bubble instead of its reaction
-                  appearing as if the player said it.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">◐</div>
-              <div>
-                <span>Version 0.4.2.5 · Keep impersonation in first person</span>
-                <h2>Impersonate stays on your side</h2>
-                <p>
-                  Impersonation drafts now use first-person player voice and are explicitly blocked
-                  from writing the character&apos;s voice, eyes, body, feelings, or reaction inside the
-                  player bubble.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">»</div>
-              <div>
-                <span>Version 0.4.2.4 · Keep Skip turn focused</span>
-                <h2>Skip turn stays on one side</h2>
-                <p>
-                  The normal roleplay skip action now produces one concise character-only beat,
-                  capped at 150 words, instead of using the full novel-length reply setting or
-                  letting the model write both sides of the conversation.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">🛑</div>
-              <div>
-                <span>Version 0.4.2.3 · Keep turns contained</span>
-                <h2>Next is one beat, not a marathon</h2>
-                <p>
-                  Manually advancing Whisper Mode now generates one character beat and pauses instead
-                  of leaving the automatic loop running. NovelAI and Ollama errors can be dismissed,
-                  and impersonation directions are treated as private control input rather than
-                  story text.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">🔍</div>
-              <div>
-                <span>Version 0.4.2.2 · Sharper shares</span>
-                <h2>Zoom in and actually read it</h2>
-                <p>
-                  Shared scenes now render at 50% higher resolution, so when you paste one into
-                  Discord and click to zoom, every line is crisp enough to read without
-                  downloading. Long conversations keep the highest safe resolution the browser
-                  can handle.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">🖼️</div>
-              <div>
-                <span>Version 0.4.2.1 · Share, redrawn</span>
-                <h2>The image actually renders now</h2>
-                <p>
-                  The first cut of the share feature relied on a page-to-picture technique that
-                  silently lost the theme colors and could capture a blank frame. The image is now
-                  painted directly with the same fonts, theme colors, bubbles, and portraits you
-                  see in the chat — so what lands in your clipboard is always the conversation,
-                  every time, on any browser.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">🖼️</div>
-              <div>
-                <span>Version 0.4.2 · Share the story</span>
-                <h2>The story, ready to share</h2>
-                <p>
-                  Every conversation can now become an image. The chat&apos;s ⇣ Share button
-                  opens a small config popup — how many messages to include, name captions on
-                  bubbles, and a scene header — then renders a crisp PNG you can paste straight
-                  into Discord. The entrance also picks a fresh featured character on every
-                  visit, Valerie Whiteclaw rotates in as a coming-soon teaser, and every curated
-                  character now credits its creator.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">🌕</div>
-              <div>
-                <span>Version 0.4.1 · Heather rebuilt</span>
-                <h2>The ranger is back, exactly as written</h2>
-                <p>
-                  Heather now runs on her official character card: the 42-year-old werewolf
-                  supremacist with a vanished mate and a grown daughter, plus all three of her
-                  real greetings — each given its own hand-crafted scene and custom art. The
-                  entrance also rotates a curation card inviting creators to the Howling
-                  Whispers Discord, and curated scenes are now locked from casual editing.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">✦</div>
-              <div>
-                <span>Version 0.4.0 · Whisper Mode</span>
-                <h2>Read a living story like a book</h2>
-                <p>
-                  Whisper Mode now writes short self-driven beats in a continuous reading view.
-                  Choose first person, third person, or an omniscient narrator when starting,
-                  adjust the background blur, and pause or stop without losing the story.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">⌁</div>
-              <div>
-                <span>Version 0.3.0 · Story intelligence</span>
-                <h2>Every world sends only the details that matter</h2>
-                <p>
-                  Every curated character now has selective world lore, while custom and imported
-                  characters receive a safe scene-based fallback. After a reply, open Peek Context
-                  to see active canon and lore, retained history, revisions, and estimated context.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">◈</div>
-              <div>
-                <span>Version 0.3.0 · Coda&apos;s world</span>
-                <h2>Eight mysteries now wait beyond the study</h2>
-                <p>
-                  Coda now has a visible world guide, eight individually illustrated opening
-                  scenes, and selectable player roles. Choose a preset or write a custom role
-                  before beginning; its external context stays with that new story without
-                  deciding your character&apos;s personality or choices.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">✦</div>
-              <div>
-                <span>Version 0.3.0 · Character depth</span>
-                <h2>Peony remembers who she is</h2>
-                <p>
-                  Peony now uses her complete, carefully structured character canon in every
-                  story, including existing sessions. Her trust, voice, boundaries, interests,
-                  and relationship progress stay consistent as conversations grow, while private
-                  adult material remains separate from ordinary scenes.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">◇</div>
-              <div>
-                <span>Version 0.3.0 · Sandbox</span>
-                <h2>Start with a blank world</h2>
-                <p>
-                  Every character now has an Open Sandbox. It keeps their core identity,
-                  but starts without a preset scene, memories, setting, or opening move.
-                  Your first message decides where the roleplay begins.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry featured">
-              <div className="changelog-mark">◉</div>
-              <div>
-                <span>Version 0.3.0 · Local generation</span>
-                <h2>Roleplay without a cloud model</h2>
-                <p>
-                  Settings now lets you switch between NovelAI and Mistral Nemo 12B
-                  running locally through Ollama. Local prompts and replies stay on the
-                  computer hosting The Howling Whispers. Structured formatting and selected
-                  reply-length minimums are enforced before local replies reach the chat.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry">
-              <div className="changelog-mark">↻</div>
-              <div>
-                <span>Stories</span>
-                <h2>More control over each roleplay</h2>
-                <p>
-                  Sessions are independent and can be resumed or deleted. Messages can be
-                  edited, rerolled, removed individually, or removed with everything after them.
-                  Custom opening scenes can also be deleted with their linked sessions.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry">
-              <div className="changelog-mark">Aa</div>
-              <div>
-                <span>Reading controls</span>
-                <h2>Make the conversation yours</h2>
-                <p>
-                  Chat font size now sits beside the text colors in Settings. The
-                  character and context panels can also be hidden independently while chatting.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry">
-              <div className="changelog-mark">◒</div>
-              <div>
-                <span>Entrance</span>
-                <h2>Featured voices at the threshold</h2>
-                <p>
-                  The entrance now rotates through curated character portraits. Choose
-                  Keep Coda for a static entrance that always returns to her.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry">
-              <div className="changelog-mark">▱</div>
-              <div>
-                <span>Storage</span>
-                <h2>You choose how long the token stays</h2>
-                <p>
-                  NovelAI tokens can last for one tab or this browser profile. Characters,
-                  sessions, and messages remain local to this browser; clearing its site data
-                  also clears those stories.
-                </p>
-              </div>
-            </article>
-
-            <article className="changelog-entry caution">
-              <div className="changelog-mark">!</div>
-              <div>
-                <span>Need to know · Remote access</span>
-                <h2>Hosted access is encrypted</h2>
-                <p>
-                  This hosted site uses HTTPS, so NovelAI tokens and story traffic are encrypted
-                  in transit. If you intentionally run the app in direct HTTP remote test mode,
-                  that separate setup is not encrypted and should only be used temporarily.
-                </p>
-              </div>
-            </article>
-          </div>
-        </section>
-      )}
+      {view === "changelog" && <ChangelogView packageInfo={packageInfo} setView={setView} />}
 
       {view === "settings" && (
-        <section className="settings-page">
-          <div className="settings-heading">
-            <div>
-              <p className="eyebrow">Your account</p>
-              <h1>Settings</h1>
-              <p>
-                Manage your story engine, verify the connection, and see exactly
-                what The Howling Whispers remembers in this browser.
-              </p>
-            </div>
-            <button className="outline-button" onClick={() => setView("home")}>
-              ← Back to characters
-            </button>
-          </div>
-
-          <div className="settings-grid">
-            <section className="settings-panel engine-settings">
-              <div className="settings-panel-title">
-                <div>
-                  <p className="eyebrow">Story engine</p>
-                  <h2>{providerLabel} connection</h2>
-                </div>
-                <span className={`settings-status ${providerState}`}>
-                  <i />
-                  {providerState === "connected"
-                    ? verifiedAt
-                      ? `Verified ${verifiedAt}`
-                      : "Verified working"
-                    : providerState === "testing"
-                      ? "Testing now"
-                      : providerState === "error"
-                        ? "Test failed"
-                        : configured
-                          ? storyProvider === "novelai" ? "Token entered" : "Ready to test"
-                          : "Not configured"}
-                </span>
-              </div>
-
-              <div className={`connection-feedback ${providerState}`} role="status">
-                <span aria-hidden="true">
-                  {providerState === "connected"
-                    ? "✓"
-                    : providerState === "testing"
-                      ? "…"
-                      : providerState === "error"
-                        ? "!"
-                        : configured
-                          ? "◆"
-                          : "○"}
-                </span>
-                <div>
-                  <strong>
-                    {providerState === "connected"
-                      ? storyProvider === "novelai" ? "Your NovelAI token works" : "Your Ollama model is available"
-                      : providerState === "testing"
-                        ? storyProvider === "novelai" ? "Contacting NovelAI" : "Checking Ollama"
-                        : providerState === "error"
-                          ? "Connection could not be verified"
-                          : configured
-                            ? storyProvider === "novelai" ? "Token entered, not tested" : "Ollama model selected, not tested"
-                            : storyProvider === "novelai" ? "No NovelAI token entered" : "No Ollama model entered"}
-                  </strong>
-                  <p>
-                    {connectionError ||
-                      connectionFeedback ||
-                      (storyProvider === "local"
-                        ? `Run the test to confirm Ollama and ${activeModel.label} are available on this server.`
-                        : storyProvider === "device"
-                          ? "Run Ollama on this computer, allow this website origin, then test the selected model."
-                          : "Enter a token below, then run the test. A successful test means the selected model returned a real response.")}
-                  </p>
-                </div>
-              </div>
-
-              <form
-                className="settings-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  saveSettings();
-                }}
-              >
-                <fieldset className="reply-style-fieldset provider-choice-fieldset">
-                  <legend>Generation provider</legend>
-                  <div className="reply-style-options provider-choice-options">
-                    <button
-                      className={storyProvider === "novelai" ? "active" : ""}
-                      type="button"
-                      onClick={() => {
-                        setStoryProvider("novelai");
-                        setProviderState(hasNovelAiToken ? "ready" : "disconnected");
-                        setVerifiedAt("");
-                        setConnectionError("");
-                        setConnectionFeedback("");
-                      }}
-                      aria-pressed={storyProvider === "novelai"}
-                    >
-                      <strong>NovelAI</strong>
-                      <small>Cloud generation with Xialong or GLM 4.6</small>
-                    </button>
-                    <button
-                      className={storyProvider === "local" ? "active" : ""}
-                      type="button"
-                      onClick={() => {
-                        setStoryProvider("local");
-                        setServerModelScan("loading");
-                        setServerModelError("");
-                        setServerModelRefresh((value) => value + 1);
-                        setProviderState("ready");
-                        setVerifiedAt("");
-                        setConnectionError("");
-                        setConnectionFeedback("Local generation stays on the website server. Run the test before chatting.");
-                      }}
-                      aria-pressed={storyProvider === "local"}
-                    >
-                      <strong>Local server</strong>
-                      <small>Generation through server-local Ollama</small>
-                    </button>
-                    <button
-                      className={storyProvider === "device" ? "active" : ""}
-                      type="button"
-                      onClick={() => {
-                        setStoryProvider("device");
-                        setDeviceModelScan("loading");
-                        setDeviceModelError("");
-                        setDeviceModelRefresh((value) => value + 1);
-                        setProviderState(deviceModel.trim() ? "ready" : "disconnected");
-                        setVerifiedAt("");
-                        setConnectionError("");
-                        setConnectionFeedback("Generation runs in Ollama on this computer, not on the website server.");
-                      }}
-                      aria-pressed={storyProvider === "device"}
-                    >
-                      <strong>This computer</strong>
-                      <small>Use Ollama installed on the browser’s computer</small>
-                    </button>
-                  </div>
-                </fieldset>
-
-                <div className="settings-field-grid">
-                  <div className="connection-target-setting">
-                    <label>
-                      Connection target
-                      <input
-                        value={storyProvider === "local"
-                          ? "Ollama on this website server"
-                          : storyProvider === "device"
-                            ? "Ollama on this computer (127.0.0.1:11434)"
-                            : "https://text.novelai.net/oa/v1"}
-                        readOnly
-                        aria-readonly="true"
-                      />
-                      <small>{storyProvider === "local"
-                        ? "The app server contacts its own localhost; your browser does not connect to your computer."
-                        : storyProvider === "device"
-                          ? `Your browser contacts Ollama directly. Ollama must allow ${ollamaOriginSetting}.`
-                          : "Fixed to NovelAI’s OpenAI-compatible text endpoint."}</small>
-                    </label>
-                    <button
-                      className="primary-button"
-                      type="button"
-                      onClick={testConnection}
-                      disabled={providerState === "testing"}
-                    >
-                      {providerState === "testing"
-                        ? storyProvider === "novelai" ? "Testing NovelAI…" : "Checking Ollama…"
-                        : "Test connection"}
-                    </button>
-                    {storyProvider === "local" && testProgress && (
-                      <div
-                        className="test-progress"
-                        role="progressbar"
-                        aria-valuemin={0}
-                        aria-valuemax={testProgress.maxTokens}
-                        aria-valuenow={testProgress.phase === "generating"
-                          ? testProgress.tokens
-                          : undefined}
-                        aria-label="Connection test progress"
-                      >
-                        <div className="test-progress-label">
-                          <span>
-                            {testProgress.phase === "connecting"
-                              ? "Contacting the server…"
-                              : testProgress.phase === "loading"
-                                ? "Loading the model on the server…"
-                                : `Generating ${testProgress.tokens}/${testProgress.maxTokens} tokens…`}
-                          </span>
-                          <span className="test-progress-elapsed">
-                            {formatTestElapsed(testProgress.elapsedSec)}
-                          </span>
-                        </div>
-                        <div className="test-progress-track">
-                          <div
-                            className={testProgress.phase === "generating"
-                              ? "test-progress-fill"
-                              : "test-progress-fill indeterminate"}
-                            style={testProgress.phase === "generating"
-                              ? { width: `${Math.min(100, (testProgress.tokens / testProgress.maxTokens) * 100)}%` }
-                              : undefined}
-                          />
-                        </div>
-                        {testProgress.phase === "loading" && (
-                          <small>
-                            The first test loads the model and can take a few minutes; the model
-                            stays loaded afterward, so later tests are fast.
-                          </small>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <label>
-                    Model
-                    {storyProvider === "local" ? (
-                      <select
-                        value={selectedLocalModel}
-                        disabled={serverModelScan !== "ready"}
-                        onChange={(event) => {
-                          setSelectedLocalModel(event.target.value);
-                          setProviderState("ready");
-                          setVerifiedAt("");
-                          setConnectionError("");
-                          setConnectionFeedback("Local model changed. Test the connection again.");
-                        }}
-                      >
-                        {serverModelScan !== "ready" && (
-                          <option value={selectedLocalModel}>
-                            {serverModelScan === "loading" ? "Scanning server models…" : "No server models available"}
-                          </option>
-                        )}
-                        {serverModels.map((model) => (
-                          <option value={model.value} key={model.value}>
-                            {model.adult ? `${model.label} · Adult` : model.label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : storyProvider === "device" ? (
-                      deviceModelScan === "ready" ? (
-                        <select
-                          value={deviceModel}
-                          onChange={(event) => {
-                            setDeviceModel(event.target.value);
-                            setProviderState("ready");
-                            setVerifiedAt("");
-                            setConnectionError("");
-                            setConnectionFeedback("Model changed. Test this computer's Ollama connection again.");
-                          }}
-                        >
-                          {deviceModels.map((model) => (
-                            <option value={model.value} key={model.value}>{model.label}</option>
-                          ))}
-                        </select>
-                      ) : deviceModelScan === "error" || deviceModelScan === "empty" ? (
-                        <input
-                          value={deviceModel}
-                          onChange={(event) => {
-                            setDeviceModel(event.target.value);
-                            setProviderState(event.target.value.trim() ? "ready" : "disconnected");
-                            setVerifiedAt("");
-                            setConnectionError("");
-                            setConnectionFeedback("Model changed. Test this computer's Ollama connection again.");
-                          }}
-                          placeholder="mistral-nemo:12b"
-                          spellCheck={false}
-                        />
-                      ) : (
-                        <select disabled><option>Scanning this computer…</option></select>
-                      )
-                    ) : (
-                      <select
-                        value={selectedModel}
-                        onChange={(event) => {
-                          setSelectedModel(event.target.value as ModelId);
-                          setProviderState(apiToken.trim() ? "ready" : "disconnected");
-                          setVerifiedAt("");
-                          setConnectionError("");
-                          setConnectionFeedback(
-                            apiToken.trim()
-                              ? "Model changed. Test the connection again."
-                              : "",
-                          );
-                        }}
-                      >
-                        {novelAiModels.map((model) => (
-                          <option value={model.value} key={model.value}>
-                            {model.label}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <small>{activeModel.description}</small>
-                  </label>
-                </div>
-
-                {storyProvider === "local" && (
-                  <button
-                    className="text-button"
-                    type="button"
-                    onClick={() => {
-                      setServerModelScan("loading");
-                      setServerModelError("");
-                      setServerModelRefresh((value) => value + 1);
-                    }}
-                    disabled={serverModelScan === "loading"}
-                  >
-                    {serverModelScan === "loading" ? "Scanning server models…" : "Refresh server models"}
-                  </button>
-                )}
-                {storyProvider === "device" && (
-                  <button
-                    className="text-button"
-                    type="button"
-                    onClick={() => {
-                      setDeviceModelScan("loading");
-                      setDeviceModelError("");
-                      setDeviceModelRefresh((value) => value + 1);
-                    }}
-                    disabled={deviceModelScan === "loading"}
-                  >
-                    {deviceModelScan === "loading" ? "Scanning this computer…" : "Refresh this computer's models"}
-                  </button>
-                )}
-
-                {storyProvider === "novelai" && <label>
-                  NovelAI access token
-                  <div className="token-input">
-                    <input
-                      type={showToken ? "text" : "password"}
-                      value={apiToken}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setApiToken(value);
-                        setProviderState(value.trim() ? "ready" : "disconnected");
-                        setVerifiedAt("");
-                        setConnectionError("");
-                        setConnectionFeedback(
-                          value.trim()
-                            ? "Token entered. Run the test to verify it."
-                            : "",
-                        );
-                      }}
-                      placeholder="Paste your NovelAI token"
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                    <button type="button" onClick={() => setShowToken((current) => !current)}>
-                      {showToken ? "Hide" : "Show"}
-                    </button>
-                  </div>
-                  <small>
-                    Currently saved for {tokenStorageMode === "computer"
-                      ? "this computer's browser profile"
-                      : "this browser tab"}. The Howling Whispers never writes it to
-                    the site database or logs.
-                  </small>
-                </label>}
-
-                <label>
-                  Creativity
-                  <div className="creativity-row">
-                    <input
-                      type="range"
-                      min="1"
-                      max="10"
-                      value={creativity}
-                      onChange={(event) => setCreativity(Number(event.target.value))}
-                    />
-                    <strong>{creativity}/10</strong>
-                  </div>
-                </label>
-
-                <fieldset className="reply-style-fieldset">
-                  <legend>Reply length</legend>
-                  <div className="reply-style-options">
-                    {replyLengths.map((length) => (
-                      <button
-                        className={replyLength === length.value ? "active" : ""}
-                        type="button"
-                        key={length.value}
-                        onClick={() => setReplyLength(length.value)}
-                        aria-pressed={replyLength === length.value}
-                      >
-                        <strong>{length.label}</strong>
-                        <small>{length.description}</small>
-                      </button>
-                    ))}
-                  </div>
-                  <p>
-                    Immersive is the recommended roleplay setting. Novel-like
-                    uses more generation tokens and may take a little longer.
-                  </p>
-                </fieldset>
-
-                <fieldset className="story-control-fieldset">
-                  <legend>Roleplay direction</legend>
-                  <p>
-                    Adapted for both story engines from the Living World preset principles.
-                    These settings apply to new replies and rerolls.
-                  </p>
-                  <div className="settings-field-grid">
-                    <label>
-                      <span className="setting-name-row">
-                        World initiative
-                        <InfoTip label="World initiative">
-                          <p className="help-popover__intro">
-                            How readily characters and events move the story forward.
-                          </p>
-                          <div className="help-popover__options">
-                            <div className="help-popover__option">
-                              <strong className="help-popover__option-name">Reactive</strong>
-                              <p className="help-popover__option-description">
-                                The world mostly waits for your actions before events advance.
-                              </p>
-                            </div>
-                            <div className="help-popover__option">
-                              <strong className="help-popover__option-name">Balanced</strong>
-                              <p className="help-popover__option-description">
-                                You and the world share control of the story&apos;s momentum.
-                              </p>
-                            </div>
-                            <div className="help-popover__option">
-                              <strong className="help-popover__option-name">Proactive</strong>
-                              <p className="help-popover__option-description">
-                                Characters pursue their own goals, and events may progress even
-                                when you remain quiet.
-                              </p>
-                            </div>
-                          </div>
-                        </InfoTip>
-                      </span>
-                      <select
-                        value={initiative}
-                        onChange={(event) => setInitiative(event.target.value as Initiative)}
-                      >
-                        <option value="reactive">Reactive</option>
-                        <option value="balanced">Balanced</option>
-                        <option value="proactive">Proactive</option>
-                      </select>
-                      <small>How readily characters and events move the story forward.</small>
-                    </label>
-                    <label>
-                      <span className="setting-name-row">
-                        Viewpoint
-                        <InfoTip label="Viewpoint">
-                          <p className="help-popover__intro">
-                            Whose observable experience frames the narration.
-                          </p>
-                          <div className="help-popover__options">
-                            <div className="help-popover__option">
-                              <strong className="help-popover__option-name">Player limited</strong>
-                              <p className="help-popover__option-description">
-                                The story stays centered on you and what your character can perceive.
-                              </p>
-                            </div>
-                            <div className="help-popover__option">
-                              <strong className="help-popover__option-name">Character limited</strong>
-                              <p className="help-popover__option-description">
-                                The story follows the other character and what they can perceive.
-                              </p>
-                            </div>
-                            <div className="help-popover__option">
-                              <strong className="help-popover__option-name">Roving limited</strong>
-                              <p className="help-popover__option-description">
-                                The narration may move between characters and scenes.
-                              </p>
-                            </div>
-                          </div>
-                        </InfoTip>
-                      </span>
-                      <select
-                        value={viewpoint}
-                        onChange={(event) => setViewpoint(event.target.value as Viewpoint)}
-                      >
-                        <option value="user">Player limited</option>
-                        <option value="character">Character limited</option>
-                        <option value="roving">Roving limited</option>
-                      </select>
-                      <small>Controls whose observable experience frames narration.</small>
-                    </label>
-                    <label>
-                      <span className="setting-name-row">
-                        Tense
-                        <InfoTip label="Tense">
-                          <p className="help-popover__intro">Sets the requested narrative tense.</p>
-                          <div className="help-popover__options">
-                            <div className="help-popover__option">
-                              <strong className="help-popover__option-name">Present</strong>
-                              <p className="help-popover__option-description">
-                                The narration unfolds as events happen: &ldquo;She opens the door.&rdquo;
-                              </p>
-                            </div>
-                            <div className="help-popover__option">
-                              <strong className="help-popover__option-name">Past</strong>
-                              <p className="help-popover__option-description">
-                                The narration recounts events: &ldquo;She opened the door.&rdquo;
-                              </p>
-                            </div>
-                          </div>
-                        </InfoTip>
-                      </span>
-                      <select
-                        value={storyTense}
-                        onChange={(event) => setStoryTense(event.target.value as StoryTense)}
-                      >
-                        <option value="present">Present</option>
-                        <option value="past">Past</option>
-                      </select>
-                      <small>Sets the requested narrative tense.</small>
-                    </label>
-                  </div>
-                </fieldset>
-
-                <div className="settings-actions">
-                  {storyProvider === "novelai" && <button
-                    className="outline-button"
-                    type="button"
-                    onClick={() => saveSettings("tab")}
-                  >
-                    Save for this tab
-                  </button>}
-                  {storyProvider === "novelai" && <button
-                    className="outline-button"
-                    type="button"
-                    onClick={() => saveSettings("computer")}
-                  >
-                    Save for this computer
-                  </button>}
-                  {storyProvider === "novelai" && savedAt && <span>Saved at {savedAt}</span>}
-                  {storyProvider === "novelai" && hasNovelAiToken && (
-                    <button
-                      className="text-button disconnect-button"
-                      type="button"
-                      onClick={() => {
-                        setApiToken("");
-                        localStorage.removeItem("dreambound_naiToken");
-                        sessionStorage.removeItem("dreambound_naiToken");
-                        setTokenStorageMode("tab");
-                        setProviderState("disconnected");
-                        setConnectionError("");
-                        setConnectionFeedback("");
-                        setSavedAt("");
-                        setVerifiedAt("");
-                      }}
-                    >
-                      Remove token
-                    </button>
-                  )}
-                </div>
-              </form>
-            </section>
-
-            <section className="settings-panel account-settings">
-              <p className="eyebrow">Your player</p>
-              <div className="settings-avatar" aria-hidden="true">
-                {playerProfile.name.trim().charAt(0).toUpperCase() || "U"}
-              </div>
-              <h2>{playerProfile.name.trim() || "Local player"}</h2>
-              <label>
-                Player name
-                <input
-                  value={playerProfile.name}
-                  onChange={(event) => updatePlayerProfile({ name: event.target.value })}
-                  placeholder="Leave blank to stay unnamed in the story"
-                  maxLength={100}
-                />
-              </label>
-              <p>
-                This is your local display name. For story identities, create personas
-                in the library — each story can play as its own persona.
-              </p>
-              <p>Everything is saved in this browser. Nothing is uploaded.</p>
-              <span className="chatgpt-badge">✓ Private local story space</span>
-              <button className="outline-button settings-signout" onClick={handleSignOut}>
-                Return to entrance
-              </button>
-            </section>
-
-
-            <section className="settings-panel style-settings">
-              <p className="eyebrow">Appearance</p>
-              <h2>Text colors</h2>
-              <p>Customize how dialogue, actions, and narration appear in the chat.</p>
-              <div className="style-grid">
-                <label className="font-size-setting">
-                  <span>Chat font size</span>
-                  <input
-                    type="range"
-                    min="15"
-                    max="26"
-                    step="1"
-                    value={textStyle.fontSize}
-                    onChange={(event) => setTextStyle((style) => ({
-                      ...style,
-                      fontSize: Number(event.target.value),
-                    }))}
-                  />
-                  <output>{textStyle.fontSize}px</output>
-                </label>
-                <label>
-                  Dialogue
-                  <input type="color" value={textStyle.dialogue} onChange={(e) => setTextStyle(s => ({ ...s, dialogue: e.target.value }))} />
-                </label>
-                <label>
-                  Action <small>*text*</small>
-                  <input type="color" value={textStyle.action} onChange={(e) => setTextStyle(s => ({ ...s, action: e.target.value }))} />
-                </label>
-                <label>
-                  Narration <small>[text]</small>
-                  <input type="color" value={textStyle.narration} onChange={(e) => setTextStyle(s => ({ ...s, narration: e.target.value }))} />
-                </label>
-              </div>
-              <button className="text-button" onClick={() => setTextStyle(defaultTextStyle)}>
-                Reset to defaults
-              </button>
-            </section>
-
-            <section className="settings-panel privacy-settings">
-              <p className="eyebrow">Privacy</p>
-              <h2>What is remembered?</h2>
-              <ul>
-                <li>
-                  <span>Story engine</span>
-                  <strong>{storyProvider === "novelai"
-                    ? "NovelAI"
-                    : storyProvider === "local" ? "Local server" : "This computer"}</strong>
-                </li>
-                <li>
-                  <span>NovelAI token</span>
-                  <strong>{hasNovelAiToken
-                    ? tokenStorageMode === "computer" ? "This computer" : "Current tab"
-                    : "Not stored"}</strong>
-                </li>
-                  <li>
-                    <span>Selected model</span>
-                    <strong>This browser</strong>
-                  </li>
-                  <li>
-                    <span>Conversations</span>
-                    <strong>This browser</strong>
-                  </li>
-              </ul>
-              <p>
-                Characters, scenes, and conversations survive reloads in this
-                browser. Tab-only NovelAI tokens clear when the tab closes. Local model
-                prompts are processed by the selected server-local or computer-local Ollama.
-              </p>
-            </section>
-
-            <section className="settings-panel update-settings">
-              <p className="eyebrow">Release channel</p>
-              <h2>Application updates</h2>
-              <div className="version-row">
-                <span>Application version</span>
-                <strong>v{packageInfo.version}</strong>
-              </div>
-              <p className={`update-message ${updateState}`}>{updateMessage}</p>
-              <div className="update-actions">
-                <button
-                  className="outline-button"
-                  onClick={checkForUpdates}
-                  disabled={updateState === "checking"}
-                >
-                  {updateState === "checking" ? "Checking..." : "Check for updates"}
-                </button>
-                {releaseUrl && (
-                  <a href={releaseUrl} target="_blank" rel="noreferrer">View release</a>
-                )}
-              </div>
-              <small>
-                 Hosted installations are updated by their server administrator.
-                 Stories and preferences remain in this browser profile.
-              </small>
-            </section>
-
-            {isDevelopmentDeployment && (
-              <section className="settings-panel update-settings">
-                <p className="eyebrow">Development environment</p>
-                <h2>Promote a verified release</h2>
-                <p>
-                  Production deploys only the latest commit already merged into the central
-                  <code> main </code>branch. Development files are never copied directly.
-                </p>
-                <div className="update-actions">
-                  <a className="primary-button" href="/__deploy/">Open deployment panel</a>
-                  <a
-                    className="outline-button"
-                    href="https://github.com/FreakyHydra/HowlingWhispers/compare/main...dev?expand=1"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Review dev → main
-                  </a>
-                </div>
-              </section>
-            )}
-          </div>
-        </section>
+        <SettingsPage
+          providerLabel={providerLabel}
+          providerState={providerState}
+          verifiedAt={verifiedAt}
+          configured={configured}
+          storyProvider={storyProvider}
+          connectionError={connectionError}
+          connectionFeedback={connectionFeedback}
+          activeModel={activeModel}
+          testProgress={testProgress}
+          selectedLocalModel={selectedLocalModel}
+          serverModelScan={serverModelScan}
+          serverModels={serverModels}
+          deviceModels={deviceModels}
+          deviceModelScan={deviceModelScan}
+          deviceModel={deviceModel}
+          selectedModel={selectedModel}
+          novelAiModels={novelAiModels}
+          apiToken={apiToken}
+          showToken={showToken}
+          tokenStorageMode={tokenStorageMode}
+          creativity={creativity}
+          replyLengths={replyLengths}
+          replyLength={replyLength}
+          initiative={initiative}
+          viewpoint={viewpoint}
+          storyTense={storyTense}
+          savedAt={savedAt}
+          hasNovelAiToken={hasNovelAiToken}
+          playerProfile={playerProfile}
+          textStyle={textStyle}
+          defaultTextStyle={defaultTextStyle}
+          archiveUser={archiveUser}
+          localBackupMsg={localBackupMsg}
+          localRestoreMsg={localRestoreMsg}
+          localBackupError={localBackupError}
+          serverBackupBusy={serverBackupBusy}
+          serverBackupMsg={serverBackupMsg}
+          serverBackupsError={serverBackupsError}
+          serverBackups={serverBackups}
+          packageInfo={packageInfo}
+          updateState={updateState}
+          updateMessage={updateMessage}
+          releaseUrl={releaseUrl}
+          isDevelopmentDeployment={isDevelopmentDeployment}
+          ollamaOriginSetting={ollamaOriginSetting}
+          saveSettings={saveSettings}
+          setStoryProvider={setStoryProvider}
+          setProviderState={setProviderState}
+          setVerifiedAt={setVerifiedAt}
+          setConnectionError={setConnectionError}
+          setConnectionFeedback={setConnectionFeedback}
+          setServerModelScan={setServerModelScan}
+          setServerModelRefresh={setServerModelRefresh}
+          setDeviceModelScan={setDeviceModelScan}
+          setDeviceModelRefresh={setDeviceModelRefresh}
+          setServerModelError={setServerModelError}
+          setDeviceModelError={setDeviceModelError}
+          testConnection={testConnection}
+          formatTestElapsed={formatTestElapsed}
+          setSelectedLocalModel={setSelectedLocalModel}
+          setDeviceModel={setDeviceModel}
+          setSelectedModel={setSelectedModel}
+          setShowToken={setShowToken}
+          setApiToken={setApiToken}
+          setTokenStorageMode={setTokenStorageMode}
+          setCreativity={setCreativity}
+          setReplyLength={setReplyLength}
+          setInitiative={setInitiative}
+          setViewpoint={setViewpoint}
+          setStoryTense={setStoryTense}
+          setSavedAt={setSavedAt}
+          setTextStyle={setTextStyle}
+          updatePlayerProfile={updatePlayerProfile}
+          handleSignOut={handleSignOut}
+          setView={setView}
+          exportAllPrivateData={exportAllPrivateData}
+          handleLocalBackupImport={handleLocalBackupImport}
+          createServerBackupNow={createServerBackupNow}
+          archive={archive}
+          handleArchiveUserChange={handleArchiveUserChange}
+          formatBackupDate={formatBackupDate}
+          formatBackupSize={formatBackupSize}
+          downloadServerBackup={downloadServerBackup}
+          restoreServerBackup={restoreServerBackup}
+          deleteServerBackup={deleteServerBackup}
+          checkForUpdates={checkForUpdates}
+        />
       )}
-
       {view === "personas" && (
         <section className="settings-page">
           <PersonaLibrary
             personas={personas}
             activePersonaId={resolvedActivePersonaId}
-            onChange={setPersonas}
+            memoryCards={memoryCards}
+            onChange={(next) => {
+              const removed = personas.find((p) => !next.find((n) => n.id === p.id));
+              if (removed) {
+                setRawMemoryCards((current) => {
+                  const nextCards = { ...current };
+                  delete nextCards[removed.id];
+                  return nextCards;
+                });
+              }
+              setPersonas(next);
+            }}
             onSelectActive={setActivePersonaId}
           />
         </section>
+      )}
+
+      {view === "addons" && (
+        <section className="settings-page">
+          <div className="settings-heading">
+            <div>
+              <p className="eyebrow">Content packs</p>
+              <h1>Howling Add-ons</h1>
+              <p>Install reusable content packs that work with any character.</p>
+            </div>
+            <div>
+              <input
+                type="file"
+                id="addon-import-input"
+                accept="application/json"
+                style={{ display: "none" }}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    try {
+                      const parsed = JSON.parse(reader.result as string);
+                      if (!isHowlingAddon(parsed)) {
+                        setChatError("Invalid add-on package. Expected format: howling-addon v1.");
+                        return;
+                      }
+                      const scenes = validateAddonContent(parsed.content);
+                      if (scenes === null) {
+                        setChatError("Add-on content is malformed.");
+                        return;
+                      }
+                      installAddon(parsed);
+                      setChatError("");
+                    } catch {
+                      setChatError("Could not read the add-on file.");
+                    }
+                  };
+                  reader.readAsText(file);
+                  event.target.value = "";
+                }}
+              />
+              <button
+                className="outline-button"
+                type="button"
+                onClick={() => document.getElementById("addon-import-input")?.click()}
+              >
+                Install Add-on
+              </button>
+            </div>
+          </div>
+
+          {installedAddons.length === 0 ? (
+            <p className="scene-library-empty">No add-ons installed yet. Install a JSON package to get started.</p>
+          ) : (
+            <div className="addon-list">
+              {installedAddons.map((addon) => {
+                const addonScenes = validateAddonContent(addon.manifest.content);
+                return (
+                  <div className="addon-card" key={addon.manifest.id}>
+                    <div className="addon-card-header">
+                      <div>
+                        <h3>{addon.manifest.name}</h3>
+                        <small>v{addon.manifest.version} · {addonScenes?.length ?? 0} scenes</small>
+                        {addon.manifest.author && <small>by {addon.manifest.author}</small>}
+                        {addon.manifest.description && <p>{addon.manifest.description}</p>}
+                      </div>
+                      <span className={`addon-status ${addon.enabled ? "enabled" : "disabled"}`}>
+                        {addon.enabled ? "Enabled" : "Disabled"}
+                      </span>
+                    </div>
+                    <div className="addon-card-actions">
+                      {addon.manifest.id === "howling-living-cast" ? (
+                        <button
+                          className="outline-button"
+                          type="button"
+                          onClick={() => {
+                            setShowLivingCastConfig(true);
+                            setView("living-cast");
+                          }}
+                        >
+                          Configure
+                        </button>
+                      ) : (
+                        <button
+                          className="outline-button"
+                          type="button"
+                          onClick={() => toggleAddonEnabled(addon.manifest.id)}
+                        >
+                          {addon.enabled ? "Disable" : "Enable"}
+                        </button>
+                      )}
+                      <button
+                        className="outline-button"
+                        type="button"
+                        onClick={() => {
+                          const blob = exportAddon(addon);
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement("a");
+                          link.href = url;
+                          link.download = `${addon.manifest.id}-${addon.manifest.version}.json`;
+                          link.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                      >
+                        Export
+                      </button>
+                      <button
+                        className="outline-button"
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`Uninstall "${addon.manifest.name}"? This does not delete scenes you already started.`)) {
+                            uninstallAddon(addon.manifest.id);
+                          }
+                        }}
+                      >
+                        Uninstall
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {view === "living-cast" && showLivingCastConfig && (
+        <LivingCastConfigView
+          config={livingCastConfig}
+          onConfigChange={setLivingCastConfig}
+          onResetCast={() => {
+            if (!activeSession) return;
+            const reset = resetCast({ id: selected.id, name: selected.name }, activePlayerName);
+            setSessions((current) => current.map((s) => s.id === activeSession.id ? ({ ...s, livingCast: reset as LivingCastEntry[], livingCastRoundRobinIndex: undefined } as StorySession) : s));
+          }}
+          cast={activeSession?.livingCast ?? resetCast({ id: selected.id, name: selected.name }, activePlayerName)}
+          onInvite={() => setShowInvitePicker(true)}
+          onRemove={(characterId: string) => {
+            if (!activeSession) return;
+            const updatedCast = removeInvitedCharacter(activeSession.livingCast ?? [], characterId);
+            setSessions((current) => current.map((s) => s.id === activeSession.id ? ({ ...s, livingCast: updatedCast as LivingCastEntry[], livingCastRoundRobinIndex: undefined } as StorySession) : s));
+          }}
+          characters={characters.map((c) => ({ id: c.id, name: c.name }))}
+          onBack={() => setShowLivingCastConfig(false)}
+        />
       )}
 
       {view === "archive" && (
@@ -5549,991 +6075,151 @@ export default function DreamboundApp() {
             role: character.role,
             profile: character.profile,
             reply: character.reply,
-            image: character.image,
+            image: portraitUrl(character),
             sceneImage: character.sceneImage,
             ageCategory: character.ageCategory,
             isMinor: character.isMinor,
           }))}
           onImport={importArchiveCharacter}
+          externalUser={archiveUser}
+          onExternalUserChange={handleArchiveUserChange}
         />
       )}
 
       {view === "chat" && (
-      <section
-        className={`workspace${showCharacterRail ? "" : " hide-character-rail"}${showContextRail ? "" : " hide-context-rail"}`}
-        style={themeVariables}
-      >
-        {showCharacterRail && <aside className="character-rail" aria-label="Characters">
-          <div className="rail-heading">
-            <p className="eyebrow">Characters</p>
-            <span>{characters.length}</span>
-          </div>
-
-          <div className="character-list">
-            {characters.map((character) => (
-              <button
-                className={`character-card ${selected.id === character.id ? "selected" : ""}`}
-                key={character.id}
-                onClick={() => openSceneLibrary(character.id)}
-                aria-pressed={selected.id === character.id}
-              >
-                <Portrait character={character} />
-                <span className="character-copy">
-                  <strong>{character.name}</strong>
-                  <small>{character.role}</small>
-                  <span className="status-line">
-                    <i style={{ background: character.accent }} />
-                    {character.status}
-                  </span>
-                </span>
-                <span className="favorite" aria-hidden="true">
-                  ☆
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div className="rail-footer">
-            <span aria-hidden="true">♧</span>
-            <span>{characters.length} souls</span>
-          </div>
-        </aside>}
-
-        <section
-          className={`story-stage ${activeScene.background ? "has-image" : "no-image"}`}
-          style={
-            {
-              "--scene-image": activeScene.background
-                ? `url("${activeScene.background}")`
-                : "linear-gradient(145deg, #211416, #09090b)",
-              "--scene-position": activeScene.backgroundFocalPoint,
-              "--scene-blur": `${activeSession?.autopilot ? storyBackgroundBlur : 0}px`,
-            } as React.CSSProperties
-          }
-          aria-label={`Conversation with ${selected.name}`}
-        >
-          <div className="stage-wash" />
-          <div className="chat-view-controls" aria-label="Chat layout">
-            <button
-              className={showCharacterRail ? "active" : ""}
-              onClick={() => setShowCharacterRail((visible) => !visible)}
-              aria-pressed={showCharacterRail}
-              title={`${showCharacterRail ? "Hide" : "Show"} character panel`}
-            >
-              <span aria-hidden="true">☷</span> Characters
-            </button>
-            <button
-              className={`context-toggle ${showContextRail ? "active" : ""}`}
-              onClick={() => setShowContextRail((visible) => !visible)}
-              aria-pressed={showContextRail}
-              title={`${showContextRail ? "Hide" : "Show"} context panel`}
-            >
-              Context <span aria-hidden="true">☰</span>
-            </button>
-            {activeSession && !activeSession.autopilot && (
-              <button
-                className="autopilot-toolbar-button"
-                onClick={toggleAutopilot}
-                aria-pressed={false}
-                title="Let this character live on their own (Whisper Mode)"
-              >
-                <span className="auto-dot" aria-hidden="true" /> Whisper Mode
-              </button>
-            )}
-            {activeSession?.autopilot && (
-              <label className="story-blur-control">
-                <span>Blur</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="24"
-                  step="1"
-                  value={storyBackgroundBlur}
-                  onChange={(event) => setStoryBackgroundBlur(Number(event.target.value))}
-                  aria-label="Story background blur"
-                />
-                <output>{storyBackgroundBlur}px</output>
-              </label>
-            )}
-            {activeSession && (
-              <button
-                className={`persona-button${sessionUsesDefaultPersona ? "" : " active"}`}
-                onClick={() => setShowPersonaModal(true)}
-                title={
-                  sessionPersonaName
-                    ? `Playing as ${sessionPersonaName}`
-                    : "Choose who you play as in this story"
-                }
-              >
-                <span aria-hidden="true">♜</span>
-                {sessionPersonaName ? `Playing as ${sessionPersonaName}` : "Persona"}
-              </button>
-            )}
-            <button
-              className="share-button"
-              onClick={() => setShowShare(true)}
-              disabled={activeMessages.length === 0}
-              title={activeMessages.length === 0 ? "Nothing to share yet" : "Share this conversation as an image"}
-            >
-              <span aria-hidden="true">⇣</span> Share
-            </button>
-          </div>
-          <div className="scene-title">
-            <h1>{selected.name}</h1>
-            <p>
-              <span className="presence-dot" style={{ background: activeTheme.accent }} />
-              {activeScene.status} <i>·</i> {activeTheme.motif}
-            </p>
-            {autopilotError && <p className="auto-error">{autopilotError}</p>}
-          </div>
-
-          <div className={`messages${activeSession?.autopilot ? " storytelling" : ""}`} aria-live="polite">
-            {activeMessages.length === 0 && activeSession?.autopilot && (
-              <div className="sandbox-empty-state">
-                <span aria-hidden="true">◉</span>
-                <p className="eyebrow">Whisper Mode</p>
-                <h2>{selected.name} is stirring awake.</h2>
-                <p>
-                  Nothing has been written yet. {selected.name} will write the first
-                  beat on their own in a moment — step in whenever you like.
-                </p>
-              </div>
-            )}
-            {activeMessages.length === 0 && activeSession?.sandbox && (
-              <div className="sandbox-empty-state">
-                <span aria-hidden="true">◇</span>
-                <p className="eyebrow">Open Sandbox</p>
-                <h2>Nothing has happened yet.</h2>
-                <p>
-                  Write the first line, action, or piece of narration. There is no preset
-                  setting or history; {selected.name} will respond from there.
-                </p>
-              </div>
-            )}
-            {activeMessages.map((message, index) => {
-              const isLastCharacter =
-                message.sender === "character" &&
-                activeMessages.slice(index + 1).every((m) => m.sender !== "character");
-              return renderMessageBubble(message, isLastCharacter, { live: true, showCaption: false });
-            })}
-            {isReplying && (
-              <article className="message character typing" aria-label={`${selected.name} is replying`}>
-                <Portrait character={selected} />
-                <p>
-                  <span />
-                  <span />
-                  <span />
-                </p>
-              </article>
-            )}
-          </div>
-
-          <div className="composer-wrap">
-            {chatError && (
-              <div className="chat-error" role="alert">
-                <span aria-hidden="true">!</span>
-                <p>{chatError}</p>
-                {!configured && (
-                  <button onClick={() => setView("settings")}>Connect NovelAI</button>
-                )}
-                <button
-                  className="chat-error-close"
-                  onClick={() => setChatError("")}
-                  aria-label="Dismiss error"
-                  title="Dismiss error"
-                >
-                  ×
-                </button>
-              </div>
-            )}
-            {activeSession?.autopilot && (
-              autopilotControlsCollapsed && activeSession.autopilotPaused ? (
-                <div
-                  className="autopilot-controls is-collapsed is-paused"
-                  aria-label="Whisper Mode controls (minimized)"
-                >
-                  <button
-                    className="autopilot-collapse-toggle"
-                    onClick={() => setAutopilotControlsCollapsed(false)}
-                    aria-label="Expand whisper mode controls"
-                  >
-                    <span aria-hidden="true" className="auto-dot is-running" />
-                    <span className="autopilot-status">Paused — minimized</span>
-                    <span aria-hidden="true" className="autopilot-collapse-icon">▲</span>
-                  </button>
-                </div>
-              ) : (
-              <div
-                className={`autopilot-controls${activeSession.autopilotPaused ? " is-paused" : ""}`}
-                aria-label="Whisper Mode controls"
-              >
-                <span aria-hidden="true" className="auto-dot is-running" />
-                <p className="autopilot-status">
-                  {activeSession.autopilotStopped
-                    ? "Stopped — story preserved"
-                    : activeSession.autopilotPaused
-                    ? "Paused — write whenever you like"
-                    : autopilotBusy
-                      ? `${selected.name} is living on their own…`
-                      : selected.name}
-                </p>
-                <div className="autopilot-control-buttons">
-                  {activeSession.autopilotPaused && (
-                    <button
-                      onClick={() => setAutopilotControlsCollapsed(true)}
-                      className="autopilot-collapse"
-                      aria-label="Minimize whisper mode controls"
-                    >
-                      Minimize
-                    </button>
-                  )}
-                  <button onClick={toggleAutopilotPause} disabled={autopilotBusy}>
-                    {activeSession.autopilotPaused ? "Resume" : "Pause"}
-                  </button>
-                  <button
-                      onClick={requestNextAutopilotBeat}
-                      disabled={autopilotBusy}
-                  >
-                    Next
-                  </button>
-                  <button onClick={stopAutopilot} className="autopilot-stop">
-                    Stop
-                  </button>
-                </div>
-              </div>
-              )
-            )}
-            {(!activeSession?.autopilot || activeSession?.autopilotPaused) && !autopilotControlsCollapsed && (
-              <div className="composer">
-                {mode === "Impersonate" ? (
-                  <>
-                    <div className="impersonate-composer-header">
-                      <span className="impersonate-mode-tag" aria-hidden="true">◐</span>
-                      <span className="impersonate-mode-label">
-                        Impersonating {selected.name} — the direction stays private
-                      </span>
-                      <button
-                        className="impersonate-exit"
-                        onClick={() => {
-                          setMode("Dialogue");
-                          setImpersonationPrompt("");
-                        }}
-                        aria-label="Exit impersonation"
-                        title="Exit impersonation"
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <textarea
-                      id="story-input"
-                      value={impersonationPrompt}
-                      onChange={(event) => setImpersonationPrompt(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          impersonatePlayer();
-                        }
-                      }}
-                      placeholder={`Private direction for ${selected.name}…`}
-                      rows={2}
-                      autoFocus
-                    />
-                  </>
-                ) : (
-                  <>
-                    <label htmlFor="story-input" className="sr-only">
-                      Message {selected.name}
-                    </label>
-                    <textarea
-                      id="story-input"
-                      value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          sendMessage();
-                        }
-                      }}
-                      placeholder="Speak, act, or shape the scene…"
-                      rows={2}
-                    />
-                  </>
-                )}
-                <div className="composer-actions">
-                  <select
-                    aria-label="Message mode"
-                    value={mode}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      if (
-                        next === "Impersonate" &&
-                        (isReplying || isImpersonating || activeMessages.length === 0)
-                      ) {
-                        return;
-                      }
-                      setMode(next);
-                    }}
-                  >
-                    <option>Dialogue</option>
-                    <option>Action</option>
-                    <option>Narration</option>
-                    <option>Impersonate</option>
-                  </select>
-                  <div className="action-cluster">
-                    {mode === "Impersonate" ? (
-                      <>
-                        <button
-                          className="primary-button impersonate-send"
-                          onClick={impersonatePlayer}
-                          disabled={isReplying || isImpersonating || activeMessages.length === 0}
-                        >
-                          {isImpersonating ? "Generating…" : "Send player turn"}
-                        </button>
-                        {(isReplying || isImpersonating) && (
-                          <button
-                            className="icon-button stop-button"
-                            onClick={stopGeneration}
-                            aria-label="Stop generating"
-                            title="Stop generating"
-                          >
-                            ■
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          className="icon-button"
-                          aria-label="Impersonate player"
-                          title="Impersonate: write the player's turn for you"
-                          onClick={() => setMode("Impersonate")}
-                          disabled={isReplying || isImpersonating || activeMessages.length === 0}
-                        >
-                          ◐
-                        </button>
-                        <button
-                          className="icon-button"
-                          aria-label="Skip turn"
-                          title="Skip turn: let the character continue"
-                          onClick={skipTurn}
-                          disabled={isReplying || isImpersonating || activeMessages.length === 0}
-                        >
-                          »
-                        </button>
-                        {(isReplying || isImpersonating) && (
-                          <button
-                            className="icon-button stop-button"
-                            onClick={stopGeneration}
-                            aria-label="Stop generating"
-                            title="Stop generating"
-                          >
-                            ■
-                          </button>
-                        )}
-                        <button
-                          className="send-button"
-                          onClick={sendMessage}
-                          disabled={!draft.trim() || isReplying || isImpersonating}
-                          aria-label="Send message"
-                        >
-                          ➤
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {showContextRail && <aside className="context-rail" aria-label="Story context">
-          <section className="context-card">
-            <div className="card-title">
-              <p className="eyebrow">Scene</p>
-              <button aria-label="Choose another scene" onClick={() => setView("scenes")}>✎</button>
-            </div>
-            <div className="scene-summary">
-              <div
-                className="scene-orb"
-                style={
-                  {
-                    "--thumb": activeScene.background
-                      ? `url("${activeScene.background}")`
-                      : "linear-gradient(145deg, #2b1c1e, #0c0c0e)",
-                  } as React.CSSProperties
-                }
-              />
-              <div>
-                <h2>{activeScene.title}</h2>
-                <p>☁ {activeScene.weather}</p>
-              </div>
-            </div>
-          </section>
-
-          <section className="context-card memory-card">
-            <div className="card-title">
-              <p className="eyebrow">{activeSession?.sandbox ? "Sandbox" : "Memory"}</p>
-              {!activeSession?.sandbox && <button aria-label="Add memory">＋</button>}
-            </div>
-            {activeSession?.sandbox ? (
-              <div className="sandbox-context-note">
-                <span aria-hidden="true">◇</span>
-                <p>Preset memories are off. Only this conversation becomes context.</p>
-              </div>
-            ) : (
-              <ul>
-                {selected.memories.map((memory, index) => (
-                  <li key={memory}>
-                    <span aria-hidden="true">{index === 0 ? "◉" : "▱"}</span>
-                    <p>{memory}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="context-card context-inspector-card">
-            <div className="card-title">
-              <p className="eyebrow">Peek Context</p>
-              <span aria-hidden="true">⌁</span>
-            </div>
-            {activeContextManifest ? (
-              <details>
-                <summary>
-                  <span>{activeContextManifest.estimatedInputTokens.toLocaleString()} estimated tokens</span>
-                  <small>{activeContextManifest.includedLore.length} lore entries active</small>
-                </summary>
-                <div className="context-inspector-body">
-                  <dl>
-                    <div><dt>Context window</dt><dd>{activeContextManifest.contextWindow.toLocaleString()}</dd></div>
-                    <div><dt>Input budget</dt><dd>{activeContextManifest.inputBudget.toLocaleString()}</dd></div>
-                    <div><dt>Recent messages</dt><dd>{activeContextManifest.includedMessages} kept · {activeContextManifest.omittedMessages} omitted</dd></div>
-                    <div><dt>Character revision</dt><dd>{activeContextManifest.characterRevision}</dd></div>
-                    <div><dt>World revision</dt><dd>{activeContextManifest.worldRevision ?? "None"}</dd></div>
-                  </dl>
-                  <div className="context-inspector-group">
-                    <strong>Active character canon</strong>
-                    <div className="context-receipts">
-                      {activeContextManifest.includedSections.map((id) => <span key={id}>{id}</span>)}
-                    </div>
-                  </div>
-                  <div className="context-inspector-group">
-                    <strong>Active world lore</strong>
-                    {activeContextManifest.includedLore.length > 0 ? (
-                      <ul>
-                        {activeContextManifest.includedLore.map((entry) => (
-                          <li key={entry.id}><span>{entry.title}</span><small>{entry.reason}</small></li>
-                        ))}
-                      </ul>
-                    ) : <p>No world lore was included in this reply.</p>}
-                  </div>
-                  <p className="context-omission-note">
-                    {activeContextManifest.omittedLore.filter((entry) => entry.reason === "inactive").length} inactive lore entries and {activeContextManifest.omittedLore.filter((entry) => entry.reason === "budget").length} budget-limited entries stayed out.
-                  </p>
-                </div>
-              </details>
-            ) : (
-              <p className="context-inspector-empty">Generate a reply to see exactly which canon, lore, and recent history reached the model.</p>
-            )}
-          </section>
-
-          <section className="context-card connection-card">
-            <div className="card-title">
-              <p className="eyebrow">Connection</p>
-              <span aria-hidden="true">♡</span>
-            </div>
-            <div className="provider-status">
-              <span
-                className={
-                  connected
-                    ? "online"
-                    : providerState === "testing"
-                      ? "testing"
-                    : providerState === "ready"
-                      ? "ready"
-                      : providerState === "error"
-                        ? "error"
-                        : "offline"
-                }
-              />
-              <div>
-                <p>
-                  {providerLabel}{" "}
-                  {connected
-                    ? "verified working"
-                    : providerState === "testing"
-                      ? "testing"
-                    : providerState === "ready"
-                      ? storyProvider === "novelai" ? "token entered" : "ready to test"
-                      : providerState === "error"
-                        ? "needs attention"
-                        : "not connected"}
-                </p>
-                <button onClick={() => setView("settings")}>Open settings</button>
-              </div>
-            </div>
-            <p className="model-note">
-              {configured
-                ? `${activeModel.label} · ${activeReplyLength.label}`
-                : `No model selected · ${activeReplyLength.label}`}
-            </p>
-            <div className="pulse-heading">
-              <span>Story pulse</span>
-              <strong>{selected.relationship ?? (selected.bond > 66 ? "Tender" : selected.bond > 35 ? "Guarded" : "New")}</strong>
-            </div>
-            <div className="bond-meter" aria-label={`Story pulse ${selected.bond}%`}>
-              <span style={{ width: `${selected.bond}%` }} />
-              <i style={{ left: `${selected.bond}%` }}>♡</i>
-            </div>
-          </section>
-        </aside>}
-      </section>
+        <ChatWorkspace
+          showCharacterRail={showCharacterRail}
+          showContextRail={showContextRail}
+          themeVariables={themeVariables}
+          characters={characters}
+          selected={selected}
+          portraitUrl={portraitUrl}
+          openSceneLibrary={openSceneLibrary}
+          Portrait={Portrait}
+          activeScene={activeScene}
+          activeSession={activeSession}
+          storyBackgroundBlur={storyBackgroundBlur}
+          setShowCharacterRail={setShowCharacterRail}
+          setShowContextRail={setShowContextRail}
+          toggleAutopilot={toggleAutopilot}
+          setStoryBackgroundBlur={setStoryBackgroundBlur}
+          setShowPersonaModal={setShowPersonaModal}
+          sessionPersonaName={sessionPersonaName}
+          sessionUsesDefaultPersona={sessionUsesDefaultPersona}
+          setShowShare={setShowShare}
+          activeMessages={activeMessages}
+          isReplying={isReplying}
+          chatError={chatError}
+          configured={configured}
+          setView={setView}
+          setChatError={setChatError}
+          autopilotControlsCollapsed={autopilotControlsCollapsed}
+          setAutopilotControlsCollapsed={setAutopilotControlsCollapsed}
+          autopilotBusy={autopilotBusy}
+          toggleAutopilotPause={toggleAutopilotPause}
+          requestNextAutopilotBeat={requestNextAutopilotBeat}
+          stopAutopilot={stopAutopilot}
+          draft={draft}
+          setDraft={setDraft}
+          sendMessage={sendMessage}
+          mode={mode}
+          setMode={setMode}
+          impersonatePlayer={impersonatePlayer}
+          skipTurn={skipTurn}
+          stopGeneration={stopGeneration}
+          isImpersonating={isImpersonating}
+          activePlayerName={activePlayerName}
+          livingCastEnabled={livingCastConfig.enabled}
+          livingCastConfig={livingCastConfig}
+          panelOrder={panelOrder}
+          panelVisibility={panelVisibility}
+          onPanelOrderChange={setPanelOrder}
+          onPanelVisibilityChange={setPanelVisibility}
+          onInviteCharacter={() => setShowInvitePicker(true)}
+          onRemoveCharacter={(characterId: string) => {
+            if (!activeSession) return;
+            const updatedCast = removeInvitedCharacter(activeSession.livingCast ?? [], characterId);
+            setSessions((current) => current.map((s) => s.id === activeSession.id ? ({ ...s, livingCast: updatedCast as LivingCastEntry[], livingCastRoundRobinIndex: undefined } as StorySession) : s));
+          }}
+          onConfigureLivingCast={() => setShowLivingCastConfig(true)}
+          activeContextManifest={activeContextManifest}
+          connected={connected}
+          providerState={providerState}
+          providerLabel={providerLabel}
+          storyProvider={storyProvider}
+          activeModel={activeModel}
+          activeReplyLength={activeReplyLength}
+          deriveRelationshipLabel={deriveRelationshipLabel}
+          relationshipScore={relationshipScore}
+          relationshipDelta={relationshipDelta}
+          relationshipContextEnabled={relationshipContextEnabled}
+          setRelationshipContextEnabled={setRelationshipContextEnabled}
+          relationshipNote={relationshipNote}
+          setRelationshipNote={updateRelationshipNote}
+          autopilotError={autopilotError}
+          textStyle={textStyle}
+          editingId={editingId}
+          editDraft={editDraft}
+          setEditDraft={setEditDraft}
+          saveEditMessage={saveEditMessage}
+          cancelEditMessage={cancelEditMessage}
+          messageVersions={messageVersions}
+          activeMessageKey={activeMessageKey}
+          seenMessageIds={seenMessageIds}
+          setMessageActivePage={setMessageActivePage}
+          copyFeedbackId={copyFeedbackId}
+          setCopyFeedbackId={setCopyFeedbackId}
+          startEditMessage={startEditMessage}
+          setPendingDeleteMessage={setPendingDeleteMessage}
+          setDirectionEditor={setDirectionEditor}
+          directionEditor={directionEditor}
+          clearMessageDirection={clearMessageDirection}
+          rerunImpersonation={rerunImpersonation}
+          rerollMessage={rerollMessage}
+          activeTheme={activeTheme}
+          pendingDeleteMessage={pendingDeleteMessage}
+          deleteMessage={deleteMessage}
+          shareCount={shareCount}
+          setShareCount={setShareCount}
+          shareCaptions={shareCaptions}
+          setShareCaptions={setShareCaptions}
+          shareHeader={shareHeader}
+          setShareHeader={setShareHeader}
+          shareBusy={shareBusy}
+          setShareBusy={setShareBusy}
+          shareFeedback={shareFeedback}
+          setShareFeedback={setShareFeedback}
+          shareError={shareError}
+          setShareError={setShareError}
+          copyChatImage={copyChatImage}
+          downloadChatImageFromButton={downloadChatImageFromButton}
+          showPersonaModal={showPersonaModal}
+          showContextWorkspace={showContextWorkspace}
+          setShowContextWorkspace={setShowContextWorkspace}
+          personas={personas}
+          applySessionPersona={applySessionPersona}
+          sessionPersonaSnapshot={sessionPersonaSnapshot}
+          updateActiveSessionPersona={updateActiveSessionPersona}
+          playerProfile={playerProfile}
+          clearActiveSessionPersona={clearActiveSessionPersona}
+          contextLibrary={contextLibrary}
+          setContextLibrary={setContextLibrary}
+          createContextEntry={createContextEntry}
+          updateContextEntry={updateContextEntry}
+          deleteContextEntry={deleteContextEntry}
+          addLorebook={addLorebook}
+          removeLorebook={removeLorebook}
+          updateLorebook={updateLorebook}
+          importContextFile={importContextFile}
+        />
       )}
 
-      {pendingDeleteMessage && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onMouseDown={() => setPendingDeleteMessage(null)}
-        >
-          <section
-            className="modal delete-message-modal"
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="delete-message-title"
-            aria-describedby="delete-message-description"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <button
-              className="modal-close"
-              onClick={() => setPendingDeleteMessage(null)}
-              aria-label="Cancel deletion"
-            >
-              ×
-            </button>
-            <p className="eyebrow">Edit conversation</p>
-            <h2 id="delete-message-title">How much should be deleted?</h2>
-            <p className="modal-intro" id="delete-message-description">
-              You can remove only this message, or rewind the story by removing it and
-              every message that follows.
-            </p>
-            <blockquote>
-              {pendingDeleteMessage.text.replace(/\s+/g, " ").slice(0, 180)}
-            </blockquote>
-            <div className="delete-message-actions">
-              <button className="delete-single-button" onClick={() => deleteMessage("single")}>
-                Delete only this message
-              </button>
-              <button className="delete-following-button" onClick={() => deleteMessage("following")}>
-                Delete this and later messages
-              </button>
-              <button className="outline-button" onClick={() => setPendingDeleteMessage(null)}>
-                Cancel
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
 
-      {directionEditor && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onMouseDown={() => setDirectionEditor(null)}
-        >
-          <section
-            className="modal direction-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="direction-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <button
-              className="modal-close"
-              onClick={() => setDirectionEditor(null)}
-              aria-label="Close direction editor"
-            >
-              ×
-            </button>
-            <p className="eyebrow">Player&apos;s turn</p>
-            <h2 id="direction-title">Impersonation direction</h2>
-            <p className="modal-intro">
-              The direction remembered for this turn. Edit it and re-run to regenerate the
-              player&apos;s draft from that prompt — or clear it to keep only the text.
-            </p>
-            <textarea
-              className="direction-editor-textarea"
-              value={directionEditor.text}
-              onChange={(event) =>
-                setDirectionEditor((current) =>
-                  current ? { ...current, text: event.target.value } : current,
-                )
-              }
-              rows={5}
-              autoFocus
-              placeholder="The prompt used to guide the impersonation…"
-            />
-            <div className="direction-actions">
-              <button
-                className="outline-button"
-                onClick={() => setDirectionEditor(null)}
-                disabled={isReplying || isImpersonating}
-              >
-                Cancel
-              </button>
-              <button
-                className="outline-button"
-                onClick={() => clearMessageDirection(directionEditor.id)}
-                disabled={isReplying || isImpersonating}
-              >
-                Clear direction
-              </button>
-              <button
-                className="primary-button"
-                onClick={() => rerunImpersonation(directionEditor.id, directionEditor.text)}
-                disabled={isReplying || isImpersonating}
-              >
-                {isImpersonating ? "Generating…" : "Save &amp; re-run"}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
 
-      {showAutopilotStart && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setShowAutopilotStart(false)}>
-          <section
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="autopilot-start-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <button className="modal-close" onClick={() => setShowAutopilotStart(false)} aria-label="Close">
-              ×
-            </button>
-            <p className="eyebrow">Whisper Mode</p>
-            <h2 id="autopilot-start-title">Where does the story begin?</h2>
-            <p className="modal-intro">
-              Set the opening for {selected.name}&apos;s own story — where they are, what is
-              happening, who you are to them. They will take it from there, living beat by beat.
-            </p>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                beginAutopilot();
-              }}
-            >
-              <fieldset className="autopilot-pov">
-                <legend>Mode</legend>
-                <div className="autopilot-pov-options">
-                  <button
-                    type="button"
-                    className={autopilotPov === "first" ? "active" : ""}
-                    onClick={() => setAutopilotPov("first")}
-                  >
-                    First person
-                  </button>
-                  <button
-                    type="button"
-                    className={autopilotPov === "third" ? "active" : ""}
-                    onClick={() => setAutopilotPov("third")}
-                  >
-                    Third person
-                  </button>
-                  <button
-                    type="button"
-                    className={autopilotPov === "narrator" ? "active" : ""}
-                    onClick={() => setAutopilotPov("narrator")}
-                  >
-                    Narrative telling
-                  </button>
-                </div>
-                <small>
-                  {autopilotPov === "first" && "Written from the character's own voice using I/my."}
-                  {autopilotPov === "third" && "Close third-person limited to the character (she/he)."}
-                  {autopilotPov === "narrator" && "A storytelling voice free to move between characters and scenes."}
-                </small>
-              </fieldset>
-              <label>
-                Opening prompt <small>Optional</small>
-                <textarea
-                  value={autopilotSeed}
-                  onChange={(event) => setAutopilotSeed(event.target.value)}
-                  rows={5}
-                  placeholder={`For example: It is past midnight and ${selected.name} is alone in the greenhouse while rain taps the glass.`}
-                  autoFocus
-                />
-              </label>
-              <p className="modal-intro">
-                Leave it blank and {selected.name} will open the story on their own.
-              </p>
-              <div className="impersonate-actions">
-                <button
-                  type="button"
-                  className="outline-button"
-                  onClick={() => setShowAutopilotStart(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="primary-button">
-                  Begin Whisper Mode
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
-      )}
 
-      {isCreating && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setIsCreating(false)}>
-          <section
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="create-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <button className="modal-close" onClick={() => setIsCreating(false)} aria-label="Close">
-              ×
-            </button>
-            <p className="eyebrow">Awaken someone new</p>
-            <h2 id="create-title">Create a character</h2>
-            <p className="modal-intro">
-              Give them a name and a place in your world. You can deepen their lore as you talk.
-            </p>
-            <label className="import-card">
-              <span>
-                Already have a character?
-                <small>Import a NovelAI or V2 character-card JSON.</small>
-              </span>
-              <input type="file" accept=".json,application/json" onChange={importCharacterCard} />
-            </label>
-            {importError && <p className="form-error">{importError}</p>}
-            <div className="modal-divider">
-              <span>or create one here</span>
-            </div>
-            <form onSubmit={createCharacter}>
-              <label>
-                Name
-                <input name="name" required placeholder="Who are they?" autoFocus />
-              </label>
-              <label>
-                Role in your story
-                <input name="role" required placeholder="Girlfriend, rival, guardian…" />
-              </label>
-              <label>
-                First spark
-                <textarea
-                  name="spark"
-                  rows={3}
-                  placeholder="A secret, a desire, or the moment you first meet…"
-                />
-              </label>
-              <button className="primary-button" type="submit">
-                Awaken character
-              </button>
-            </form>
-          </section>
-        </div>
-      )}
 
-      {editingCharacter && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onMouseDown={() => setEditingCharacter(null)}
-        >
-          <section
-            className="modal character-edit-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="character-edit-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <button className="modal-close" onClick={() => setEditingCharacter(null)} aria-label="Close">
-              ×
-            </button>
-            <p className="eyebrow">Shape them further</p>
-            <h2 id="character-edit-title">Edit {editingCharacter.name}</h2>
-            <p className="modal-intro">
-              Tweak how {editingCharacter.name} appears, speaks, and opens a scene. Changes apply to
-              every future chat with them.
-            </p>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                const form = new FormData(event.currentTarget);
-                updateCharacter(editingCharacter.id, {
-                  name: String(form.get("name") || editingCharacter.name).trim(),
-                  role: String(form.get("role") || editingCharacter.role).trim(),
-                  status: String(form.get("status") || editingCharacter.status).trim(),
-                  scene: String(form.get("scene") || editingCharacter.scene).trim(),
-                  weather: String(form.get("weather") || editingCharacter.weather).trim(),
-                  profile: String(form.get("profile") || editingCharacter.profile).trim(),
-                  reply: String(form.get("reply") || editingCharacter.reply).trim(),
-                  accent: String(form.get("accent") || editingCharacter.accent).trim(),
-                  image: String(form.get("portrait") || "").trim(),
-                  sceneImage: String(form.get("sceneImage") || "").trim(),
-                  portraitFocalPoint: String(form.get("portraitFocalPoint") || "center").trim(),
-                  backgroundFocalPoint: String(form.get("sceneFocalPoint") || "center").trim(),
-                  relationship: String(form.get("relationship") || editingCharacter.relationship || "").trim() || undefined,
-                  ageCategory: (String(form.get("ageCategory") || "") as AgeCategory) || undefined,
-                  memories: String(form.get("memories") || editingCharacter.memories.join("\n"))
-                    .split("\n")
-                    .map((item) => item.trim())
-                    .filter(Boolean),
-                });
-              }}
-            >
-              <label>
-                Name
-                <input name="name" defaultValue={editingCharacter.name} required />
-              </label>
-              <label>
-                Role in your story
-                <input name="role" defaultValue={editingCharacter.role} required />
-              </label>
-              <label>
-                Status
-                <input name="status" defaultValue={editingCharacter.status} placeholder="How they seem right now" />
-              </label>
-              <label>
-                Scene / place
-                <input name="scene" defaultValue={editingCharacter.scene} placeholder="Where their story lives" />
-              </label>
-              <label>
-                Weather / atmosphere
-                <input name="weather" defaultValue={editingCharacter.weather} placeholder="A detail of the air" />
-              </label>
-              <label>
-                Profile &amp; personality
-                <textarea
-                  name="profile"
-                  rows={5}
-                  defaultValue={editingCharacter.profile}
-                  placeholder="Who they are, how they look, what they care about…"
-                />
-              </label>
-              <label>
-                Opening message
-                <textarea
-                  name="reply"
-                  rows={3}
-                  defaultValue={editingCharacter.reply}
-                  placeholder="How they greet you"
-                />
-              </label>
-              <label>
-                Memories (one per line)
-                <textarea
-                  name="memories"
-                  rows={4}
-                  defaultValue={editingCharacter.memories.join("\n")}
-                  placeholder="Shared history, one memory per line"
-                />
-              </label>
-              <label>
-                Accent color
-                <input type="color" name="accent" defaultValue={editingCharacter.accent || "#d78a5e"} />
-              </label>
-              <label>
-                Portrait image URL
-                <input name="portrait" defaultValue={editingCharacter.image} placeholder="https://…/portrait.png" />
-              </label>
-              <label>
-                Portrait focal point
-                <input name="portraitFocalPoint" defaultValue={editingCharacter.portraitFocalPoint ?? "center"} placeholder="e.g. center, 20% 80%" />
-              </label>
-              <label>
-                Scene image URL
-                <input name="sceneImage" defaultValue={editingCharacter.sceneImage} placeholder="https://…/scene.png" />
-              </label>
-              <label>
-                Scene focal point
-                <input name="sceneFocalPoint" defaultValue={editingCharacter.backgroundFocalPoint ?? "center"} placeholder="e.g. center, 70% 30%" />
-              </label>
-              <label>
-                Relationship to you
-                <input name="relationship" defaultValue={editingCharacter.relationship ?? ""} placeholder="Friend, rival, mentor…" />
-              </label>
-              <label>
-                Age category
-                <select
-                  name="ageCategory"
-                  defaultValue={editingCharacter.ageCategory ? String(editingCharacter.ageCategory) : ""}
-                >
-                  <option value="">Unspecified / not relevant to story</option>
-                  <option value="adult">Adult</option>
-                  <option value="minor">Minor</option>
-                </select>
-              </label>
-              <div className="character-edit-actions">
-                <button
-                  className="outline-button character-delete"
-                  type="button"
-                  onClick={() => setConfirmDeleteCharacter(editingCharacter)}
-                >
-                  Delete character
-                </button>
-                <button
-                  className="text-button"
-                  type="button"
-                  onClick={() => exportSingleCharacter(editingCharacter)}
-                >
-                  Export this character
-                </button>
-                <button className="primary-button" type="submit">
-                  Save changes
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
-      )}
 
-      {confirmDeleteCharacter && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onMouseDown={() => setConfirmDeleteCharacter(null)}
-        >
-          <section
-            className="modal character-delete-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="character-delete-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <button
-              className="modal-close"
-              onClick={() => setConfirmDeleteCharacter(null)}
-              aria-label="Close"
-            >
-              ×
-            </button>
-            <p className="eyebrow">Remove them for good</p>
-            <h2 id="character-delete-title">Delete {confirmDeleteCharacter.name}?</h2>
-            <p className="modal-intro">
-              This removes {confirmDeleteCharacter.name}, their stories, and their saved
-              conversations from this browser. This cannot be undone.
-            </p>
-            <div className="character-edit-actions">
-              <button className="outline-button" type="button" onClick={() => setConfirmDeleteCharacter(null)}>
-                Cancel
-              </button>
-              <button
-                className="primary-button character-delete"
-                type="button"
-                onClick={() => deleteCharacter(confirmDeleteCharacter)}
-              >
-                Delete character
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
+
 
       {pendingPersonaStart && (
         <PersonaPicker
@@ -6545,191 +6231,19 @@ export default function DreamboundApp() {
         />
       )}
 
-      {showShare && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setShowShare(false)}>
-          <section
-            className="modal share-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="share-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <button className="modal-close" onClick={() => setShowShare(false)} aria-label="Close">
-              ×
-            </button>
-            <p className="eyebrow">Share the story</p>
-            <h2 id="share-title">Save a scene as an image</h2>
-            <p className="modal-intro">
-              Render the latest moments into a crisp image you can paste straight into Discord.
-              Open the image to zoom in and read every line.
-            </p>
-            <div className="share-options">
-              <label>
-                Messages to include
-                <input
-                  type="number"
-                  min={1}
-                  max={Math.max(1, activeMessages.length)}
-                  value={shareCount}
-                  onChange={(event) =>
-                    setShareCount(Math.max(1, Math.min(Number(event.target.value) || 1, Math.max(1, activeMessages.length))))
-                  }
-                />
-              </label>
-              <label className="share-toggle">
-                <input
-                  type="checkbox"
-                  checked={shareCaptions}
-                  onChange={(event) => setShareCaptions(event.target.checked)}
-                />
-                <span>Name captions on bubbles</span>
-              </label>
-              <label className="share-toggle">
-                <input
-                  type="checkbox"
-                  checked={shareHeader}
-                  onChange={(event) => setShareHeader(event.target.checked)}
-                />
-                <span>Scene header</span>
-              </label>
-            </div>
-            {shareError && <p className="share-error">{shareError}</p>}
-            <div className="share-actions">
-              <button
-                className="primary-button"
-                onClick={copyChatImage}
-                disabled={shareBusy || activeMessages.length === 0}
-              >
-                {shareBusy ? "Rendering…" : shareFeedback || "Copy image"}
-              </button>
-              <button
-                className="outline-button"
-                onClick={downloadChatImageFromButton}
-                disabled={shareBusy || activeMessages.length === 0}
-              >
-                Download PNG
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
-
-      {showPersonaModal && activeSession && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onMouseDown={() => setShowPersonaModal(false)}
-        >
-          <section
-            className="modal persona-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="persona-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <button className="modal-close" onClick={() => setShowPersonaModal(false)} aria-label="Close">
-              ×
-            </button>
-            <p className="eyebrow">This conversation&apos;s persona</p>
-            <h2 id="persona-title">How do you appear here?</h2>
-            <p className="modal-intro">
-              These fields apply only to this conversation with {selected.name}. You can pick from
-              your saved personas — this story keeps its own snapshot, so changing the library later
-              will not rewrite who you are here.
-            </p>
-
-            <div className="persona-session-picker">
-              {personas.length === 0 ? (
-                <p className="persona-library-empty">
-                  No saved personas yet. Add some in Settings, or write a custom one below.
-                </p>
-              ) : (
-                <ul className="persona-list">
-                  {personas.map((persona) => {
-                    const inUse = activeSession.playerPersonaId === persona.id;
-                    return (
-                      <li className="persona-card" key={persona.id}>
-                        <span className="persona-avatar" aria-hidden="true">
-                          {persona.name.trim().charAt(0).toUpperCase() || "P"}
-                        </span>
-                        <div className="persona-card-copy">
-                          <strong>{persona.name}</strong>
-                          <small>{persona.pronouns ?? "no pronouns set"}</small>
-                          <p>{persona.description || "No description yet."}</p>
-                        </div>
-                        <div className="persona-card-actions">
-                          <button
-                            className="text-button"
-                            type="button"
-                            onClick={() => applySessionPersona(persona)}
-                          >
-                            {inUse ? "In use" : "Use for this story"}
-                          </button>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-
-            {activeSession && (
-              <div className="persona-active-preview">
-                <strong>Snapshot used by this story</strong>
-                <pre>{sessionPersonaSnapshot || "No persona set — using your default."}</pre>
-              </div>
-            )}
-
-            {(!sessionUsesDefaultPersona) && (
-              <p className="persona-change-warning">
-                Changing persona during an existing story may make earlier messages inconsistent.
-              </p>
-            )}
-
-            <div className="persona-fields">
-              <label>
-                Player name
-                <input
-                  value={activeSession.playerName ?? ""}
-                  onChange={(event) => updateActiveSessionPersona({ playerName: event.target.value })}
-                  placeholder={
-                    playerProfile.name.trim()
-                      ? `Blank = default (${playerProfile.name.trim()})`
-                      : "Leave blank to stay unnamed in the story"
-                  }
-                  maxLength={100}
-                />
-              </label>
-              <label>
-                Persona
-                <textarea
-                  value={activeSession.playerPersona ?? ""}
-                  onChange={(event) => updateActiveSessionPersona({ playerPersona: event.target.value })}
-                  placeholder={
-                    playerProfile.persona.trim()
-                      ? "Blank = your default persona"
-                      : "Describe how you want to be seen in this story—appearance, nature, history. Leave blank if you prefer to improvise."
-                  }
-                  rows={4}
-                  maxLength={2000}
-                />
-              </label>
-            </div>
-            <p className="persona-default-note">
-              Default persona for all chats: <strong>{playerProfile.name.trim() || "No name"}</strong>
-              {playerProfile.persona.trim() ? " — " + playerProfile.persona.trim() : " — no persona set"}
-            </p>
-            <div className="share-actions">
-              <button
-                className="outline-button"
-                onClick={clearActiveSessionPersona}
-                disabled={sessionUsesDefaultPersona}
-              >
-                Use default persona
-              </button>
-            </div>
-          </section>
-        </div>
+      {showInvitePicker && activeSession && (
+        <CharacterInvitePicker
+          characters={characters.map((c) => ({ id: c.id, name: c.name, role: c.role, image: portraitUrl(c) }))}
+          invitedIds={activeSession.livingCast?.map((e) => e.id) ?? []}
+          onInvite={(characterId: string) => {
+            const character = characters.find((c) => c.id === characterId);
+            if (!character || !activeSession) return;
+            const updatedCast = inviteCharacter(activeSession.livingCast ?? [], characterId, character.name);
+            setSessions((current) => current.map((s) => s.id === activeSession.id ? { ...s, livingCast: updatedCast as LivingCastEntry[] } : s));
+            setShowInvitePicker(false);
+          }}
+          onCancel={() => setShowInvitePicker(false)}
+        />
       )}
 
     </main>

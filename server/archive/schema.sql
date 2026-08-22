@@ -59,3 +59,17 @@ CREATE TABLE IF NOT EXISTS reports (
 
 CREATE INDEX IF NOT EXISTS reports_publication_idx ON reports(publication_id);
 CREATE INDEX IF NOT EXISTS reports_status_idx ON reports(status);
+
+CREATE TABLE IF NOT EXISTS user_backups (
+  id         text PRIMARY KEY,
+  user_id    text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  format     text NOT NULL DEFAULT 'howling-whispers-backup',
+  version    int  NOT NULL DEFAULT 1,
+  device     text NOT NULL DEFAULT '',
+  source     text NOT NULL DEFAULT 'web',
+  size_bytes bigint NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  payload    bytea NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS user_backups_user_idx ON user_backups(user_id, created_at);

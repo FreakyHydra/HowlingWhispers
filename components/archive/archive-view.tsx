@@ -27,6 +27,9 @@ export type ArchiveCharacter = {
 type Props = {
   characters: ArchiveCharacter[];
   onImport: (publication: ArchivePublication) => void;
+  /** Optional lifted auth state so the parent can react to sign-in (e.g. server backups). */
+  externalUser?: ArchiveUser | null;
+  onExternalUserChange?: (user: ArchiveUser | null) => void;
 };
 
 const REPORT_CATEGORIES = [
@@ -52,11 +55,25 @@ const RATING_LABEL: Record<string, string> = {
 
 type Toast = { kind: "ok" | "err"; text: string } | null;
 
-export default function ArchiveView({ characters, onImport }: Props) {
+export default function ArchiveView({
+  characters,
+  onImport,
+  externalUser,
+  onExternalUserChange,
+}: Props) {
   const [tab, setTab] = useState<"browse" | "mine" | "account" | "review">("browse");
-  const [user, setUser] = useState<ArchiveUser | null>(null);
+  const [localUser, setLocalUser] = useState<ArchiveUser | null>(null);
   const [userLoading, setUserLoading] = useState(true);
   const [toast, setToast] = useState<Toast>(null);
+
+  const user = externalUser !== undefined ? externalUser : localUser;
+  const commitUser = useCallback(
+    (next: ArchiveUser | null) => {
+      setLocalUser(next);
+      if (onExternalUserChange) onExternalUserChange(next);
+    },
+    [onExternalUserChange],
+  );
 
   const showToast = useCallback((kind: "ok" | "err", text: string) => {
     setToast({ kind, text });
@@ -69,20 +86,20 @@ export default function ArchiveView({ characters, onImport }: Props) {
       .me()
       .then(({ user }) => {
         if (active) {
-          setUser(user);
+          commitUser(user);
           setUserLoading(false);
         }
       })
       .catch(() => {
         if (active) {
-          setUser(null);
+          commitUser(null);
           setUserLoading(false);
         }
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [commitUser]);
 
   return (
     <section className="archive-page" aria-label="The Whispering Archive">
@@ -152,7 +169,7 @@ export default function ArchiveView({ characters, onImport }: Props) {
       {tab === "account" && (
         <AccountPanel
           user={user}
-          setUser={setUser}
+          setUser={commitUser}
           onError={showToast}
           onOk={showToast}
         />

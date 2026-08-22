@@ -40,6 +40,20 @@ export type SearchResult = {
   owner?: string | null;
 };
 
+export type ServerBackupSummary = {
+  id: string;
+  format: string;
+  version: number;
+  device: string;
+  source: string;
+  size_bytes: number;
+  created_at: string;
+};
+
+export type ServerBackupDetail = ServerBackupSummary & {
+  payload: unknown;
+};
+
 export type PublishInput = {
   name: string;
   role?: string;
@@ -102,6 +116,17 @@ export const archive = {
       body: JSON.stringify({ username, password }),
     }),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+
+  backups: {
+    list: () => request<{ backups: ServerBackupSummary[] }>("/backup"),
+    create: (input: { payload: unknown; device?: string; source?: string }) =>
+      request<{ backup: ServerBackupSummary }>("/backup", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    get: (id: string) => request<{ backup: ServerBackupDetail }>(`/backup/${id}`),
+    remove: (id: string) => request<{ ok: boolean }>(`/backup/${id}`, { method: "DELETE" }),
+  },
 
   publish: (input: PublishInput) =>
     request<{ publication: ArchivePublication }>("/publish", {

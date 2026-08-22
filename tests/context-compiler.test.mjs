@@ -193,8 +193,44 @@ test("impersonation receives authoritative character safety", () => {
   assert.match(result.prompt, /Never write the character's turn/);
   assert.match(result.prompt, /PLAYER VOICE RULE/);
   assert.match(result.prompt, /first-person point of view/);
-  assert.match(result.prompt, /out-of-character road sign/);
+  assert.doesNotMatch(result.prompt, /out-of-character road sign/);
   assert.match(result.prompt, /The player is Player/);
+});
+
+test("impersonation prompt drives the private direction as mandatory control input", () => {
+  const result = compile(adultCharacter(), {
+    kind: "impersonation",
+    playerName: "Kael",
+    playerDirection: "Get angry and say exactly: Trust me and let it happen.",
+    messages: [{ sender: "character", text: "The rain will pass." }],
+  });
+  assert.match(result.prompt, /PRIVATE DIRECTION PRIORITY/);
+  assert.match(result.prompt, /private player direction is mandatory control input/);
+  assert.match(result.prompt, /Do not soften, omit, replace, moralize, reinterpret, or summarize/);
+  assert.match(result.prompt, /temporary emotion, tone, or attitude.*not a permanent personality change/);
+  assert.match(result.prompt, /preserve them verbatim except for capitalization, punctuation, and required roleplay formatting/);
+  assert.match(result.prompt, /do not pad the turn or invent additional decisions/);
+  assert.match(result.prompt, /depth of the selected length mode/);
+  assert.match(result.prompt, /Get angry and say exactly: Trust me and let it happen\./);
+  assert.doesNotMatch(result.prompt, /out-of-character road sign/);
+  assert.doesNotMatch(result.prompt, /same depth, pacing, sensory detail, and length/);
+  assert.doesNotMatch(result.prompt, /Never compress the turn to a single line/);
+  assert.doesNotMatch(result.prompt, /normal character reply/);
+  assert.match(result.prompt, /The player is Kael/);
+});
+
+test("impersonation compiles a blank conversation: no prior messages required", () => {
+  const result = compile(adultCharacter(), {
+    kind: "impersonation",
+    playerName: "Kael",
+    playerDirection: "",
+    messages: [],
+  });
+  assert.equal(result.manifest.kind, "impersonation");
+  assert.equal(result.manifest.omittedMessages, 0);
+  assert.match(result.prompt, /No conversation yet/);
+  assert.match(result.prompt, /The complete player turn begins now:/);
+  assert.match(result.prompt, /The player is Kael/);
 });
 
 test("autopilot compiles the autonomy law without handover cues", () => {
@@ -297,6 +333,38 @@ test("NovelAI roleplay serializes conversation with ChatML markers", () => {
   assert.ok(result.prompt.trimEnd().endsWith("Peony:"));
 });
 
+test("reroll compilation asks for a fresh alternative and keeps canon, safety, and length", () => {
+  const result = compile(adultCharacter(), {
+    kind: "roleplay",
+    reroll: true,
+    lengthInstruction: "Write a substantial response.",
+    messages: [
+      { sender: "character", text: "The storm drove the lanterns out." },
+      { sender: "player", text: "Then we walk in the dark." },
+    ],
+  });
+  assert.match(result.prompt, /This turn is a reroll: generate a fresh alternative response/);
+  assert.match(result.prompt, /meaningfully different combination of wording, dialogue, action, emotional emphasis, pacing, or approach/);
+  assert.match(result.prompt, /Do not paraphrase or lightly rewrite the previous response\./);
+  assert.match(result.prompt, /Preserve established facts, character identity, safety boundaries, relationship state, and scene continuity\./);
+  assert.match(result.prompt, /Write a substantial response\./);
+  assert.match(result.prompt, /Safety policy: This character is confirmed to be an adult/);
+  assert.match(result.prompt, /Peony is observant/);
+});
+
+test("reroll prompt does not contain the replaced response when it is excluded from history", () => {
+  const result = compile(adultCharacter(), {
+    kind: "roleplay",
+    reroll: true,
+    messages: [
+      { sender: "character", text: "The storm arrived." },
+      { sender: "player", text: "Then we hold together." },
+    ],
+  });
+  assert.doesNotMatch(result.prompt, /The old storm reply that must never replay/);
+  assert.match(result.prompt, /Then we hold together\./);
+});
+
 test("NovelAI impersonation targets the player user turn", () => {
   const result = compile(adultCharacter(), {
     provider: "novelai",
@@ -330,4 +398,358 @@ test("NovelAI autopilot with no history still opens the assistant turn", () => {
   assert.doesNotMatch(result.prompt, /No conversation yet\./);
   assert.ok(result.prompt.trimEnd().endsWith("Peony:"));
   assert.match(result.prompt, /AUTOPILOT LAW/);
+});
+
+test("a living cast renders a compact ACTIVE CAST and PENDING INTERACTION block", () => {
+  const result = compile(adultCharacter(), {
+    provider: "local",
+    cast: [
+      { id: "peony", name: "Peony", origin: "permanent", presence: "active", primary: true, addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+      { id: "melody", name: "Melody", origin: "temporary", presence: "active", addedAt: 1, updatedAt: 1, notes: ["the player arrived with Melody"], relationships: [] },
+    ],
+    messages: [
+      { sender: "character", text: "Melody, what do you think of the greenhouse?" },
+      { sender: "player", text: "*I wait.*" },
+    ],
+  });
+  assert.match(result.prompt, /<living-cast>\n\[ACTIVE CAST\]/);
+  assert.match(result.prompt, /- Peony — Permanent — Active — Primary/);
+  assert.match(result.prompt, /- Melody — Temporary — Active — the player arrived with Melody/);
+  assert.match(result.prompt, /\[PENDING INTERACTION\]\nPeony asked Melody a question\. Melody has not responded\./);
+  assert.match(result.prompt, /Continue directly as Peony:$/);
+});
+
+test("a cast speaker writes the turn as that member and labels prior side messages", () => {
+  const result = compile(adultCharacter(), {
+    provider: "novelai",
+    model: "glm-4-6",
+    cast: [
+      { id: "peony", name: "Peony", origin: "permanent", presence: "active", primary: true, addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+      { id: "melody", name: "Melody", origin: "temporary", presence: "active", addedAt: 1, updatedAt: 1, notes: ["short answers"], relationships: [] },
+    ],
+    speaker: "Melody",
+    messages: [
+      { sender: "character", text: "*Melody shrugs.* Maybe the rain is enough.", speaker: "Melody" },
+      { sender: "character", text: "Melody, what do you think?" },
+      { sender: "player", text: "*I wait.*" },
+    ],
+  });
+  assert.match(result.prompt, /This turn you speak as Melody/);
+  assert.match(result.prompt, /<\|assistant\|>\n<think><\/think>\nMelody: \*Melody shrugs\.\*/);
+  assert.match(result.prompt, /<\|assistant\|>\n<think><\/think>\nPeony: Melody, what do you think\?/);
+  assert.match(result.prompt, /<\|assistant\|>\n<think><\/think>\nMelody:$/);
+  assert.doesNotMatch(result.prompt, /\[PENDING INTERACTION\].*\nMelody has not responded\./);
+});
+
+test("an autonomous cast renders NPC subtext and observable residue near the living cast block", () => {
+  const result = compile(adultCharacter(), {
+    provider: "novelai",
+    model: "glm-4-6",
+    cast: [
+      { id: "peony", name: "Peony", origin: "permanent", presence: "active", primary: true, addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+      { id: "melody", name: "Melody", origin: "temporary", presence: "active", addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+    ],
+    autonomy: [{
+      id: "rc:melody",
+      name: "Melody",
+      drive: {
+        goal: "leave the greenhouse before nightfall",
+        intent: "find an excuse to step outside",
+        wants: ["the ledger"],
+        fears: ["being followed"],
+        concerns: ["an unspoken warning"],
+        needs: { hunger: 0.8, fatigue: 0.1, comfort: 0.2, social: 0.9, curiosity: 0.5 },
+      },
+      revisions: [{ internal: ["Melody intends to leave"], observable: ["keeps glancing toward the way out"] }],
+      updatedAt: 2,
+    }],
+    messages: [
+      { sender: "character", text: "Melody, what do you think of the dying light?" },
+      { sender: "player", text: "*I wait.*" },
+    ],
+  });
+  assert.match(result.prompt, /<autonomy>\n\[NPC SUBTEXT: Melody\]/);
+  assert.match(result.prompt, /Goal: leave the greenhouse before nightfall/);
+  assert.match(result.prompt, /Fears: being followed/);
+  assert.match(result.prompt, /Pressed needs: hunger, social/);
+  assert.match(result.prompt, /\[OBSERVABLE\] Melody — Melody keeps glancing toward the way out/);
+  assert.doesNotMatch(result.prompt, /\[NPC SUBTEXT: Peony\]/);
+});
+
+test("a side speaker gets the autonomous independence instruction", () => {
+  const result = compile(adultCharacter(), {
+    provider: "novelai",
+    model: "glm-4-6",
+    cast: [
+      { id: "peony", name: "Peony", origin: "permanent", presence: "active", primary: true, addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+      { id: "melody", name: "Melody", origin: "temporary", presence: "active", addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+    ],
+    speaker: "Melody",
+    autonomy: [{
+      id: "rc:melody",
+      name: "Melody",
+      drive: {
+        goal: "slip out of the keep",
+        intent: "",
+        wants: ["her freedom"],
+        fears: ["the warden"],
+        concerns: [],
+        needs: { hunger: 0.7, fatigue: 0, comfort: 0.4, social: 0.2, curiosity: 0.1 },
+      },
+      revisions: [{ internal: ["Melody intends to leave"], observable: ["keeps glancing toward the way out"] }],
+      updatedAt: 2,
+    }],
+    messages: [
+      { sender: "character", text: "Melody, what do you want from tonight?" },
+      { sender: "player", text: "*I wait.*" },
+    ],
+  });
+  assert.match(result.prompt, /you are an independent participant, not a plot device/);
+  assert.match(result.prompt, /you may disagree, hesitate, refuse, conceal what you know, or change your mind/);
+  assert.match(result.prompt, /Melody intends to leave/);
+});
+
+test("roleplay includes authoritative pronoun instruction when pronouns are set", () => {
+  const character = legacyCharacterToCanon({
+    id: "senako-steel",
+    name: "Senako Steel",
+    role: "Guarded friend",
+    profile: "Senako is a twelve-year-old girl.",
+    pronouns: "she/her",
+    ageCategory: "minor",
+    isMinor: true,
+  });
+  const result = compile(character, { kind: "roleplay" });
+  assert.match(result.prompt, /Senako Steel uses she\/her pronouns\./);
+  assert.doesNotMatch(result.prompt, /\bshe\/he\b/);
+});
+
+test("autopilot includes authoritative pronoun instruction when pronouns are set", () => {
+  const character = legacyCharacterToCanon({
+    id: "senako-steel",
+    name: "Senako Steel",
+    role: "Guarded friend",
+    profile: "Senako is a twelve-year-old girl.",
+    pronouns: "she/her",
+    ageCategory: "minor",
+    isMinor: true,
+  });
+  const result = compile(character, { kind: "autopilot", autopilotPov: "third" });
+  assert.match(result.prompt, /Senako Steel uses she\/her pronouns\./);
+  assert.doesNotMatch(result.prompt, /\bshe\/he\b/);
+});
+
+test("impersonation includes authoritative pronoun instruction when pronouns are set", () => {
+  const character = legacyCharacterToCanon({
+    id: "senako-steel",
+    name: "Senako Steel",
+    role: "Guarded friend",
+    profile: "Senako is a twelve-year-old girl.",
+    pronouns: "she/her",
+    ageCategory: "minor",
+    isMinor: true,
+  });
+  const result = compile(character, { kind: "impersonation" });
+  assert.match(result.prompt, /Senako Steel uses she\/her pronouns\./);
+  assert.doesNotMatch(result.prompt, /\bshe\/he\b/);
+});
+
+test("empty pronouns do not add a pronoun instruction line", () => {
+  const character = legacyCharacterToCanon({
+    id: "unknown-ally",
+    name: "Unknown Ally",
+    role: "Mysterious companion",
+    profile: "A companion of unspecified gender.",
+  });
+  const result = compile(character, { kind: "roleplay" });
+  assert.doesNotMatch(result.prompt, /uses pronouns/);
+  assert.doesNotMatch(result.prompt, /she\/he/);
+});
+
+test("they/them pronouns are preserved and not replaced", () => {
+  const character = legacyCharacterToCanon({
+    id: "ally",
+    name: "Ally",
+    role: "Companion",
+    profile: "A companion who uses they/them pronouns.",
+    pronouns: "they/them",
+  });
+  const result = compile(character, { kind: "roleplay" });
+  assert.match(result.prompt, /Ally uses they\/them pronouns\./);
+  assert.doesNotMatch(result.prompt, /she\/he/);
+});
+
+test("relationship context instruction is injected when provided", () => {
+  const instruction = "The current Relationship Status describes how this character relates to the player persona. Treat the persona in a manner consistent with that relationship, while interpreting and expressing it through the character's own personality, traits, history, current mood, boundaries, and circumstances. Relationship Status is context, not a command: it must not force affection, agreement, obedience, intimacy, forgiveness, or any specific behavior.";
+  const result = compile(adultCharacter(), {
+    relationshipContextInstruction: instruction,
+  });
+  assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
+  assert.match(result.prompt, /The current Relationship Status describes how this character relates to the player persona/);
+  assert.match(result.prompt, /Relationship Status is context, not a command/);
+});
+
+test("relationship context instruction is absent when not provided", () => {
+  const result = compile(adultCharacter());
+  assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
+  assert.doesNotMatch(result.prompt, /The current Relationship Status describes how this character relates to the player persona/);
+  assert.doesNotMatch(result.prompt, /Relationship Status is context, not a command/);
+});
+
+test("relationship context instruction is injected in sandbox mode", () => {
+  const instruction = "The current Relationship Status describes how this character relates to the player persona.";
+  const result = compile(adultCharacter(), {
+    relationshipContextInstruction: instruction,
+    sandbox: true,
+  });
+  assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
+  assert.match(result.prompt, /The current Relationship Status describes how this character relates to the player persona/);
+});
+
+test("relationship note is injected when provided", () => {
+  const result = compile(adultCharacter(), {
+    relationshipContextInstruction: "Relationship context instruction.",
+    relationshipNote: "She trusts him deeply but is still angry about what happened yesterday.",
+  });
+  assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
+  assert.match(result.prompt, /Relationship context instruction\./);
+  assert.match(result.prompt, /Relationship note: She trusts him deeply but is still angry about what happened yesterday\./);
+});
+
+test("relationship note is absent when empty", () => {
+  const result = compile(adultCharacter(), {
+    relationshipNote: "",
+  });
+  assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
+  assert.doesNotMatch(result.prompt, /Relationship note:/);
+});
+
+test("relationship note is absent when not provided", () => {
+  const result = compile(adultCharacter());
+  assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
+  assert.doesNotMatch(result.prompt, /Relationship note:/);
+});
+
+test("relationship note is injected in sandbox mode", () => {
+  const result = compile(adultCharacter(), {
+    relationshipNote: "A custom note.",
+    sandbox: true,
+  });
+  assert.match(result.prompt, /Relationship state: Trusted friend; Bond 62\/100/);
+  assert.match(result.prompt, /Relationship note: A custom note\./);
+});
+
+test("prose policy appears exactly once in a roleplay prompt", () => {
+  const result = compile(adultCharacter());
+  const matches = result.prompt.match(/<prose-quality-policy>/g) || [];
+  assert.equal(matches.length, 1);
+});
+
+test("roleplay receives the full prose-quality policy", () => {
+  const result = compile(adultCharacter());
+  assert.match(result.prompt, /<prose-quality-policy>/);
+  assert.match(result.prompt, /Character voice is authoritative/);
+  assert.match(result.prompt, /Do not reduce characters to verbal stereotypes/);
+  assert.match(result.prompt, /homogenize character voices/);
+  assert.doesNotMatch(result.prompt, /<player-voice-policy>/);
+});
+
+test("autopilot receives the full prose-quality policy", () => {
+  const result = compile(adultCharacter(), { kind: "autopilot", messages: [] });
+  assert.match(result.prompt, /<prose-quality-policy>/);
+  assert.match(result.prompt, /Character voice is authoritative/);
+  assert.match(result.prompt, /homogenize character voices/);
+  assert.doesNotMatch(result.prompt, /<player-voice-policy>/);
+});
+
+test("impersonation receives the reduced player-voice policy, not the full policy", () => {
+  const result = compile(adultCharacter(), { kind: "impersonation", playerDirection: "" });
+  assert.match(result.prompt, /<player-voice-policy>/);
+  assert.match(result.prompt, /Preserve the player's established voice/);
+  assert.doesNotMatch(result.prompt, /<prose-quality-policy>/);
+  assert.doesNotMatch(result.prompt, /homogenize character voices/);
+  assert.doesNotMatch(result.prompt, /Do not reduce characters to verbal stereotypes/);
+});
+
+test("character canon appears before the prose policy", () => {
+  const result = compile(adultCharacter());
+  const canonEnd = result.prompt.indexOf("</authoritative-character-canon>");
+  const policyStart = result.prompt.indexOf("<prose-quality-policy>");
+  assert.ok(canonEnd >= 0);
+  assert.ok(policyStart > canonEnd);
+});
+
+test("current-state appears before the prose policy", () => {
+  const result = compile(adultCharacter());
+  const stateEnd = result.prompt.indexOf("</current-state>");
+  const policyStart = result.prompt.indexOf("<prose-quality-policy>");
+  assert.ok(stateEnd >= 0);
+  assert.ok(policyStart > stateEnd);
+});
+
+test("the central policy does not carry model-specific anti-slop phrasing", () => {
+  const result = compile(adultCharacter());
+  assert.doesNotMatch(result.prompt, /GROUNDED PROSE \/ ANTI-SLOP/);
+  assert.doesNotMatch(result.prompt, /silence stretched between them/);
+  assert.doesNotMatch(result.prompt, /her gaze softened/);
+});
+
+test("Xialong-specific anti-slop remains Xialong-only", () => {
+  const local = compile(adultCharacter());
+  assert.doesNotMatch(local.prompt, /GROUNDED PROSE \/ ANTI-SLOP/);
+  assert.doesNotMatch(local.prompt, /silence stretched between them/);
+
+  const xialong = compile(adultCharacter(), { provider: "novelai", model: "xialong-v1" });
+  assert.match(xialong.prompt, /GROUNDED PROSE \/ ANTI-SLOP/);
+  assert.match(xialong.prompt, /silence stretched between them/);
+});
+
+test("the duplicated prose sentence no longer appears", () => {
+  const result = compile(adultCharacter());
+  assert.doesNotMatch(result.prompt, /Avoid filler, summaries, purple prose, stock AI phrases/);
+});
+
+test("character canon and world lore data are not contaminated with prose-policy fields", () => {
+  const canonText = PEONY.sections.map((section) => section.content).join("\n");
+  const worldText = CODA_WORLD_LORE.entries.map((entry) => entry.content).join("\n");
+  assert.doesNotMatch(canonText, /prose-quality-policy|player-voice-policy/);
+  assert.doesNotMatch(worldText, /prose-quality-policy|player-voice-policy/);
+  assert.doesNotMatch(canonText, /Character voice is authoritative/);
+  assert.doesNotMatch(worldText, /homogenize character voices/);
+});
+
+test("location context is injected when location is provided", () => {
+  const location = {
+    id: "loc-test-1",
+    name: "Willowbridge Children's Day Centre",
+    type: "community centre",
+    shortDescription: "A warm, busy place for children.",
+    description: "A bright community centre with indoor and outdoor play areas.",
+    atmosphere: ["lively", "warm"],
+    features: ["climbing frame", "sensory corner", "quiet room"],
+    areas: [{ id: "area-1", name: "Garden", description: "A secure outdoor play space." }],
+    activities: ["arts", "story time", "outdoor play"],
+    occupants: ["children", "staff"],
+    staffRoles: ["playworker", "site manager"],
+    accessibilityFeatures: ["ramp", "accessible toilet"],
+    ageRange: { minimum: 0, maximum: 12 },
+    tags: ["community", "children", "day centre"],
+    source: "custom",
+  };
+  const result = compile(adultCharacter(), {
+    provider: "local",
+    model: "gemma-3-12b",
+    location,
+  });
+  assert.match(result.prompt, /Location: Willowbridge Children's Day Centre/);
+  assert.match(result.prompt, /Type: community centre/);
+  assert.match(result.prompt, /Overview: A warm, busy place for children\./);
+  assert.match(result.prompt, /Atmosphere: lively\. warm/);
+  assert.match(result.prompt, /Features: climbing frame, sensory corner, quiet room/);
+  assert.match(result.prompt, /Areas: Garden \(A secure outdoor play space\.\)/);
+  assert.match(result.prompt, /Activities: arts, story time, outdoor play/);
+  assert.match(result.prompt, /Possible occupants: children, staff/);
+  assert.match(result.prompt, /Accessibility: ramp, accessible toilet/);
+  assert.match(result.prompt, /Age range: 0–12/);
+  assert.match(result.prompt, /Tags: community, children, day centre/);
 });

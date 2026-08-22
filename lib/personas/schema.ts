@@ -1,3 +1,5 @@
+import type { HwCard, HwCardIdentity } from "./hw-card.ts";
+
 export type PlayerPersona = {
   id: string;
   name: string;
@@ -9,6 +11,23 @@ export type PlayerPersona = {
   avatar?: string;
   createdAt: number;
   updatedAt: number;
+  hwCard?: HwCard;
+  identity?: HwCardIdentity;
+  personalityTraits?: string[];
+  emotionalProfile?: Record<string, unknown>;
+  socialBehavior?: Record<string, unknown>;
+  communicationStyle?: Record<string, unknown>;
+  likes?: string[];
+  dislikes?: string[];
+  interests?: string[];
+  habits?: string[];
+  boundaries?: string[];
+  history?: Record<string, unknown>;
+  roleplayGuidance?: string[];
+  memoryPriorities?: string[];
+  tags?: string[];
+  creator?: string;
+  cardVersion?: string;
 };
 
 export const PERSONA_TEXT_LIMIT = 4000;

@@ -7,3 +7,5 @@ The bundled font files are licensed under the SIL Open Font License, Version
   (https://github.com/rsms/inter)
 - Cormorant Garamond: Copyright 2015 the Cormorant Project Authors
   (https://github.com/CatharsisFonts/Cormorant)
+- OpenDyslexic: Copyright 2011 Abbie Gonzalez
+  (https://opendyslexic.org), licensed under the SIL Open Font License, Version 1.1.

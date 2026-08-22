@@ -43,6 +43,7 @@ export type CanonicalCharacterV1 = {
   sections: CanonSection[];
   safety: CharacterSafety;
   rawSources: RawCanonSource[];
+  traits?: import("./traits.ts").CharacterTraits;
 };
 
 export type LegacyCanonInput = {
@@ -55,6 +56,8 @@ export type LegacyCanonInput = {
   isMinor?: boolean | null;
   allowedRelationshipTypes?: string[];
   disallowedContent?: string[];
+  pronouns?: string;
+  traits?: import("./traits.ts").CharacterTraits;
 };
 
 export function legacyCharacterToCanon(input: LegacyCanonInput): CanonicalCharacterV1 {
@@ -67,7 +70,7 @@ export function legacyCharacterToCanon(input: LegacyCanonInput): CanonicalCharac
     identity: {
       name: input.name,
       role: input.role,
-      pronouns: "",
+      pronouns: input.pronouns ?? "",
       species: "",
     },
     sections: [{
@@ -86,6 +89,7 @@ export function legacyCharacterToCanon(input: LegacyCanonInput): CanonicalCharac
       disallowedContent: input.disallowedContent ?? [],
     },
     rawSources: [],
+    ...(input.traits ? { traits: input.traits } : {}),
   };
 }
 
@@ -111,6 +115,8 @@ export function parseCanonicalCharacter(value: unknown): CanonicalCharacterV1 | 
   const explicitMinor = typeof safetyValue.isMinor === "boolean" ? safetyValue.isMinor : null;
   const isMinor = explicitMinor ?? (ageCategory === "minor" ? true : ageCategory === "adult" ? false : null);
 
+  const traits = isRecord(value.traits) ? parseTraits(value.traits) : undefined;
+
   return {
     format: CANONICAL_CHARACTER_FORMAT,
     version: CANONICAL_CHARACTER_VERSION,
@@ -132,6 +138,7 @@ export function parseCanonicalCharacter(value: unknown): CanonicalCharacterV1 | 
     rawSources: Array.isArray(value.rawSources)
       ? value.rawSources.slice(0, 8).flatMap(parseRawSource)
       : [],
+    ...(traits ? { traits } : {}),
   };
 }
 
@@ -194,4 +201,23 @@ function exactString(value: unknown, max: number): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseTraits(value: unknown): import("./traits.ts").CharacterTraits | undefined {
+  if (!isRecord(value)) return undefined;
+  const primary = stringList(value.primary, 20, 120);
+  const secondary = stringList(value.secondary, 20, 120);
+  const situational = stringList(value.situational, 20, 120);
+  if (!primary.length && !secondary.length && !situational.length && !Array.isArray(value.custom)) return undefined;
+  const custom = Array.isArray(value.custom)
+    ? value.custom.slice(0, 10).flatMap((item) => {
+        if (!isRecord(item)) return [];
+        const id = limitedString(item.id, 120);
+        const name = limitedString(item.name, 80);
+        const description = limitedString(item.description, 240);
+        if (!id || !name) return [];
+        return [{ id, name, description } as import("./traits.ts").CustomTrait];
+      })
+    : [];
+  return { primary, secondary, situational, custom };
 }
