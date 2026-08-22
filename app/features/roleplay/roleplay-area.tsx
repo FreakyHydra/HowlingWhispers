@@ -888,8 +888,8 @@ export function RoleplayArea(props: RoleplayAreaProps) {
                   The origin of Coda&apos;s collar, the purpose of its red pendant, and the names
                   of the world and city remain intentionally unresolved.
                 </p>
-              </section>
-            )}
+            </section>
+          )}
 
             {/* PRIMARY */}
             <section className="scene-library-section primary-actions">
@@ -1054,50 +1054,52 @@ export function RoleplayArea(props: RoleplayAreaProps) {
                   </div>
                 </form>
               )}
-              <div className="scene-preset-grid">
-                <article
-                  className="scene-preset-card sandbox-preset-card"
-                  style={{
-                    "--theme-accent": props.selected.accent,
-                    "--theme-glow": `${props.selected.accent}45`,
-                  } as React.CSSProperties}
-                >
-                  <div className="sandbox-grid" aria-hidden="true" />
-                  <span className="scene-motif">UNWRITTEN</span>
-                  <div className="scene-preset-copy">
-                    <span>Context-free roleplay</span>
-                    <h3>Open Sandbox</h3>
-                    <p>Start with nothing but {props.selected.name}&apos;s core identity.</p>
-                    <small>No preset setting, memories, or opening move. Your first message defines what happens.</small>
-                    <div className="scene-preset-actions">
-                      <button onClick={() => props.requestPersonaStart({ kind: "sandbox", characterId: props.selected.id })}>
-                        Enter sandbox <span aria-hidden="true">→</span>
-                      </button>
+              {!props.isLocationSession && (
+                <div className="scene-preset-grid">
+                  <article
+                    className="scene-preset-card sandbox-preset-card"
+                    style={{
+                      "--theme-accent": props.selected.accent,
+                      "--theme-glow": `${props.selected.accent}45`,
+                    } as React.CSSProperties}
+                  >
+                    <div className="sandbox-grid" aria-hidden="true" />
+                    <span className="scene-motif">UNWRITTEN</span>
+                    <div className="scene-preset-copy">
+                      <span>Context-free roleplay</span>
+                      <h3>Open Sandbox</h3>
+                      <p>Start with nothing but {props.selected.name}&apos;s core identity.</p>
+                      <small>No preset setting, memories, or opening move. Your first message defines what happens.</small>
+                      <div className="scene-preset-actions">
+                        <button onClick={() => props.requestPersonaStart({ kind: "sandbox", characterId: props.selected.id })}>
+                          Enter sandbox <span aria-hidden="true">→</span>
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </article>
-                <article
-                  className="scene-preset-card autopilot-preset-card"
-                  style={{
-                    "--theme-accent": props.selected.accent,
-                    "--theme-glow": `${props.selected.accent}45`,
-                  } as React.CSSProperties}
-                >
-                  <div className="autopilot-grid" aria-hidden="true" />
-                  <span className="scene-motif">LIVE</span>
-                  <div className="scene-preset-copy">
-                    <span>Self-driven roleplay</span>
-                    <h3>Whisper Mode</h3>
-                    <p>Nothing but {props.selected.name}&apos;s core identity — and they act on their own.</p>
-                    <small>No preset opening. {props.selected.name} writes the first beat and keeps living while you step in whenever you like.</small>
-                    <div className="scene-preset-actions">
-                      <button onClick={() => props.requestPersonaStart({ kind: "autopilot", characterId: props.selected.id })}>
-                        Enter Whisper Mode <span aria-hidden="true">→</span>
-                      </button>
+                  </article>
+                  <article
+                    className="scene-preset-card autopilot-preset-card"
+                    style={{
+                      "--theme-accent": props.selected.accent,
+                      "--theme-glow": `${props.selected.accent}45`,
+                    } as React.CSSProperties}
+                  >
+                    <div className="autopilot-grid" aria-hidden="true" />
+                    <span className="scene-motif">LIVE</span>
+                    <div className="scene-preset-copy">
+                      <span>Self-driven roleplay</span>
+                      <h3>Whisper Mode</h3>
+                      <p>Nothing but {props.selected.name}&apos;s core identity — and they act on their own.</p>
+                      <small>No preset opening. {props.selected.name} writes the first beat and keeps living while you step in whenever you like.</small>
+                      <div className="scene-preset-actions">
+                        <button onClick={() => props.requestPersonaStart({ kind: "autopilot", characterId: props.selected.id })}>
+                          Enter Whisper Mode <span aria-hidden="true">→</span>
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </article>
-              </div>
+                  </article>
+                </div>
+              )}
             </section>
 
             {/* STORIES */}
@@ -1157,6 +1159,7 @@ export function RoleplayArea(props: RoleplayAreaProps) {
               </div>
             </section>
 
+            {!props.isLocationSession && (
             <section className="scene-library-section common-scenes">
               <div className="scene-library-heading">
                 <div>
@@ -1255,6 +1258,7 @@ export function RoleplayArea(props: RoleplayAreaProps) {
                 </div>
               )}
             </section>
+            )}
 
             {/* HISTORY */}
             <section className="scene-library-section existing-scenes">

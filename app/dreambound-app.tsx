@@ -20,6 +20,8 @@ import {
   serializeLocation,
 } from "../lib/locations/import-export";
 import { sanitizeLocation } from "../lib/locations/types";
+import { locationSelectionKey, locationSessionFields, resolveLocationScenes } from "../lib/locations/session.ts";
+import { migrateLegacySessions, migrateLegacySelectedId } from "../lib/locations/migration.ts";
 import type { Scenario } from "../lib/scenarios/types";
 import {
   ensureUniqueScenarioIds,
@@ -247,6 +249,22 @@ export type Character = {
   };
   contextNotes?: string;
   authorNote?: string;
+};
+
+export type LocationTarget = {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+  image: string;
+  sceneImage: string;
+  backgroundFocalPoint: string;
+  accent: string;
+  memories: string[];
+  profile: string;
+  scene: string;
+  weather: string;
+  reply: string;
 };
 
 type VisualTheme = {
@@ -1139,9 +1157,9 @@ function scenesFor(character: Character): SceneDefinition[] {
   }];
 }
 
-function createLocationPlaceholder(location: Location): Character {
+function createLocationTarget(location: Location): LocationTarget {
   return {
-    id: `location-${location.id}`,
+    id: locationSelectionKey(location.id),
     name: location.name,
     role: location.type || "Location",
     status: location.shortDescription || "",
@@ -1149,37 +1167,12 @@ function createLocationPlaceholder(location: Location): Character {
     sceneImage: location.image || "",
     scene: location.name,
     weather: "",
-    bond: undefined,
     memories: [],
     reply: "",
     profile: location.description || "",
     accent: "#8aa4c9",
-    credit: undefined,
-    creditUrl: undefined,
-    relationship: undefined,
-    portraitFocalPoint: "center",
     backgroundFocalPoint: "center",
-    ageCategory: "unknown",
-    isMinor: null,
-    allowedRelationshipTypes: [],
-    disallowedContent: [],
-    pronouns: undefined,
-    traits: undefined,
-    appearance: undefined,
-    personality: undefined,
-    voice: undefined,
-    background: undefined,
-    relationships: undefined,
-    rpBehavior: undefined,
-    worldLore: undefined,
-    contextNotes: undefined,
-    authorNote: undefined,
-    cardV2: undefined,
   };
-}
-
-function isLocationPlaceholder(id: string): boolean {
-  return id.startsWith("location-");
 }
 
 function buildLocationOpening(location: Location): string {
@@ -1249,8 +1242,13 @@ function mergeBuiltInCharacters(saved: Character[]): Character[] {
 }
 
 function readSavedSessions(): StorySession[] {
-  return readSession<StorySession[]>("sessions", [])
-    .filter((session) => !session.characterId || !retiredCharacterIds.has(session.characterId));
+  const savedLocations = readSession<Location[] | null>("locations", null) ?? [];
+  const validLocationIds = new Set(savedLocations.map((location) => location.id));
+  return migrateLegacySessions(
+    readSession<StorySession[]>("sessions", []),
+    validLocationIds,
+    retiredCharacterIds,
+  );
 }
 
 function readSavedMessages(): Record<string, Message[]> {
@@ -1640,14 +1638,13 @@ export default function DreamboundApp() {
 
     const currentId = readSession<string | null>("currentSessionId", null);
     if (currentId) {
-      const allSessions = readSession<StorySession[]>("sessions", [])
-        .filter((session) => !session.characterId || !retiredCharacterIds.has(session.characterId));
+      const allSessions = readSavedSessions();
       const active = allSessions.find((s) => s.id === currentId);
       if (active?.characterId) return active.characterId;
-      if (active?.locationId) return `location-${active.locationId}`;
+      if (active?.locationId) return locationSelectionKey(active.locationId);
     }
 
-    return saved;
+    return migrateLegacySelectedId(saved, locations);
   });
   const [messages, setMessages] = useState(readSavedMessages);
   const [sessions, setSessions] = useState<StorySession[]>(() => {
@@ -1670,18 +1667,19 @@ export default function DreamboundApp() {
       }];
     });
   });
-  const locationPlaceholders = useMemo(() => {
-    const placeholders: Record<string, Character> = {};
+  const locationTargets = useMemo(() => {
+    const targets: Record<string, LocationTarget> = {};
     for (const session of sessions) {
       if (session.locationId) {
         const location = locations.find((l) => l.id === session.locationId);
         if (location) {
-          const placeholder = createLocationPlaceholder(location);
-          placeholders[placeholder.id] = placeholder;
+          const target = createLocationTarget(location);
+          targets[target.id] = target;
+          targets[`location-${location.id}`] = target;
         }
       }
     }
-    return placeholders;
+    return targets;
   }, [sessions, locations]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(
     () => {
@@ -2324,12 +2322,25 @@ export default function DreamboundApp() {
 
   const selected = useMemo(
     () => characters.find((character) => character.id === selectedId)
-      ?? locationPlaceholders[selectedId]
+      ?? locationTargets[selectedId]
       ?? characters[0],
-    [characters, selectedId, locationPlaceholders],
+    [characters, selectedId, locationTargets],
   );
 
-  const selectedScenes = storyScenes[selected.id] ?? scenesFor(selected);
+  const activeSession = sessions.find((session) => session.id === currentSessionId)
+    ?? sessions.find((session) => session.characterId === selected.id && session.messageKey === selected.id)
+    ?? null;
+  const selectedLocation = activeSession?.locationId
+    ? locations.find((location) => location.id === activeSession.locationId) ?? null
+    : selectedId.startsWith("location:")
+      ? locations.find((location) => locationSelectionKey(location.id) === selectedId) ?? null
+      : selectedId.startsWith("location-")
+        ? locations.find((location) => `location-${location.id}` === selectedId) ?? null
+        : null;
+  const isLocationSession = Boolean(activeSession?.locationId);
+  const selectedScenes = selectedLocation
+    ? resolveLocationScenes(selectedLocation, storyScenes[selected.id], createLocationScene)
+    : storyScenes[selected.id] ?? scenesFor(selected);
   const enabledAddons = installedAddons.filter((addon) => addon.enabled);
   const addonCommonScenes = enabledAddons
     .flatMap((addon) => validateAddonContent(addon.manifest.content) ?? [])
@@ -2339,11 +2350,6 @@ export default function DreamboundApp() {
       sourceAddonName: installedAddons.find((addon) => (validateAddonContent(addon.manifest.content) ?? []).some((s) => s.id === scene.id))?.manifest.name,
     }));
   const allCommonScenes = [...commonScenes, ...addonCommonScenes];
-  const activeSession = sessions.find((session) => session.id === currentSessionId)
-    ?? sessions.find((session) => session.characterId === selected.id && session.messageKey === selected.id)
-    ?? null;
-  const isLocationSession = Boolean(activeSession?.locationId);
-
   const activeRelationshipPersonaId = useMemo(
     () => effectivePersonaId(
       activePersona?.id ?? null,
@@ -2351,18 +2357,18 @@ export default function DreamboundApp() {
     ),
     [activePersona?.id, activeSession?.playerPersonaId],
   );
-  const relationshipKeyForSelected = isLocationPlaceholder(selected.id)
+  const relationshipKeyForSelected = selectedLocation
     ? ""
     : relationshipKey(selected.id, activeRelationshipPersonaId);
-  const relationshipRecord = isLocationPlaceholder(selected.id)
+  const relationshipRecord = selectedLocation
     ? undefined
     : relationships[relationshipKeyForSelected];
-  const relationshipScore = isLocationPlaceholder(selected.id)
+  const relationshipScore = selectedLocation
     ? 0
     : relationshipRecord
       ? relationshipRecord.score
       : migrateBondToScore(selected.bond);
-  const relationshipContext = isLocationPlaceholder(selected.id)
+  const relationshipContext = selectedLocation
     ? ""
     : [
         selected.relationship,
@@ -2370,14 +2376,14 @@ export default function DreamboundApp() {
       ].filter(Boolean).join(" — ");
 
   const updateRelationshipNote = useCallback((note: string) => {
-    if (isLocationPlaceholder(selected.id)) return;
+    if (selectedLocation) return;
     setRelationships((prev) => {
       const key = relationshipKey(selected.id, activeRelationshipPersonaId);
       const record = prev[key];
       if (!record) return prev;
       return { ...prev, [key]: { ...record, note } };
     });
-  }, [selected.id, activeRelationshipPersonaId, setRelationships]);
+  }, [selected.id, activeRelationshipPersonaId, selectedLocation]);
 
   const relationshipNote = relationshipRecord?.note ?? "";
 
@@ -2389,13 +2395,13 @@ export default function DreamboundApp() {
       }
     }
     const personaId = activeRelationshipPersonaId;
-    if (personaId) {
+    if (personaId && !selectedLocation) {
       const record = relationships[relationshipKeyForSelected];
       const score = record ? record.score : migrateBondToScore(selected.bond);
       next = syncMemoryCardRelationships(next, personaId, { [selected.id]: score });
     }
     return next;
-  }, [rawMemoryCards, personas, activeRelationshipPersonaId, relationshipKeyForSelected, relationships, selected.id, selected.bond]);
+  }, [rawMemoryCards, personas, activeRelationshipPersonaId, relationshipKeyForSelected, relationships, selected.id, selected.bond, selectedLocation]);
 
   useEffect(() => {
     saveMemoryCards(memoryCards);
@@ -2407,7 +2413,13 @@ export default function DreamboundApp() {
     : activeSession?.locationId
       ? (() => {
           const location = locations.find((l) => l.id === activeSession!.locationId);
-          return location ? createLocationScene(location) : selectedScenes[0];
+          return location
+            ? createLocationScene(location)
+            : createLocationScene({
+                id: activeSession!.locationId!,
+                name: activeSession!.locationId!,
+                source: "custom",
+              });
         })()
       : selectedScenes.find((scene) => scene.id === activeSession?.sceneId) ?? selectedScenes[0];
   const activePlayerName = activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim();
@@ -2432,7 +2444,7 @@ export default function DreamboundApp() {
   const selectedSessions = sessions
     .filter((session) => {
       if (session.characterId === selected.id) return true;
-      if (isLocationPlaceholder(selected.id) && session.locationId === selected.id.replace("location-", "")) return true;
+       if (selectedLocation && session.locationId === selectedLocation.id) return true;
       return false;
     })
     .sort((a, b) => b.updatedAt - a.updatedAt);
@@ -2491,7 +2503,7 @@ export default function DreamboundApp() {
   function openSceneLibrary(id: string) {
     const location = locations.find((l) => l.id === id);
     if (location) {
-      setSelectedId(`location-${location.id}`);
+      setSelectedId(locationSelectionKey(location.id));
     } else {
       setSelectedId(id);
     }
@@ -2547,7 +2559,9 @@ export default function DreamboundApp() {
           : storyEditor.scene.theme.motif,
       },
     };
-    const currentScenes = storyScenes[selected.id] ?? scenesFor(selected);
+    const currentScenes = selectedLocation
+      ? resolveLocationScenes(selectedLocation, storyScenes[selected.id], createLocationScene)
+      : storyScenes[selected.id] ?? scenesFor(selected);
     const nextScenes = storyEditor.mode === "edit"
       ? currentScenes.map((item) => item.id === scene.id ? scene : item)
       : [...currentScenes, scene];
@@ -2591,7 +2605,7 @@ export default function DreamboundApp() {
   ): { session: StorySession; initialMessages: Message[] } {
     const session = {
       ...createStorySession(character, scene),
-      locationId: location?.id,
+      ...(location ? locationSessionFields(location.id) : {}),
       ...personaSnapshot(overrides.persona),
       sandbox: overrides.sandbox,
       autopilot: overrides.autopilot,
@@ -2691,6 +2705,10 @@ export default function DreamboundApp() {
   }
 
   function startCommonScene(commonScene: CommonScene, persona?: PlayerPersona | null) {
+    if (selectedLocation) {
+      setChatError("Common scenes are not available for Location sessions.");
+      return;
+    }
     const character = characters.find((candidate) => candidate.id === selected.id) ?? characters[0];
     const scene = commonSceneToSceneDefinition(commonScene);
     const { session, initialMessages } = buildSessionInitialState(character, scene, {
@@ -2708,15 +2726,14 @@ export default function DreamboundApp() {
   }
 
   function startLocation(location: Location, persona?: PlayerPersona | null) {
-    const placeholder = createLocationPlaceholder(location);
     const scene = createLocationScene(location);
-    const { session, initialMessages } = buildSessionInitialState(placeholder, scene, location, {
+    const { session, initialMessages } = buildSessionInitialState(null, scene, location, {
       description: buildLocationOpening(location),
       persona,
     });
     setStoryScenes((current) => ({
       ...current,
-      [placeholder.id]: [scene],
+      [locationSelectionKey(location.id)]: [scene],
     }));
     setMessages((current) => ({
       ...current,
@@ -2724,13 +2741,24 @@ export default function DreamboundApp() {
     }));
     setSessions((current) => [session, ...current]);
     setCurrentSessionId(session.id);
-    setSelectedId(placeholder.id);
+    setSelectedId(locationSelectionKey(location.id));
     setAutopilotError("");
     setChatError("");
     setView("chat");
   }
 
   function startScene(characterId: string, scene: SceneDefinition, persona?: PlayerPersona | null) {
+    if (selectedLocation) {
+      const { session, initialMessages } = buildSessionInitialState(null, scene, selectedLocation, { persona });
+      setMessages((current) => ({ ...current, [session.messageKey]: initialMessages }));
+      setSessions((current) => [session, ...current]);
+      setCurrentSessionId(session.id);
+      setSelectedId(locationSelectionKey(selectedLocation.id));
+      setAutopilotError("");
+      setChatError("");
+      setView("chat");
+      return;
+    }
     const character =
       characters.find((candidate) => candidate.id === characterId) ?? characters[0];
     const role = characterId === "coda"
@@ -2759,9 +2787,9 @@ export default function DreamboundApp() {
   function deleteCustomScene(scene: SceneDefinition) {
     if (!scene.id.startsWith("custom-")) return;
 
-    const linkedSessions = sessions.filter((session) => (
-      session.characterId === selected.id && session.sceneId === scene.id
-    ));
+    const linkedSessions = sessions.filter((session) => selectedLocation
+      ? session.locationId === selectedLocation.id && session.sceneId === scene.id
+      : session.characterId === selected.id && session.sceneId === scene.id);
     const sessionNote = linkedSessions.length === 0
       ? ""
       : ` This will also delete ${linkedSessions.length} linked ${linkedSessions.length === 1 ? "session" : "sessions"} and their message history.`;
@@ -2771,7 +2799,9 @@ export default function DreamboundApp() {
     const linkedMessageKeys = new Set(linkedSessions.map((session) => session.messageKey));
     setStoryScenes((current) => ({
       ...current,
-      [selected.id]: (current[selected.id] ?? scenesFor(selected))
+       [selected.id]: (selectedLocation
+         ? resolveLocationScenes(selectedLocation, current[selected.id], createLocationScene)
+         : current[selected.id] ?? scenesFor(selected))
         .filter((candidate) => candidate.id !== scene.id),
     }));
     setSessions((current) => current.filter((session) => !linkedSessionIds.has(session.id)));
@@ -2783,6 +2813,10 @@ export default function DreamboundApp() {
   }
 
   function startSandbox(characterId: string, persona?: PlayerPersona | null) {
+    if (selectedLocation) {
+      setChatError("Sandbox mode is not available for Location sessions.");
+      return;
+    }
     const character =
       characters.find((candidate) => candidate.id === characterId) ?? characters[0];
     const scene = sandboxSceneFor(character);
@@ -2800,6 +2834,10 @@ export default function DreamboundApp() {
   }
 
   function beginAutopilot(characterId?: string, persona?: PlayerPersona | null) {
+    if (selectedLocation) {
+      setChatError("Whisper Mode is not available for Location sessions.");
+      return;
+    }
     setShowAutopilotStart(false);
     if (!configured) {
       setChatError("Set up and test a story engine before starting Whisper Mode.");
@@ -2841,8 +2879,7 @@ export default function DreamboundApp() {
     } else if (session.locationId) {
       const location = locations.find((l) => l.id === session.locationId);
       if (location) {
-        const placeholder = createLocationPlaceholder(location);
-        setSelectedId(placeholder.id);
+        setSelectedId(locationSelectionKey(location.id));
       } else {
         setChatError(`Location "${session.locationId}" no longer exists.`);
         return;
@@ -3135,29 +3172,7 @@ export default function DreamboundApp() {
       : [];
     const resolvedSceneTitle = resolveStoryTemplate(activeScene.title, { charName: selected.name, userName: effectivePlayerName });
     const resolvedSceneWeather = resolveStoryTemplate(`${activeScene.weather}. ${activeScene.subtitle}`, { charName: selected.name, userName: effectivePlayerName });
-    const requestBody = {
-        action,
-        playerName: effectivePlayerName,
-        playerPersona: effectivePlayerPersona,
-        impersonationPrompt: playerDirection,
-        reroll,
-        provider: storyProvider,
-        apiToken,
-        model: activeModel.value,
-        temperature: creativity / 10,
-        replyLength,
-
-        initiative,
-        viewpoint,
-        tense: storyTense,
-        proseFormat: "roleplay",
-        autopilotPov: activeSession?.autopilot ? (activeSession.autopilotPov ?? "third") : undefined,
-        livingCast: sessionCast,
-        autonomousCast: activeSession?.autonomousCast ?? [],
-        respondAs,
-        locationId: activeSession?.locationId,
-        location: activeSession?.locationId ? locations.find((l) => l.id === activeSession!.locationId) : undefined,
-        character: {
+    const characterPrompt = isLocationSession ? undefined : {
           id: selected.id,
           name: selected.name,
           role: selected.role,
@@ -3187,21 +3202,40 @@ export default function DreamboundApp() {
             scene: resolvedSceneTitle,
             weather: resolvedSceneWeather,
           }),
-          weather: activeSession?.sandbox
-            ? ""
-            : resolvedSceneWeather,
+          weather: activeSession?.sandbox ? "" : resolvedSceneWeather,
           memories: activeSession?.sandbox ? [] : selected.memories,
           sandbox: Boolean(activeSession?.sandbox),
-           relationship: relationshipContext,
+          relationship: relationshipContext,
           relationshipContextEnabled,
           relationshipContextInstruction: relationshipContextEnabled ? RELATIONSHIP_CONTEXT_INSTRUCTION : undefined,
           relationshipNote,
-          playerRole: activeSession?.sandbox
-            ? ""
-            : activeSession?.playerRoleContext || activeSession?.playerRole || "",
+          playerRole: activeSession?.sandbox ? "" : activeSession?.playerRoleContext || activeSession?.playerRole || "",
           contextMode: "balanced",
           matureContentRequested: storyProvider === "local" && activeModel.adult === true,
-        },
+        };
+    const requestBody = {
+        action,
+        playerName: effectivePlayerName,
+        playerPersona: effectivePlayerPersona,
+        impersonationPrompt: playerDirection,
+        reroll,
+        provider: storyProvider,
+        apiToken,
+        model: activeModel.value,
+        temperature: creativity / 10,
+        replyLength,
+
+        initiative,
+        viewpoint,
+        tense: storyTense,
+        proseFormat: "roleplay",
+        autopilotPov: activeSession?.autopilot ? (activeSession.autopilotPov ?? "third") : undefined,
+        livingCast: sessionCast,
+        autonomousCast: activeSession?.autonomousCast ?? [],
+        respondAs,
+        locationId: activeSession?.locationId,
+        location: activeSession?.locationId ? locations.find((l) => l.id === activeSession!.locationId) : undefined,
+        character: characterPrompt,
         contextInput: {
           memories: contextLibrary.memories,
           authorNotes: contextLibrary.authorNotes,
@@ -3455,7 +3489,7 @@ export default function DreamboundApp() {
     characterId?: string,
   ): void {
     const effectiveCharacterId = characterId ?? selected.id;
-    if (isLocationPlaceholder(effectiveCharacterId)) return;
+    if (isLocationSession || selectedLocation || effectiveCharacterId.startsWith("location:")) return;
     const personaId = activeRelationshipPersonaId;
     const playerName = activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim();
     const previousScore = effectiveScore(
@@ -3492,14 +3526,14 @@ export default function DreamboundApp() {
 
   function removeRelationshipTurns(turnIds: string[]): void {
     if (turnIds.length === 0) return;
-    if (isLocationPlaceholder(selected.id)) return;
+    if (isLocationSession || selectedLocation) return;
     const next: RelationshipState = { ...relationshipsRef.current };
     removeEventsForTurns(next, selected.id, activeRelationshipPersonaId, turnIds);
     setRelationships(next);
   }
 
   function recomputeRelationshipForMessage(messageId: number, characterReply: string, conversation: Message[]): void {
-    if (isLocationPlaceholder(selected.id)) return;
+    if (isLocationSession || selectedLocation) return;
     const message = conversation.find((candidate) => candidate.id === messageId);
     if (!message || message.sender !== "character") return;
     const personaId = activeRelationshipPersonaId;

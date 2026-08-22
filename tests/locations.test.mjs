@@ -13,6 +13,8 @@ import {
   ensureUniqueLocationIds,
   MAX_LOCATION_BYTES,
 } from "../lib/locations/index.ts";
+import { locationSelectionKey, locationSessionFields, resolveLocationScenes } from "../lib/locations/session.ts";
+import { migrateLegacySessions, migrateLegacySelectedId } from "../lib/locations/migration.ts";
 
 function baseLocation(overrides = {}) {
   return {
@@ -217,6 +219,23 @@ test("source ownership retained appropriately", () => {
   assert.equal(fallback.source, "custom");
 });
 
+test("custom Location scenes never fall back to Coda scenes", () => {
+  const location = baseLocation({ id: "custom-location", name: "The Glasshouse" });
+  const codaScene = { id: "moonlit-study", title: "The Moonlit Study" };
+  const locationScene = { id: `location-scene-${location.id}`, title: location.name };
+
+  assert.equal(locationSelectionKey(location.id), "location:custom-location");
+  assert.deepEqual(locationSessionFields(location.id), { locationId: location.id });
+  assert.deepEqual(
+    resolveLocationScenes(location, undefined, () => locationScene),
+    [locationScene],
+  );
+  assert.notDeepEqual(
+    resolveLocationScenes(location, undefined, () => locationScene),
+    [codaScene],
+  );
+});
+
 test("generic non-daycare Location works correctly", () => {
   const spaceship = baseLocation({
     id: "ship-1",
@@ -417,3 +436,112 @@ test("sanitizeLocation keeps optional fields absent", () => {
   assert.equal(location.features, undefined);
   assert.equal(location.ageRange, undefined);
 });
+
+test("legacy Location session with stale characterId is migrated to clean Location session", () => {
+  const retired = new Set(["ash", "seraphina"]);
+  const validLocationIds = new Set(["custom-loc-1"]);
+  const legacySession = {
+    id: "session-legacy-1",
+    characterId: "coda",
+    locationId: "custom-loc-1",
+    sceneId: "scene-1",
+    title: "Legacy Location Session",
+    messageKey: "session-legacy-1",
+    createdAt: 1,
+    updatedAt: 1,
+  };
+
+  const migrated = migrateLegacySessions([legacySession], validLocationIds, retired);
+  assert.equal(migrated.length, 1, "session should be retained");
+  assert.equal(migrated[0].characterId, undefined, "stale characterId must be removed");
+  assert.equal(migrated[0].locationId, "custom-loc-1", "locationId must be preserved");
+});
+
+test("legacy Location session with obsolete locationId is removed", () => {
+  const retired = new Set(["ash", "seraphina"]);
+  const validLocationIds = new Set(["existing-loc"]);
+  const obsoleteSession = {
+    id: "session-obsolete-1",
+    characterId: "coda",
+    locationId: "deleted-loc",
+    sceneId: "scene-1",
+    title: "Obsolete Session",
+    messageKey: "session-obsolete-1",
+    createdAt: 1,
+    updatedAt: 1,
+  };
+
+  const migrated = migrateLegacySessions([obsoleteSession], validLocationIds, retired);
+  assert.equal(migrated.length, 0, "obsolete location session must be removed");
+});
+
+test("retired character sessions are still filtered out", () => {
+  const retired = new Set(["ash", "seraphina"]);
+  const validLocationIds = new Set(["custom-loc-1"]);
+  const sessions = [
+    {
+      id: "session-ash",
+      characterId: "ash",
+      locationId: undefined,
+      sceneId: "scene-1",
+      title: "Ash Session",
+      messageKey: "session-ash",
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: "session-loc",
+      characterId: "coda",
+      locationId: "custom-loc-1",
+      sceneId: "scene-1",
+      title: "Location Session",
+      messageKey: "session-loc",
+      createdAt: 2,
+      updatedAt: 2,
+    },
+  ];
+
+  const migrated = migrateLegacySessions(sessions, validLocationIds, retired);
+  assert.equal(migrated.length, 1, "retired character session must be removed");
+  assert.equal(migrated[0].id, "session-loc");
+  assert.equal(migrated[0].characterId, undefined);
+});
+
+test("migrateLegacySelectedId converts old location- prefix to current location: prefix", () => {
+  const locations = [{ id: "loc-1", name: "Test Loc", source: "custom" }];
+  assert.equal(migrateLegacySelectedId("location-loc-1", locations), "location:loc-1");
+});
+
+test("migrateLegacySelectedId resets invalid location keys to coda", () => {
+  const locations = [{ id: "loc-1", name: "Test Loc", source: "custom" }];
+  assert.equal(migrateLegacySelectedId("location-deleted", locations), "coda");
+  assert.equal(migrateLegacySelectedId("location:deleted", locations), "coda");
+});
+
+test("migrateLegacySelectedId preserves valid character and current location keys", () => {
+  const locations = [{ id: "loc-1", name: "Test Loc", source: "custom" }];
+  assert.equal(migrateLegacySelectedId("coda", locations), "coda");
+  assert.equal(migrateLegacySelectedId("heather", locations), "heather");
+  assert.equal(migrateLegacySelectedId("location:loc-1", locations), "location:loc-1");
+});
+
+test("migrated legacy Location session never resolves to coda character id", () => {
+  const retired = new Set(["ash", "seraphina"]);
+  const validLocationIds = new Set(["custom-loc-1"]);
+  const legacySession = {
+    id: "session-legacy-1",
+    characterId: "coda",
+    locationId: "custom-loc-1",
+    sceneId: "scene-1",
+    title: "Legacy Location Session",
+    messageKey: "session-legacy-1",
+    createdAt: 1,
+    updatedAt: 1,
+  };
+
+  const migrated = migrateLegacySessions([legacySession], validLocationIds, retired);
+  assert.equal(migrated.length, 1);
+  assert.notEqual(migrated[0].characterId, "coda", "migrated session must not retain coda characterId");
+  assert.equal(migrated[0].locationId, "custom-loc-1");
+});
+

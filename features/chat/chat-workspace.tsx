@@ -612,7 +612,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
           >
             Context <span aria-hidden="true">☰</span>
           </button>
-          {activeSession && !activeSession.autopilot && (
+          {activeSession && !activeSession.autopilot && !activeSession.locationId && (
             <button
               className="autopilot-toolbar-button"
               onClick={toggleAutopilot}
