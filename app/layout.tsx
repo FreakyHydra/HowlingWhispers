@@ -4,6 +4,7 @@ import "./globals.css";
 import "./ui-accessibility.css";
 import "./library-professional.css";
 import "./settings-professional.css";
+import "./page-isolation.css";
 import RadioProvider from "./components/radio-context";
 import AccessibilityPreferences from "./components/accessibility-preferences";
 import SettingsTabsEnhancer from "./components/settings-tabs-enhancer";
