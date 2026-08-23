@@ -83,6 +83,18 @@ body {
   transform-origin: center;
 }
 
+/*
+ * Character gallery names were visually oversized even at the minimum font
+ * setting. Give card titles their own restrained scale so long names such as
+ * "Heather Whiteclaw" remain readable without swallowing the artwork.
+ */
+.home-character-copy h3,
+.home-character-copy h3 a {
+  font-size: clamp(28px, calc(38px * var(--ui-font-scale, 1)), 48px);
+  line-height: 0.94;
+  overflow-wrap: anywhere;
+}
+
 /* Never compound UI scale and font scale on the same text element here. */
 .settings-page {
   font-size: var(--ui-font-size, 16px);
