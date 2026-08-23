@@ -51,17 +51,18 @@ export default function RadioProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const play = useCallback(() => {
-    if (audioRef.current) {
-      void audioRef.current.play().catch(() => setState((s) => ({ ...s, isPlaying: false })));
-    } else {
-      const audio = new Audio(STREAM_URL);
-      audio.volume = volume;
-      audio.addEventListener("ended", () => setState((s) => ({ ...s, isPlaying: false })));
-      audio.addEventListener("error", () => setState((s) => ({ ...s, isPlaying: false })));
+    let audio = audioRef.current;
+    if (!audio) {
+      audio = new Audio(STREAM_URL);
       audioRef.current = audio;
-      void audio.play().catch(() => setState((s) => ({ ...s, isPlaying: false })));
+      audio.addEventListener("ended", () => setState({ isPlaying: false, connected: false }));
+      audio.addEventListener("error", () => setState({ isPlaying: false, connected: false }));
     }
-    setState({ isPlaying: true, connected: true });
+    audio.volume = volume;
+
+    void audio.play()
+      .then(() => setState({ isPlaying: true, connected: true }))
+      .catch(() => setState({ isPlaying: false, connected: false }));
   }, [volume]);
 
   const pause = useCallback(() => {
