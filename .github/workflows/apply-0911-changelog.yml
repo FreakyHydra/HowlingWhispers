@@ -1,0 +1,67 @@
+name: Apply 0.9.1.1 changelog
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - '.github/workflows/apply-0911-changelog.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+      - name: Apply version and changelog update
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'Expected pattern not found in {path}: {old[:120]!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          # Version metadata.
+          replace_once('package.json', '"version": "0.9.1"', '"version": "0.9.1.1"')
+          lock = Path('package-lock.json')
+          text = lock.read_text()
+          if text.count('"version": "0.9.1"') < 2:
+              raise SystemExit('Expected package-lock version markers not found')
+          text = text.replace('"version": "0.9.1"', '"version": "0.9.1.1"', 2)
+          lock.write_text(text)
+
+          # Markdown changelog.
+          changelog = Path('CHANGELOG.md')
+          text = changelog.read_text()
+          marker = '# Changelog\n\n'
+          entry = '''# Changelog\n\n## 0.9.1.1 — Rooms in Order\n\nA focused stability pass across the Roleplay hub and the rest of the app.\n\n### ✨ Added\n\n- **Scenario activation** — Scenario cards can now begin a real roleplay through the existing persona/start flow\n- **Scenario opening context** — opening situation, starting conditions, active elements, possible hooks, and atmosphere now carry into the Scenario start\n- **Scenario Contact links** — linked Contacts are preferred when a Scenario starts, with a safe fallback when no linked Contact is available\n\n### 🔄 Changed\n\n- **Roleplay library layout** — Contacts, Locations, and Scenarios use a wider, more readable card layout with safer title sizing\n- **Accessibility scaling** — UI Scale and UI Font Size are more strictly separated so text and physical interface sizing do not unintentionally scale together\n- **Settings typography** — small print, helper text, status text, and related Settings copy now follow the UI font preference more consistently\n\n### 🛠 Fixed\n\n- **Settings sidebar isolation** — the Settings navigation no longer appears inside Personas, Add-ons, Living Cast, or other pages that reuse shared panel styling\n- **Character identity isolation** — character lookup paths use stable IDs instead of display names, preventing duplicate names from being treated as the same Contact\n- **Character card titles** — long names no longer dominate the portrait card or break into unreadable fragments as easily\n- **Archive search** — search no longer remains stuck in a permanent loading state after a request finishes\n- **Archive imports** — importing from search results now fetches the complete published character instead of copying an incomplete summary\n- **Radio connection state** — the player only reports a successful connection after playback actually starts\n- **Persona library copy** — clarified local-storage wording and corrected persona memory-card typing around milestones\n- **Add-ons route typing** — the Add-ons view is now represented in the application view type instead of existing outside it\n\n---\n\n'''
+          if not text.startswith(marker):
+              raise SystemExit('CHANGELOG.md header not found')
+          changelog.write_text(entry + text[len(marker):])
+
+          # In-app changelog.
+          view = Path('features/changelog/changelog-view.tsx')
+          text = view.read_text()
+          marker = '           <div className="changelog-list">\n'
+          entry = '''           <div className="changelog-list">\n             <article className="changelog-entry featured latest">\n               <span className="changelog-mark">◐</span>\n               <div>\n                 <span className="changelog-version">Version 0.9.1.1 · Rooms in Order</span>\n                 <h2>Rooms in Order</h2>\n                 <p>A focused stability pass across the Roleplay hub and the rest of the app.</p>\n                 <h3>✨ Added</h3>\n                 <ul>\n                   <li><strong>Scenario activation</strong> — Scenario cards can now begin a real roleplay through the existing persona/start flow</li>\n                   <li><strong>Scenario opening context</strong> — opening situation, starting conditions, active elements, possible hooks, and atmosphere now carry into the Scenario start</li>\n                   <li><strong>Scenario Contact links</strong> — linked Contacts are preferred when a Scenario starts, with a safe fallback when no linked Contact is available</li>\n                 </ul>\n                 <h3>🔄 Changed</h3>\n                 <ul>\n                   <li><strong>Roleplay library layout</strong> — Contacts, Locations, and Scenarios use a wider, more readable card layout with safer title sizing</li>\n                   <li><strong>Accessibility scaling</strong> — UI Scale and UI Font Size are more strictly separated so text and physical interface sizing do not unintentionally scale together</li>\n                   <li><strong>Settings typography</strong> — small print, helper text, status text, and related Settings copy now follow the UI font preference more consistently</li>\n                 </ul>\n                 <h3>🛠 Fixed</h3>\n                 <ul>\n                   <li><strong>Settings sidebar isolation</strong> — Settings navigation no longer appears inside Personas, Add-ons, Living Cast, or other pages that reuse shared panel styling</li>\n                   <li><strong>Character identity isolation</strong> — character lookup paths use stable IDs instead of display names, preventing duplicate names from being treated as the same Contact</li>\n                   <li><strong>Character card titles</strong> — long names no longer dominate the portrait card or break into unreadable fragments as easily</li>\n                   <li><strong>Archive search</strong> — search no longer remains stuck in a permanent loading state after a request finishes</li>\n                   <li><strong>Archive imports</strong> — importing from search results now fetches the complete published character instead of copying an incomplete summary</li>\n                   <li><strong>Radio connection state</strong> — the player only reports a successful connection after playback actually starts</li>\n                   <li><strong>Persona library copy</strong> — clarified local-storage wording and corrected persona memory-card typing around milestones</li>\n                   <li><strong>Add-ons route typing</strong> — the Add-ons view is now represented in the application view type instead of existing outside it</li>\n                 </ul>\n               </div>\n             </article>\n\n'''
+          if marker not in text:
+              raise SystemExit('In-app changelog marker not found')
+          view.write_text(text.replace(marker, entry, 1))
+          PY
+
+      - name: Commit changelog
+        shell: bash
+        run: |
+          git config user.name "Howling Whispers Release"
+          git config user.email "actions@users.noreply.github.com"
+          git add package.json package-lock.json CHANGELOG.md features/changelog/changelog-view.tsx
+          git commit -m "chore: release changelog 0.9.1.1"
+          git push origin HEAD:dev
