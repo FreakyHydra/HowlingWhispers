@@ -224,6 +224,13 @@ export function SettingsPage(props: SettingsPageProps) {
     checkForUpdates,
   } = props;
 
+  const rpSizeLabel = (fontSize: number) => {
+    if (fontSize <= 15) return "Small";
+    if (fontSize <= 18) return "Normal";
+    if (fontSize <= 22) return "Large";
+    return "Extra Large";
+  };
+
   return (
         <section className="settings-page">
           <div className="settings-heading">
@@ -858,11 +865,11 @@ export function SettingsPage(props: SettingsPageProps) {
                   <output>{textStyle.uiFontSize}px</output>
                 </label>
                 <label className="font-size-setting">
-                  <span>Chat font size</span>
+                  <span>Roleplay text size</span>
                   <input
                     type="range"
-                    min="15"
-                    max="26"
+                    min="14"
+                    max="28"
                     step="1"
                     value={textStyle.fontSize}
                     onChange={(event) => setTextStyle((style) => ({
@@ -870,7 +877,8 @@ export function SettingsPage(props: SettingsPageProps) {
                       fontSize: Number(event.target.value),
                     }))}
                   />
-                  <output>{textStyle.fontSize}px</output>
+                  <output>{textStyle.fontSize}px ({rpSizeLabel(textStyle.fontSize)})</output>
+                  <small>Changes story and chat text only. Menus and controls are unaffected — use UI scale for those.</small>
                 </label>
                 <label>
                   Dialogue
