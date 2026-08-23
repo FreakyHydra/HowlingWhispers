@@ -4,6 +4,7 @@ import "./globals.css";
 import "./settings-professional.css";
 import RadioProvider from "./components/radio-context";
 import AccessibilityPreferences from "./components/accessibility-preferences";
+import SettingsTabsEnhancer from "./components/settings-tabs-enhancer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,6 +39,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <AccessibilityPreferences />
+        <SettingsTabsEnhancer />
         <RadioProvider>{children}</RadioProvider>
       </body>
     </html>
