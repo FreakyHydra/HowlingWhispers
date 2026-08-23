@@ -4,7 +4,7 @@ import { useEffect } from "react";
 
 const DEFAULT_UI_FONT_SIZE = 16;
 
-function applyUiFontSize() {
+function applyUiPreferences() {
   try {
     const raw = window.localStorage.getItem("dreambound_text_style");
     const parsed = raw ? JSON.parse(raw) as { uiFontSize?: unknown; uiScale?: unknown } : null;
@@ -14,8 +14,11 @@ function applyUiFontSize() {
     const uiScale = typeof parsed?.uiScale === "number"
       ? Math.min(150, Math.max(75, parsed.uiScale))
       : 100;
+
+    // Keep typography and physical UI scaling independent.
+    // UI font size changes text hierarchy only; UI scale changes controls/panels/icons.
     document.documentElement.style.setProperty("--ui-font-size", `${uiFontSize}px`);
-    document.documentElement.style.setProperty("--ui-font-scale", String((uiFontSize / DEFAULT_UI_FONT_SIZE) * (uiScale / 100)));
+    document.documentElement.style.setProperty("--ui-font-scale", String(uiFontSize / DEFAULT_UI_FONT_SIZE));
     document.documentElement.style.setProperty("--ui-scale", String(uiScale / 100));
   } catch {
     document.documentElement.style.setProperty("--ui-font-size", `${DEFAULT_UI_FONT_SIZE}px`);
@@ -26,8 +29,8 @@ function applyUiFontSize() {
 
 export default function AccessibilityPreferences() {
   useEffect(() => {
-    applyUiFontSize();
-    const update = () => applyUiFontSize();
+    applyUiPreferences();
+    const update = () => applyUiPreferences();
     window.addEventListener("storage", update);
     window.addEventListener("dreambound-preferences-changed", update);
     return () => {
