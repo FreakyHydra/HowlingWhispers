@@ -1,159 +1,206 @@
 /*
  * Professional Settings workspace
- *
- * This file intentionally contains only Settings-page presentation overrides.
- * It does not change settings state, storage keys, provider logic, or generation.
+ * Presentation only: no settings state, storage, provider, or generation logic.
  */
 
 .settings-page {
+  /* Settings must stay physically stable while accessibility sliders are dragged. */
+  --ui-scale: 1;
   --ui-font-scale: 1;
+  --ui-font-size: 16px;
   background:
-    radial-gradient(circle at 82% 0%, rgba(183, 101, 63, 0.075), transparent 34rem),
-    linear-gradient(180deg, #0d0b0e 0%, #09080a 100%);
+    radial-gradient(circle at 80% 0%, rgba(183, 101, 63, 0.06), transparent 32rem),
+    #0b0a0c;
+  box-sizing: border-box;
   min-height: 100%;
   overflow-y: auto;
-  padding: clamp(30px, 4vw, 56px);
+  padding: 34px clamp(20px, 4vw, 54px) 54px;
+}
+
+/* Reading-font choices are for story text, not the settings interface itself. */
+.settings-page,
+.settings-page button,
+.settings-page input,
+.settings-page select,
+.settings-page textarea,
+.settings-page output {
+  font-family: var(--font-geist-sans), Arial, sans-serif;
 }
 
 .settings-heading {
-  align-items: center;
+  align-items: end;
+  display: flex;
   gap: 28px;
-  margin-bottom: 28px;
-  max-width: 1280px;
+  justify-content: space-between;
+  margin: 0 auto 24px;
+  max-width: 1120px;
 }
 
 .settings-heading > div {
-  max-width: 760px;
+  max-width: 720px;
+}
+
+.settings-heading .eyebrow,
+.settings-panel .eyebrow {
+  color: var(--copper-bright);
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .settings-heading h1 {
-  font-size: clamp(42px, 4vw, 58px);
-  letter-spacing: -0.025em;
+  color: var(--cream);
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-size: clamp(38px, 4vw, 52px);
+  font-weight: 600;
+  letter-spacing: -0.035em;
   line-height: 1;
-  margin: 8px 0 10px;
+  margin: 7px 0 10px;
 }
 
 .settings-heading > div > p:last-child {
   color: var(--muted);
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.55;
   margin: 0;
-  max-width: 700px;
+  max-width: 660px;
 }
 
 .settings-heading .outline-button {
   flex: 0 0 auto;
-  min-height: 42px;
-  padding-inline: 16px;
+  min-height: 40px;
+  padding: 0 15px;
 }
 
+/* A single workspace column avoids the large dead zones caused by unequal card heights. */
 .settings-grid {
-  align-items: start;
-  gap: 20px;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  max-width: 1280px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0 auto;
+  max-width: 1120px;
 }
 
+.settings-panel,
 .engine-settings,
-.style-settings,
-.backup-settings {
-  grid-column: span 8;
-  grid-row: auto;
-}
-
 .account-settings,
+.style-settings,
 .privacy-settings,
+.backup-settings,
 .update-settings {
-  grid-column: span 4;
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .settings-panel {
-  background: rgba(18, 15, 19, 0.92);
-  border: 1px solid rgba(242, 222, 194, 0.12);
-  border-radius: 12px;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
-  padding: clamp(22px, 2.5vw, 30px);
+  background: rgba(18, 16, 19, 0.96);
+  border: 1px solid rgba(242, 222, 194, 0.11);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+  padding: 24px 26px;
+  position: relative;
 }
 
 .settings-panel::after {
   display: none;
 }
 
-.settings-panel:hover {
-  border-color: rgba(183, 101, 63, 0.28);
-}
-
-.settings-panel .eyebrow {
-  font-family: var(--sans);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.11em;
-}
-
-.settings-panel h2 {
-  font-size: 26px;
-  line-height: 1.15;
-  margin-top: 7px;
+.settings-panel h2,
+.account-settings h2,
+.update-settings h2 {
+  color: var(--cream);
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 5px 0 0;
 }
 
 .settings-panel > p:not(.eyebrow):not(.settings-attribution):not(.update-message):not(.backup-help) {
   color: var(--muted);
+  font-size: 12px;
   line-height: 1.55;
 }
 
 .settings-panel-title {
   align-items: center;
+  border-bottom-color: rgba(242, 222, 194, 0.08);
   gap: 18px;
-  padding-bottom: 18px;
+  padding-bottom: 17px;
 }
 
 .settings-status {
   flex: 0 0 auto;
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-size: 10px;
   white-space: nowrap;
 }
 
 .connection-feedback {
-  background: rgba(7, 7, 9, 0.42);
+  background: #0e0c0f;
   border-color: rgba(242, 222, 194, 0.1);
   border-radius: 8px;
+}
+
+.connection-feedback strong {
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .settings-form {
   gap: 20px;
 }
 
-.settings-form label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.035em;
+.settings-form label,
+.reply-style-fieldset legend,
+.story-control-fieldset legend {
+  color: var(--body);
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.045em;
 }
 
-.settings-form label small {
+.settings-form label small,
+.reply-style-options small,
+.reply-style-fieldset > p,
+.story-control-fieldset > p {
+  font-family: var(--font-geist-sans), Arial, sans-serif;
   font-size: 10px;
   font-weight: 400;
-  line-height: 1.5;
+  letter-spacing: 0;
+  line-height: 1.45;
 }
 
 .settings-form input:not([type="range"]),
 .settings-form select,
-.style-settings select {
-  background: #0d0b0f;
-  border-color: rgba(242, 222, 194, 0.16);
-  border-radius: 7px;
+.style-settings select,
+.account-settings input:not([type="range"]),
+.account-settings textarea {
+  background: #0d0b0e;
+  border: 1px solid rgba(242, 222, 194, 0.16);
+  border-radius: 6px;
   color: var(--cream);
-  min-height: 44px;
+  min-height: 42px;
   outline: none;
-  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .settings-form input:not([type="range"]):focus,
 .settings-form select:focus,
-.style-settings select:focus {
-  background: #100d11;
+.style-settings select:focus,
+.account-settings input:not([type="range"]):focus,
+.account-settings textarea:focus {
   border-color: rgba(215, 138, 94, 0.72);
-  box-shadow: 0 0 0 3px rgba(183, 101, 63, 0.12);
+  box-shadow: 0 0 0 3px rgba(183, 101, 63, 0.11);
 }
 
-/* Native select menus otherwise inherit an unreadable light popup on some browsers. */
+/* Fix native dropdowns that otherwise render white text on a white popup. */
 .settings-page select,
 .settings-page select option,
 .settings-page select optgroup {
@@ -162,61 +209,82 @@
 }
 
 .settings-page select option:checked {
-  background-color: #3a241d;
-  color: #fff3df;
+  background-color: #3b261e;
+  color: #fff5e7;
 }
 
 .settings-field-grid {
-  gap: 16px;
+  gap: 14px;
 }
 
 .reply-style-options {
-  gap: 10px;
+  gap: 9px;
 }
 
 .reply-style-options button {
-  background: rgba(8, 7, 9, 0.55);
-  border-color: rgba(242, 222, 194, 0.12);
-  border-radius: 8px;
-  min-height: 86px;
-  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+  background: #0e0c0f;
+  border: 1px solid rgba(242, 222, 194, 0.11);
+  border-radius: 7px;
+  min-height: 82px;
+  padding: 13px;
+  transition: border-color 140ms ease, background 140ms ease;
 }
 
 .reply-style-options button:hover {
-  background: rgba(183, 101, 63, 0.08);
-  border-color: rgba(215, 138, 94, 0.55);
-  transform: translateY(-1px);
+  background: rgba(183, 101, 63, 0.06);
+  border-color: rgba(215, 138, 94, 0.5);
 }
 
 .reply-style-options button.active {
-  background: rgba(183, 101, 63, 0.12);
+  background: rgba(183, 101, 63, 0.1);
   border-color: rgba(215, 138, 94, 0.72);
   box-shadow: inset 3px 0 0 var(--copper-bright);
 }
 
+.reply-style-options strong {
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
 .story-control-fieldset {
-  background: rgba(7, 7, 9, 0.28);
-  border-color: rgba(242, 222, 194, 0.1);
-  border-radius: 9px;
+  background: #0e0c0f;
+  border-color: rgba(242, 222, 194, 0.09);
+  border-radius: 8px;
 }
 
 .story-control-fieldset legend {
   background: #121013;
 }
 
-/* --- Appearance: stable, professional control layout --- */
+.settings-actions {
+  border-color: rgba(242, 222, 194, 0.09);
+}
+
+.settings-actions .primary-button,
+.settings-actions .outline-button,
+.primary-button,
+.outline-button,
+.text-button,
+.link-button {
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  letter-spacing: 0.01em;
+}
+
+/* --- Appearance --- */
 .style-settings {
   overflow: hidden;
 }
 
 .style-settings > h2 + p {
-  margin-bottom: 22px;
+  margin-bottom: 20px;
 }
 
 .style-grid {
   display: grid;
-  gap: 16px 22px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 20px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 18px;
 }
 
@@ -231,41 +299,39 @@
 }
 
 .style-grid > label:first-child {
-  display: grid;
-  gap: 8px 18px;
-  grid-template-columns: minmax(140px, 0.7fr) minmax(260px, 1.8fr);
   align-items: center;
+  display: grid;
+  gap: 7px 18px;
+  grid-template-columns: 150px minmax(0, 1fr);
 }
 
 .style-grid > label:first-child > span {
   grid-column: 1;
 }
 
-.style-grid > label:first-child > select {
+.style-grid > label:first-child > select,
+.style-grid > label:first-child > small {
   grid-column: 2;
   min-width: 0;
   width: 100%;
 }
 
-.style-grid > label:first-child > small {
-  grid-column: 2;
-}
-
 .font-preview {
-  background: rgba(7, 7, 9, 0.42);
-  border: 1px solid rgba(242, 222, 194, 0.1);
-  border-radius: 9px;
-  min-height: 92px;
-  padding: 16px 18px;
+  background: #0e0c0f;
+  border: 1px solid rgba(242, 222, 194, 0.09);
+  border-radius: 8px;
+  box-sizing: border-box;
+  min-height: 88px;
+  padding: 15px 17px;
 }
 
 .font-preview > span {
   color: var(--muted);
   display: block;
-  font-family: var(--sans);
-  font-size: 10px;
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.11em;
   margin-bottom: 8px;
   text-transform: uppercase;
 }
@@ -277,9 +343,9 @@
 .font-size-setting {
   align-items: center;
   display: grid !important;
-  gap: 6px 16px !important;
-  grid-template-columns: minmax(145px, 0.75fr) minmax(220px, 1.8fr) 118px;
-  min-height: 66px;
+  gap: 7px 16px !important;
+  grid-template-columns: 150px minmax(240px, 1fr) 150px;
+  min-height: 64px;
 }
 
 .font-size-setting > span {
@@ -289,6 +355,7 @@
 
 .font-size-setting input[type="range"] {
   accent-color: var(--copper-bright);
+  box-sizing: border-box;
   grid-column: 2;
   margin: 0;
   min-width: 0;
@@ -297,47 +364,60 @@
 
 .font-size-setting output {
   color: var(--copper-bright);
-  font-family: var(--sans);
+  font-family: var(--font-geist-sans), Arial, sans-serif;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   grid-column: 3;
-  min-width: 118px;
+  min-width: 150px;
+  overflow: visible;
   text-align: right;
   white-space: nowrap;
 }
 
 .font-size-setting small {
   grid-column: 2 / -1;
-  min-height: 15px;
+  min-height: 14px;
 }
 
 .style-grid > label:not(.font-size-setting):not(:first-child) {
-  background: rgba(7, 7, 9, 0.28);
+  align-items: center;
+  background: #0e0c0f;
   border: 1px solid rgba(242, 222, 194, 0.08);
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: 7px;
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 54px;
+  padding: 10px 12px;
+}
+
+.style-grid > label:not(.font-size-setting):not(:first-child) small {
+  margin-left: 4px;
 }
 
 .style-grid input[type="color"] {
   background: transparent;
   border: 0;
   cursor: pointer;
-  height: 38px;
+  flex: 0 0 48px;
+  height: 34px;
   padding: 0;
-  width: 100%;
+  width: 48px;
 }
 
 .settings-attribution {
   border-top: 1px solid rgba(242, 222, 194, 0.08);
   color: var(--muted);
-  font-size: 10px;
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-size: 9px;
   line-height: 1.5;
-  margin: 20px 0 12px;
-  padding-top: 14px;
+  margin: 18px 0 10px;
+  padding-top: 13px;
 }
 
-/* Small panels use the same quiet information hierarchy. */
+/* Compact informational cards. */
 .account-settings,
 .privacy-settings,
 .update-settings {
@@ -345,13 +425,19 @@
 }
 
 .account-settings .settings-avatar {
-  height: 60px;
-  margin: 20px 0 12px;
-  width: 60px;
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-size: 24px;
+  height: 54px;
+  margin: 18px 0 10px;
+  width: 54px;
 }
 
 .account-settings .settings-signout {
   width: auto;
+}
+
+.privacy-settings ul {
+  margin-block: 15px;
 }
 
 .privacy-settings li,
@@ -361,33 +447,14 @@
 }
 
 .update-settings .version-row {
-  background: rgba(7, 7, 9, 0.34);
+  background: #0e0c0f;
   border-radius: 7px;
 }
 
-.settings-actions {
-  border-color: rgba(242, 222, 194, 0.1);
-}
-
-@media (max-width: 1080px) {
-  .settings-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .engine-settings,
-  .style-settings,
-  .backup-settings,
-  .account-settings,
-  .privacy-settings,
-  .update-settings {
-    grid-column: span 1;
-  }
-
-  .engine-settings,
-  .style-settings,
-  .backup-settings {
-    grid-column: 1 / -1;
-  }
+.update-settings .version-row strong {
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 @media (max-width: 760px) {
@@ -404,17 +471,8 @@
     align-self: flex-start;
   }
 
-  .settings-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .engine-settings,
-  .style-settings,
-  .backup-settings,
-  .account-settings,
-  .privacy-settings,
-  .update-settings {
-    grid-column: 1;
+  .settings-panel {
+    padding: 20px 17px;
   }
 
   .settings-panel-title {
@@ -431,21 +489,14 @@
   }
 
   .style-grid > label:first-child {
+    align-items: stretch;
     display: flex;
     flex-direction: column;
-    align-items: stretch;
-  }
-
-  .style-grid > label:first-child > span,
-  .style-grid > label:first-child > select,
-  .style-grid > label:first-child > small,
-  .style-grid > label:not(.font-size-setting):not(:first-child) {
-    grid-column: 1;
   }
 
   .font-size-setting {
-    grid-template-columns: 1fr 88px;
-    min-height: 88px;
+    grid-template-columns: 1fr 110px;
+    min-height: 86px;
   }
 
   .font-size-setting > span {
@@ -454,7 +505,7 @@
 
   .font-size-setting output {
     grid-column: 2;
-    min-width: 88px;
+    min-width: 110px;
   }
 
   .font-size-setting input[type="range"] {
@@ -464,6 +515,10 @@
 
   .font-size-setting small {
     grid-column: 1 / -1;
+  }
+
+  .style-grid > label:not(.font-size-setting):not(:first-child) {
+    grid-column: 1;
   }
 
   .settings-actions,
