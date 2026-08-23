@@ -65,6 +65,14 @@ function NumberBridge({ label }: { label: HTMLLabelElement }) {
   );
 }
 
+function findActualSettingsPage(): HTMLElement | null {
+  const pages = Array.from(document.querySelectorAll<HTMLElement>(".settings-page"));
+  return pages.find((page) => {
+    const heading = page.querySelector<HTMLElement>(":scope > .settings-heading h1");
+    return heading?.textContent?.trim() === "Settings";
+  }) ?? null;
+}
+
 export default function SettingsTabsEnhancer() {
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [active, setActive] = useState<SettingsTab>("engine");
@@ -74,7 +82,7 @@ export default function SettingsTabsEnhancer() {
     let mounted = true;
 
     const findTarget = () => {
-      const page = document.querySelector<HTMLElement>(".settings-page");
+      const page = findActualSettingsPage();
       if (!mounted) return;
       setTarget(page);
       setNumberLabels(page
