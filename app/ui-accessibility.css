@@ -1,0 +1,53 @@
+/* Cross-app accessibility typography fixes. */
+
+/* Keep the account/player chip proportional to the chosen UI font size. */
+.account-chip {
+  font-size: var(--ui-font-size, 16px);
+  gap: 0.55em;
+  max-width: 15em;
+}
+
+.account-chip > span {
+  flex: 0 0 2.375em;
+  height: 2.375em;
+  width: 2.375em;
+  font-size: 1em;
+}
+
+.account-chip div {
+  min-width: 0;
+}
+
+.account-chip strong {
+  font-size: 0.875em;
+  line-height: 1.2;
+  max-width: 10.5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-chip a {
+  font-size: 0.7em;
+  line-height: 1.2;
+  max-width: 10.5em;
+}
+
+/* Prevent the top-right account area from changing perceived identity/shape
+   when UI font size changes independently from UI scale. */
+.account-menu-trigger,
+.account-menu {
+  min-width: 0;
+}
+
+/* Make general tiny UI copy scale from the user's chosen UI font size. */
+.connection-pill,
+.settings-status,
+.status-line,
+.chatgpt-badge,
+.backup-feedback,
+.backup-help,
+.update-message,
+.update-settings > small {
+  font-size: 0.75em;
+}
