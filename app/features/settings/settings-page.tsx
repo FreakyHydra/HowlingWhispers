@@ -3,16 +3,8 @@
 import type React from "react";
 import type { ArchiveUser } from "../../lib/archive/client";
 import type { OllamaModelInfo } from "../../lib/ollama";
+import type { TextStyle } from "../dreambound-app";
 import { InfoTip } from "../../components/info-tip";
-
-type TextStyle = {
-  dialogue: string;
-  action: string;
-  narration: string;
-  fontSize: number;
-  uiFontSize: number;
-  fontFamily: "default" | "opendyslexic" | "system";
-};
 
 type ModelId = "xialong-v1" | "glm-4-6";
 type StoryProvider = "novelai" | "local" | "device";
@@ -834,6 +826,22 @@ export function SettingsPage(props: SettingsPageProps) {
                   <span>Preview</span>
                   <p>&quot;The quick brown fox jumps over the lazy dog.&quot;</p>
                 </div>
+                <label className="font-size-setting">
+                  <span>UI scale</span>
+                  <input
+                    type="range"
+                    min="75"
+                    max="150"
+                    step="5"
+                    value={textStyle.uiScale}
+                    onChange={(event) => setTextStyle((style) => ({
+                      ...style,
+                      uiScale: Number(event.target.value),
+                    }))}
+                  />
+                  <output>{textStyle.uiScale}%</output>
+                  <small>Scales menus, controls, panels and icons independently of your screen resolution.</small>
+                </label>
                 <label className="font-size-setting">
                   <span>UI font size</span>
                   <input

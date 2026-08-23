@@ -421,6 +421,7 @@ export type TextStyle = {
   narration: string;
   fontSize: number;
   uiFontSize: number;
+  uiScale: number;
   fontFamily: "default" | "opendyslexic" | "system";
 };
 
@@ -1976,6 +1977,7 @@ export default function DreamboundApp() {
     narration: "#9a9f7a",
     fontSize: 19,
     uiFontSize: 16,
+    uiScale: 100,
     fontFamily: "default",
   };
   const [textStyle, setTextStyle] = useState<TextStyle>(() => {
@@ -1989,10 +1991,13 @@ export default function DreamboundApp() {
         const uiFontSize = typeof parsed.uiFontSize === "number"
           ? Math.min(22, Math.max(12, parsed.uiFontSize))
           : defaultTextStyle.uiFontSize;
+        const uiScale = typeof parsed.uiScale === "number"
+          ? Math.min(150, Math.max(75, parsed.uiScale))
+          : defaultTextStyle.uiScale;
         const fontFamily = parsed.fontFamily === "opendyslexic" || parsed.fontFamily === "system"
           ? parsed.fontFamily
           : defaultTextStyle.fontFamily;
-        return { ...defaultTextStyle, ...parsed, fontSize, uiFontSize, fontFamily };
+        return { ...defaultTextStyle, ...parsed, fontSize, uiFontSize, uiScale, fontFamily };
       }
     } catch { /* ignore */ }
     return defaultTextStyle;
@@ -2535,7 +2540,8 @@ export default function DreamboundApp() {
     "--serif": readingFontFamily,
     "--sans": readingFontFamily,
     "--ui-font-size": `${textStyle.uiFontSize}px`,
-    "--ui-font-scale": String(textStyle.uiFontSize / 16),
+    "--ui-font-scale": String((textStyle.uiFontSize / 16) * (textStyle.uiScale / 100)),
+    "--ui-scale": String(textStyle.uiScale / 100),
   } as React.CSSProperties;
   const themeVariables = {
     "--theme-accent": activeTheme.accent,

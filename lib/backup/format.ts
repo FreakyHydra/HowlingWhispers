@@ -269,7 +269,7 @@ export type BackupPreferences = {
   initiative?: string;
   viewpoint?: string;
   storyTense?: string;
-  textStyle?: { dialogue: string; action: string; narration: string; fontSize: number; uiFontSize?: number; fontFamily?: "default" | "opendyslexic" | "system" };
+  textStyle?: { dialogue: string; action: string; narration: string; fontSize: number; uiFontSize?: number; uiScale?: number; fontFamily?: "default" | "opendyslexic" | "system" };
   shareCount?: number;
   shareCaptions?: boolean;
   shareHeader?: boolean;

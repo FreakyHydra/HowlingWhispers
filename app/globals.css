@@ -377,7 +377,7 @@ a:focus-visible {
 
 .app-shell {
   display: grid;
-  grid-template-rows: var(--topbar-height) minmax(0, 1fr);
+  grid-template-rows: calc(var(--topbar-height) * var(--ui-scale, 1)) minmax(0, 1fr);
   height: 100dvh;
   min-height: 100dvh;
   background:
@@ -393,8 +393,8 @@ a:focus-visible {
   background: rgba(8, 8, 10, 0.96);
   border-bottom: 1px solid var(--line);
   display: flex;
-  height: var(--topbar-height);
-  min-height: var(--topbar-height);
+  height: calc(var(--topbar-height) * var(--ui-scale, 1));
+  min-height: calc(var(--topbar-height) * var(--ui-scale, 1));
   padding: 0 22px 0 28px;
   position: relative;
   z-index: 20;
@@ -670,7 +670,7 @@ a:focus-visible {
 
 .character-home,
 .settings-page {
-  height: calc(100dvh - var(--topbar-height));
+  height: calc(100dvh - calc(var(--topbar-height) * var(--ui-scale, 1)));
   overflow-y: auto;
 }
 
@@ -830,7 +830,7 @@ a:focus-visible {
   background-size: cover;
   border: 1px solid rgba(183, 101, 63, 0.42);
   cursor: pointer;
-  min-height: clamp(360px, 40vh, 440px);
+  min-height: clamp(calc(360px * var(--ui-scale, 1)), 40vh, calc(440px * var(--ui-scale, 1)));
   overflow: hidden;
   position: relative;
 }
@@ -917,8 +917,8 @@ a:focus-visible {
 
 .scene-library {
   background: #09090b;
-  height: calc(100dvh - var(--topbar-height));
-  min-height: calc(100dvh - var(--topbar-height));
+  height: calc(100dvh - calc(var(--topbar-height) * var(--ui-scale, 1)));
+  min-height: calc(100dvh - calc(var(--topbar-height) * var(--ui-scale, 1)));
   overflow-x: hidden;
   overflow-y: auto;
   position: relative;
@@ -1807,7 +1807,7 @@ a:focus-visible {
     radial-gradient(circle at 75% 8%, rgba(69, 184, 179, 0.1), transparent 28rem),
     radial-gradient(circle at 14% 40%, rgba(183, 101, 63, 0.1), transparent 32rem),
     #0b090c;
-  min-height: calc(100dvh - var(--topbar-height));
+  min-height: calc(100dvh - calc(var(--topbar-height) * var(--ui-scale, 1)));
   overflow-y: auto;
   padding: clamp(32px, 5vw, 64px);
 }
@@ -3038,8 +3038,8 @@ a:focus-visible {
 
 .workspace {
   display: grid;
-  grid-template-columns: clamp(15rem, 22vw, 19rem) minmax(420px, 1fr) clamp(15rem, 22vw, 20rem);
-  height: auto;
+  grid-template-columns: calc(clamp(15rem, 22vw, 19rem) * var(--ui-scale, 1)) minmax(420px, 1fr) calc(clamp(15rem, 22vw, 20rem) * var(--ui-scale, 1));
+  height: 100%;
   min-height: 0;
   min-width: 0;
 }
@@ -5413,8 +5413,8 @@ a:focus-visible {
 
   .topbar {
     --topbar-height: 68px;
-    height: var(--topbar-height);
-    min-height: var(--topbar-height);
+    height: calc(var(--topbar-height) * var(--ui-scale, 1));
+    min-height: calc(var(--topbar-height) * var(--ui-scale, 1));
     padding: 0 14px;
   }
 
@@ -5478,7 +5478,7 @@ a:focus-visible {
   .character-home,
   .changelog-page,
   .settings-page {
-    height: calc(100dvh - var(--topbar-height));
+    height: calc(100dvh - calc(var(--topbar-height) * var(--ui-scale, 1)));
   }
 
   .character-home,
