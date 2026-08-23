@@ -14,7 +14,7 @@ export interface ScenarioCardProps {
 export function ScenarioCard({ scenario, onOpen, onEdit, onDelete, onExport }: ScenarioCardProps) {
   const hasActions = onEdit || onDelete || onExport;
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       onOpen?.(scenario);
@@ -23,7 +23,7 @@ export function ScenarioCard({ scenario, onOpen, onEdit, onDelete, onExport }: S
 
   return (
     <article
-      className="home-character"
+      className="home-character library-card library-card--scenario"
       onClick={() => onOpen?.(scenario)}
       onKeyDown={handleKeyDown}
       role="button"
@@ -33,11 +33,15 @@ export function ScenarioCard({ scenario, onOpen, onEdit, onDelete, onExport }: S
           "--card-image": scenario.image
             ? `url("${scenario.image}")`
             : "linear-gradient(145deg, #1c2b1e, #0c0e0c)",
+          "--character-accent": "#d78a5e",
         } as React.CSSProperties
       }
     >
       <div className="home-character-wash" />
       <div className="home-character-copy">
+        <span className="home-character-status">
+          <i /> Scenario
+        </span>
         <h3>{scenario.name}</h3>
         {scenario.shortDescription && <p>{scenario.shortDescription}</p>}
         {scenario.atmosphere && <small>{scenario.atmosphere}</small>}
@@ -48,6 +52,15 @@ export function ScenarioCard({ scenario, onOpen, onEdit, onDelete, onExport }: S
             ))}
           </div>
         )}
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen?.(scenario);
+          }}
+        >
+          Begin scenario <span aria-hidden="true">→</span>
+        </button>
         {hasActions && (
           <span className="home-character-actions">
             {onExport && (
