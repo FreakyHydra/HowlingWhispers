@@ -1,14 +1,14 @@
 /* Professional Settings workspace. Presentation only. */
 
 .settings-page {
+  /* Keep physical control sizing stable while accessibility controls are adjusted. */
   --ui-scale: 1;
-  --ui-font-scale: 1;
-  --ui-font-size: 16px;
   background:
     radial-gradient(circle at 82% 0%, rgba(183, 101, 63, 0.055), transparent 34rem),
     #0b0a0c;
   box-sizing: border-box;
   display: grid;
+  font-size: var(--ui-font-size, 16px);
   grid-template-columns: 232px minmax(0, 1fr);
   grid-template-areas:
     "nav heading"
@@ -56,7 +56,7 @@
   color: var(--copper-bright);
   display: inline-flex;
   flex: 0 0 38px;
-  font-size: 20px;
+  font-size: 1.25em;
   height: 38px;
   justify-content: center;
 }
@@ -70,13 +70,14 @@
 
 .settings-section-nav__brand strong {
   color: var(--cream);
-  font-size: 14px;
+  font-size: 0.875em;
   font-weight: 700;
 }
 
 .settings-section-nav__brand small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 0.6875em;
+  line-height: 1.35;
   margin-top: 2px;
 }
 
@@ -117,21 +118,21 @@
   align-items: center;
   color: var(--copper-bright);
   display: flex;
-  font-size: 13px;
+  font-size: 0.8125em;
   font-weight: 700;
   justify-content: center;
 }
 
 .settings-section-nav__copy strong {
   color: var(--cream);
-  font-size: 12px;
+  font-size: 0.8125em;
   font-weight: 650;
 }
 
 .settings-section-nav__copy small {
   color: var(--muted);
-  font-size: 9px;
-  line-height: 1.35;
+  font-size: 0.625em;
+  line-height: 1.4;
   margin-top: 2px;
 }
 
@@ -151,7 +152,7 @@
 .settings-heading .eyebrow,
 .settings-panel .eyebrow {
   color: var(--copper-bright);
-  font-size: 10px;
+  font-size: 0.6875em;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -159,7 +160,7 @@
 
 .settings-heading h1 {
   color: var(--cream);
-  font-size: clamp(34px, 3vw, 46px);
+  font-size: clamp(2.125em, 3vw, 2.875em);
   font-weight: 650;
   letter-spacing: -0.035em;
   line-height: 1;
@@ -168,7 +169,7 @@
 
 .settings-heading > div > p:last-child {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 0.875em;
   line-height: 1.55;
   margin: 0;
   max-width: 640px;
@@ -224,7 +225,7 @@
 .account-settings h2,
 .update-settings h2 {
   color: var(--cream);
-  font-size: 24px;
+  font-size: 1.5em;
   font-weight: 650;
   letter-spacing: -0.02em;
   line-height: 1.2;
@@ -233,7 +234,7 @@
 
 .settings-panel > p:not(.eyebrow):not(.settings-attribution):not(.update-message):not(.backup-help) {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.8125em;
   line-height: 1.55;
 }
 
@@ -246,7 +247,7 @@
 
 .settings-status {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: 0.6875em;
   white-space: nowrap;
 }
 
@@ -257,29 +258,35 @@
 }
 
 .connection-feedback strong {
-  font-size: 17px;
+  font-size: 1.0625em;
   font-weight: 600;
+}
+
+.connection-feedback p,
+.settings-form label small,
+.reply-style-options small,
+.reply-style-fieldset > p,
+.story-control-fieldset > p,
+.account-settings > p,
+.privacy-settings > p,
+.backup-help,
+.update-settings > small,
+.backup-server-meta,
+.settings-attribution {
+  font-size: 0.75em;
+  line-height: 1.5;
 }
 
 .settings-form { gap: 20px; }
 
 .settings-form label,
 .reply-style-fieldset legend,
-.story-control-fieldset legend {
+.story-control-fieldset legend,
+.backup-server-heading {
   color: var(--body);
-  font-size: 10px;
+  font-size: 0.75em;
   font-weight: 700;
   letter-spacing: 0.045em;
-}
-
-.settings-form label small,
-.reply-style-options small,
-.reply-style-fieldset > p,
-.story-control-fieldset > p {
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0;
-  line-height: 1.45;
 }
 
 .settings-form input:not([type="range"]),
@@ -291,6 +298,7 @@
   border: 1px solid rgba(242, 222, 194, 0.16);
   border-radius: 6px;
   color: var(--cream);
+  font-size: 0.875em;
   min-height: 42px;
   outline: none;
 }
@@ -339,7 +347,7 @@
 }
 
 .reply-style-options strong {
-  font-size: 16px;
+  font-size: 1em;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -359,6 +367,7 @@
 .outline-button,
 .text-button,
 .link-button {
+  font-size: 0.875em;
   letter-spacing: 0.01em;
 }
 
@@ -408,7 +417,7 @@
 .font-preview > span {
   color: var(--muted);
   display: block;
-  font-size: 9px;
+  font-size: 0.6875em;
   font-weight: 700;
   letter-spacing: 0.11em;
   margin-bottom: 8px;
@@ -421,11 +430,12 @@
   align-items: center;
   display: grid !important;
   gap: 7px 12px !important;
-  grid-template-columns: 150px minmax(220px, 1fr) 96px 78px;
-  min-height: 64px;
+  grid-template-columns: 150px minmax(220px, 1fr) 116px 84px;
+  min-height: 68px;
 }
 
 .font-size-setting > span {
+  font-size: 0.875em;
   grid-column: 1;
   white-space: nowrap;
 }
@@ -441,11 +451,11 @@
 
 .font-size-setting output {
   color: var(--copper-bright);
-  font-size: 12px;
+  font-size: 0.8125em;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   grid-column: 3;
-  min-width: 96px;
+  min-width: 116px;
   overflow: visible;
   text-align: right;
   white-space: nowrap;
@@ -457,13 +467,14 @@
   border-radius: 6px !important;
   box-sizing: border-box;
   color: var(--cream) !important;
+  font-size: 0.8125em !important;
   font-variant-numeric: tabular-nums;
   grid-column: 4;
-  height: 34px;
-  min-height: 34px !important;
-  padding: 0 7px !important;
+  height: 36px;
+  min-height: 36px !important;
+  padding: 0 8px !important;
   text-align: right;
-  width: 78px;
+  width: 84px;
 }
 
 .settings-number-input:focus {
@@ -473,8 +484,10 @@
 }
 
 .font-size-setting small {
+  font-size: 0.75em;
   grid-column: 2 / -1;
-  min-height: 14px;
+  line-height: 1.45;
+  min-height: 1.45em;
 }
 
 .style-grid > label:not(.font-size-setting):not(:first-child) {
@@ -503,10 +516,12 @@
 .settings-attribution {
   border-top: 1px solid rgba(242, 222, 194, 0.08);
   color: var(--muted);
-  font-size: 9px;
-  line-height: 1.5;
   margin: 18px 0 10px;
   padding-top: 13px;
+}
+
+.settings-attribution code {
+  font-size: 0.95em;
 }
 
 .account-settings,
@@ -514,7 +529,7 @@
 .update-settings { text-align: left; }
 
 .account-settings .settings-avatar {
-  font-size: 24px;
+  font-size: 1.5em;
   height: 54px;
   margin: 18px 0 10px;
   width: 54px;
@@ -527,13 +542,17 @@
 .update-settings .version-row,
 .backup-server-item { border-color: rgba(242, 222, 194, 0.08); }
 
+.privacy-settings li {
+  font-size: 0.8125em;
+}
+
 .update-settings .version-row {
   background: #0e0c0f;
   border-radius: 7px;
 }
 
 .update-settings .version-row strong {
-  font-size: 18px;
+  font-size: 1.125em;
   font-weight: 700;
 }
 
@@ -546,16 +565,14 @@
   .settings-section-nav__list button { min-height: 46px; }
 
   .font-size-setting {
-    grid-template-columns: 130px minmax(160px, 1fr) 88px 72px;
+    grid-template-columns: 130px minmax(160px, 1fr) 102px 76px;
   }
 
-  .settings-number-input { width: 72px; }
+  .settings-number-input { width: 76px; }
 }
 
 @media (max-width: 700px) {
-  .settings-page {
-    display: block;
-  }
+  .settings-page { display: block; }
 
   .settings-section-nav {
     border-bottom: 1px solid rgba(183, 101, 63, 0.18);
@@ -611,13 +628,13 @@
   }
 
   .font-size-setting {
-    grid-template-columns: 1fr 88px 72px;
-    min-height: 90px;
+    grid-template-columns: 1fr 104px 76px;
+    min-height: 94px;
   }
 
   .font-size-setting > span { grid-column: 1; }
-  .font-size-setting output { grid-column: 2; min-width: 88px; }
-  .settings-number-input { grid-column: 3; width: 72px; }
+  .font-size-setting output { grid-column: 2; min-width: 104px; }
+  .settings-number-input { grid-column: 3; width: 76px; }
   .font-size-setting input[type="range"] { grid-column: 1 / -1; grid-row: 2; }
   .font-size-setting small { grid-column: 1 / -1; }
 
