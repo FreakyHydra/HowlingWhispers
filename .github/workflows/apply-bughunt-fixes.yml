@@ -1,4 +1,4 @@
-name: Apply bughunt fixes
+name: Validate bughunt fixes
 
 on:
   push:
@@ -10,68 +10,25 @@ permissions:
   contents: write
 
 jobs:
-  patch:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: dev
-      - name: Apply audited source fixes
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+          cache: npm
+      - run: npm ci
+      - run: npm run build:local
+      - run: npm run lint
+      - name: Remove temporary validator after success
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text()
-              if old not in text:
-                  raise SystemExit(f'Expected pattern not found in {path}: {old[:100]!r}')
-              p.write_text(text.replace(old, new, 1))
-
-          # 1) AppView actually uses the Add-ons route, so include it in the union.
-          replace_once(
-              'app/dreambound-app.tsx',
-              'export type AppView = "roleplay" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas" | "living-cast";',
-              'export type AppView = "roleplay" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas" | "addons" | "living-cast";',
-          )
-
-          # 2) Make Scenario cards explicitly activate a scenario through the existing persona/scene start flow.
-          marker = '''  const sectionHeading =\n    roleplayType === "characters"\n      ? "Choose someone to meet"\n      : roleplayType === "locations"\n        ? "Choose somewhere to begin"\n        : "Choose a story to enter";\n\n'''
-          helper = marker + '''  const startScenario = (scenario: Scenario) => {\n    const linkedCharacter = (scenario.linkedCharacterIds ?? [])\n      .map((id) => props.characters.find((character) => character.id === id))\n      .find((character): character is Character => Boolean(character));\n    const character = linkedCharacter ?? props.selected ?? props.characters[0];\n    if (!character) return;\n\n    const fallbackTheme = {\n      accent: "#b7653f",\n      accentMuted: "#6f3b2b",\n      glow: "#2a1715",\n      surface: "#171012",\n      wash: "#09090b",\n      motif: "scenario",\n    };\n    const theme = props.scenesFor(character)[0]?.theme ?? fallbackTheme;\n    const opening = [\n      scenario.openingSituation?.trim()\n        || scenario.description?.trim()\n        || scenario.shortDescription?.trim()\n        || `The scenario “${scenario.name}” begins.`,\n      scenario.startingConditions?.length\n        ? `Starting conditions: ${scenario.startingConditions.join("; ")}`\n        : "",\n      scenario.activeElements?.length\n        ? `Already in motion: ${scenario.activeElements.join("; ")}`\n        : "",\n      scenario.possibleHooks?.length\n        ? `Possible hooks: ${scenario.possibleHooks.join("; ")}`\n        : "",\n    ].filter(Boolean).join("\\n\\n");\n\n    const scene: SceneDefinition = {\n      id: `scenario:${scenario.id}`,\n      title: scenario.name,\n      subtitle: scenario.shortDescription?.trim() || scenario.description?.trim().slice(0, 180) || "Scenario",\n      status: scenario.atmosphere?.trim() || "Scenario active",\n      weather: scenario.atmosphere?.trim() || "",\n      background: scenario.image?.trim() || "",\n      backgroundFocalPoint: "center",\n      opening,\n      theme,\n    };\n\n    props.requestPersonaStart({ kind: "scene", characterId: character.id, scene });\n  };\n\n'''
-          replace_once('app/features/roleplay/roleplay-area.tsx', marker, helper)
-          replace_once(
-              'app/features/roleplay/roleplay-area.tsx',
-              '                    onOpen={() => {}}',
-              '                    onOpen={() => startScenario(scenario)}',
-          )
-
-          # 3) Archive search must always clear its working state.
-          archive_path = Path('components/archive/archive-view.tsx')
-          archive_text = archive_path.read_text()
-          old_run = '''  const runSearch = useCallback(\n    (pageNumber = 1) =>\n      archive\n        .search({\n          q: query,\n          tags: tag ? [tag] : undefined,\n          age: age || undefined,\n          rating: rating || undefined,\n          page: pageNumber,\n        })\n        .then((res) => {\n          setResults(res.publications);\n          setTotalPages(res.totalPages);\n          setPage(res.page);\n        })\n        .catch((e) => onError("err", e.message)),\n    [query, tag, age, rating, onError],\n  );'''
-          new_run = '''  const runSearch = useCallback(\n    async (pageNumber = 1) => {\n      try {\n        const res = await archive.search({\n          q: query,\n          tags: tag ? [tag] : undefined,\n          age: age || undefined,\n          rating: rating || undefined,\n          page: pageNumber,\n        });\n        setResults(res.publications);\n        setTotalPages(res.totalPages);\n        setPage(res.page);\n      } catch (error) {\n        onError("err", error instanceof Error ? error.message : "Archive search failed.");\n      } finally {\n        setWorking(false);\n      }\n    },\n    [query, tag, age, rating, onError],\n  );'''
-          if old_run not in archive_text:
-              raise SystemExit('Archive runSearch pattern not found')
-          archive_text = archive_text.replace(old_run, new_run, 1)
-
-          # 4) SearchResult is intentionally lightweight. Fetch the full publication before import.
-          old_import = '''                <button\n                  className="link-button"\n                  onClick={() => onImport(pub as unknown as ArchivePublication)}\n                >\n                  Import as copy\n                </button>'''
-          new_import = '''                <button\n                  className="link-button"\n                  onClick={async () => {\n                    setWorking(true);\n                    try {\n                      const { publication } = await archive.get(pub.id);\n                      onImport(publication);\n                    } catch (error) {\n                      onError("err", error instanceof Error ? error.message : "The character could not be imported.");\n                    } finally {\n                      setWorking(false);\n                    }\n                  }}\n                >\n                  Import as copy\n                </button>'''
-          if old_import not in archive_text:
-              raise SystemExit('Archive import pattern not found')
-          archive_path.write_text(archive_text.replace(old_import, new_import, 1))
-          PY
-
-      - name: Commit fixes
-        shell: bash
-        run: |
-          if git diff --quiet; then
-            echo "No changes to commit"
-            exit 0
-          fi
+          rm .github/workflows/apply-bughunt-fixes.yml
           git config user.name "Howling Whispers Bug Hunt"
           git config user.email "actions@users.noreply.github.com"
-          git add app/dreambound-app.tsx app/features/roleplay/roleplay-area.tsx components/archive/archive-view.tsx
-          git commit -m "fix: activate scenarios and repair archive flows"
+          git add -A
+          git commit -m "chore: remove temporary bughunt validator"
           git push origin HEAD:dev
