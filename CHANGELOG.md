@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.9.1.1 — Rooms in Order
+
+A focused stability pass across the Roleplay hub and the rest of the app.
+
+### ✨ Added
+
+- **Scenario activation** — Scenario cards can now begin a real roleplay through the existing persona/start flow
+- **Scenario opening context** — opening situation, starting conditions, active elements, possible hooks, and atmosphere now carry into the Scenario start
+- **Scenario Contact links** — linked Contacts are preferred when a Scenario starts, with a safe fallback when no linked Contact is available
+
+### 🔄 Changed
+
+- **Roleplay library layout** — Contacts, Locations, and Scenarios use a wider, more readable card layout with safer title sizing
+- **Accessibility scaling** — UI Scale and UI Font Size are more strictly separated so text and physical interface sizing do not unintentionally scale together
+- **Settings typography** — small print, helper text, status text, and related Settings copy now follow the UI font preference more consistently
+
+### 🛠 Fixed
+
+- **Settings sidebar isolation** — the Settings navigation no longer appears inside Personas, Add-ons, Living Cast, or other pages that reuse shared panel styling
+- **Character identity isolation** — character lookup paths use stable IDs instead of display names, preventing duplicate names from being treated as the same Contact
+- **Character card titles** — long names no longer dominate the portrait card or break into unreadable fragments as easily
+- **Archive search** — search no longer remains stuck in a permanent loading state after a request finishes
+- **Archive imports** — importing from search results now fetches the complete published character instead of copying an incomplete summary
+- **Radio connection state** — the player only reports a successful connection after playback actually starts
+- **Persona library copy** — clarified local-storage wording and corrected persona memory-card typing around milestones
+- **Add-ons route typing** — the Add-ons view is now represented in the application view type instead of existing outside it
+
+---
+
 ## 0.9.1 — Community Opens
 
 ### ✨ Added

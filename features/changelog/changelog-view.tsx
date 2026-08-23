@@ -19,6 +19,38 @@ export function ChangelogView(props: ChangelogViewProps) {
              <article className="changelog-entry featured latest">
                <span className="changelog-mark">◐</span>
                <div>
+                 <span className="changelog-version">Version 0.9.1.1 · Rooms in Order</span>
+                 <h2>Rooms in Order</h2>
+                 <p>A focused stability pass across the Roleplay hub and the rest of the app.</p>
+                 <h3>✨ Added</h3>
+                 <ul>
+                   <li><strong>Scenario activation</strong> — Scenario cards can now begin a real roleplay through the existing persona/start flow</li>
+                   <li><strong>Scenario opening context</strong> — opening situation, starting conditions, active elements, possible hooks, and atmosphere now carry into the Scenario start</li>
+                   <li><strong>Scenario Contact links</strong> — linked Contacts are preferred when a Scenario starts, with a safe fallback when no linked Contact is available</li>
+                 </ul>
+                 <h3>🔄 Changed</h3>
+                 <ul>
+                   <li><strong>Roleplay library layout</strong> — Contacts, Locations, and Scenarios use a wider, more readable card layout with safer title sizing</li>
+                   <li><strong>Accessibility scaling</strong> — UI Scale and UI Font Size are more strictly separated so text and physical interface sizing do not unintentionally scale together</li>
+                   <li><strong>Settings typography</strong> — small print, helper text, status text, and related Settings copy now follow the UI font preference more consistently</li>
+                 </ul>
+                 <h3>🛠 Fixed</h3>
+                 <ul>
+                   <li><strong>Settings sidebar isolation</strong> — Settings navigation no longer appears inside Personas, Add-ons, Living Cast, or other pages that reuse shared panel styling</li>
+                   <li><strong>Character identity isolation</strong> — character lookup paths use stable IDs instead of display names, preventing duplicate names from being treated as the same Contact</li>
+                   <li><strong>Character card titles</strong> — long names no longer dominate the portrait card or break into unreadable fragments as easily</li>
+                   <li><strong>Archive search</strong> — search no longer remains stuck in a permanent loading state after a request finishes</li>
+                   <li><strong>Archive imports</strong> — importing from search results now fetches the complete published character instead of copying an incomplete summary</li>
+                   <li><strong>Radio connection state</strong> — the player only reports a successful connection after playback actually starts</li>
+                   <li><strong>Persona library copy</strong> — clarified local-storage wording and corrected persona memory-card typing around milestones</li>
+                   <li><strong>Add-ons route typing</strong> — the Add-ons view is now represented in the application view type instead of existing outside it</li>
+                 </ul>
+               </div>
+             </article>
+
+             <article className="changelog-entry featured latest">
+               <span className="changelog-mark">◐</span>
+               <div>
                  <span className="changelog-version">Version 0.9.1 · Community Opens</span>
                  <h2>Community Opens</h2>
                  <p>The project now has a dedicated community home, and Location sessions are more stable than ever.</p>
