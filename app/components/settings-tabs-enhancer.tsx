@@ -14,9 +14,61 @@ const tabs: { id: SettingsTab; label: string; icon: string; description: string 
   { id: "updates", label: "Updates", icon: "↻", description: "Version and release channel" },
 ];
 
+function NumberBridge({ label }: { label: HTMLLabelElement }) {
+  const range = label.querySelector<HTMLInputElement>('input[type="range"]');
+  const [value, setValue] = useState(range?.value ?? "");
+
+  useEffect(() => {
+    if (!range) return;
+    const sync = () => setValue(range.value);
+    range.addEventListener("input", sync);
+    range.addEventListener("change", sync);
+    sync();
+    return () => {
+      range.removeEventListener("input", sync);
+      range.removeEventListener("change", sync);
+    };
+  }, [range]);
+
+  if (!range) return null;
+
+  const min = Number(range.min || 0);
+  const max = Number(range.max || 100);
+  const step = Number(range.step || 1);
+
+  const commit = (raw: string, clamp = false) => {
+    setValue(raw);
+    if (raw.trim() === "") return;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return;
+    const next = clamp ? Math.min(max, Math.max(min, parsed)) : parsed;
+    if (next < min || next > max) return;
+    range.value = String(next);
+    range.dispatchEvent(new Event("input", { bubbles: true }));
+    range.dispatchEvent(new Event("change", { bubbles: true }));
+    setValue(String(next));
+  };
+
+  return createPortal(
+    <input
+      className="settings-number-input"
+      type="number"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={(event) => commit(event.target.value)}
+      onBlur={(event) => commit(event.target.value, true)}
+      aria-label={`${label.querySelector("span")?.textContent?.trim() || "Setting"} numeric value`}
+    />,
+    label,
+  );
+}
+
 export default function SettingsTabsEnhancer() {
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [active, setActive] = useState<SettingsTab>("engine");
+  const [numberLabels, setNumberLabels] = useState<HTMLLabelElement[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -25,6 +77,9 @@ export default function SettingsTabsEnhancer() {
       const page = document.querySelector<HTMLElement>(".settings-page");
       if (!mounted) return;
       setTarget(page);
+      setNumberLabels(page
+        ? Array.from(page.querySelectorAll<HTMLLabelElement>(".font-size-setting"))
+        : []);
     };
 
     findTarget();
@@ -47,34 +102,41 @@ export default function SettingsTabsEnhancer() {
 
   if (!target) return null;
 
-  return createPortal(
-    <aside className="settings-section-nav" aria-label="Settings sections">
-      <div className="settings-section-nav__brand">
-        <span className="settings-section-nav__mark" aria-hidden="true">◒</span>
-        <div>
-          <strong>Settings</strong>
-          <small>Howling Whispers</small>
-        </div>
-      </div>
+  return (
+    <>
+      {createPortal(
+        <aside className="settings-section-nav" aria-label="Settings sections">
+          <div className="settings-section-nav__brand">
+            <span className="settings-section-nav__mark" aria-hidden="true">◒</span>
+            <div>
+              <strong>Settings</strong>
+              <small>Howling Whispers</small>
+            </div>
+          </div>
 
-      <nav className="settings-section-nav__list">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            className={active === tab.id ? "active" : ""}
-            onClick={() => setActive(tab.id)}
-            aria-pressed={active === tab.id}
-          >
-            <span className="settings-section-nav__icon" aria-hidden="true">{tab.icon}</span>
-            <span className="settings-section-nav__copy">
-              <strong>{tab.label}</strong>
-              <small>{tab.description}</small>
-            </span>
-          </button>
-        ))}
-      </nav>
-    </aside>,
-    target,
+          <nav className="settings-section-nav__list">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className={active === tab.id ? "active" : ""}
+                onClick={() => setActive(tab.id)}
+                aria-pressed={active === tab.id}
+              >
+                <span className="settings-section-nav__icon" aria-hidden="true">{tab.icon}</span>
+                <span className="settings-section-nav__copy">
+                  <strong>{tab.label}</strong>
+                  <small>{tab.description}</small>
+                </span>
+              </button>
+            ))}
+          </nav>
+        </aside>,
+        target,
+      )}
+      {numberLabels.map((label, index) => (
+        <NumberBridge key={`${label.className}-${index}`} label={label} />
+      ))}
+    </>
   );
 }
