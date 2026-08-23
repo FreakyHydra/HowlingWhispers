@@ -118,12 +118,14 @@ export function extensionV1ToCharacterFields(ext: HowlingExtensionV1): Partial<C
 /**
  * Serialize a Howling character to an HWCC v1 card (CCV2 + howling_whispers).
  *
- * Standard CCV2 fields are projected from the structured model. Unknown CCV2
- * data fields and other extension namespaces from the original import are
- * preserved so nothing is silently discarded.
+ * Imported CCV2/HWCC standard fields are kept verbatim so an import/download
+ * round trip cannot silently flatten or duplicate the original author's data.
+ * Native Howling characters still project standard CCV2 fields from the current
+ * structured model. The Howling extension is always refreshed from current state.
  */
 export function characterToHWCCCard(character: Character): CharacterCardV2 {
   const original = character.cardV2?.original;
+  const standard = original?.data;
   const extension = characterToExtensionV1(character);
   const preservedData = original ? extraDataFields(original.data) : {};
   const preservedExtensions = original?.data.extensions
@@ -136,19 +138,31 @@ export function characterToHWCCCard(character: Character): CharacterCardV2 {
     data: {
       ...preservedData,
       name: character.name,
-      description: compileCharacterProfile(character),
-      personality: character.profile,
-      scenario: [character.scene, character.weather].filter(Boolean).join(". "),
-      first_mes: character.reply,
-      mes_example: character.cardV2?.mesExample ?? "",
-      creator_notes: character.cardV2?.creatorNotes ?? "",
-      system_prompt: character.cardV2?.importedSystemPrompt ?? "",
-      post_history_instructions: character.cardV2?.importedPostHistoryInstructions ?? "",
-      alternate_greetings: character.cardV2?.alternateGreetings ?? [],
-      tags: character.cardV2?.tags ?? [],
-      creator: character.credit ?? "",
-      character_version: character.cardV2?.characterVersion ?? "1.0",
-      ...(character.cardV2?.characterBook ? { character_book: character.cardV2.characterBook } : {}),
+      description: standard ? standard.description : compileCharacterProfile(character),
+      personality: standard ? standard.personality : character.profile,
+      scenario: standard
+        ? standard.scenario
+        : [character.scene, character.weather].filter(Boolean).join(". "),
+      first_mes: standard ? standard.first_mes : character.reply,
+      mes_example: standard ? standard.mes_example : (character.cardV2?.mesExample ?? ""),
+      creator_notes: standard ? standard.creator_notes : (character.cardV2?.creatorNotes ?? ""),
+      system_prompt: standard ? standard.system_prompt : (character.cardV2?.importedSystemPrompt ?? ""),
+      post_history_instructions: standard
+        ? standard.post_history_instructions
+        : (character.cardV2?.importedPostHistoryInstructions ?? ""),
+      alternate_greetings: standard
+        ? [...standard.alternate_greetings]
+        : (character.cardV2?.alternateGreetings ?? []),
+      tags: standard ? [...standard.tags] : (character.cardV2?.tags ?? []),
+      creator: standard ? standard.creator : (character.credit ?? ""),
+      character_version: standard
+        ? standard.character_version
+        : (character.cardV2?.characterVersion ?? "1.0"),
+      ...(standard?.character_book
+        ? { character_book: standard.character_book }
+        : character.cardV2?.characterBook
+          ? { character_book: character.cardV2.characterBook }
+          : {}),
       extensions: {
         ...preservedExtensions,
         [HOWLING_EXTENSION_KEY]: extension,
