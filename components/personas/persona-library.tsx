@@ -14,7 +14,11 @@ import { PersonaEditor } from "./persona-editor";
 type PersonaLibraryProps = {
   personas: PlayerPersona[];
   activePersonaId: string | null;
-  memoryCards: Record<string, { memoryRefs: Array<{ id: string }>; relationships: Record<string, unknown> }>;
+  memoryCards: Record<string, {
+    memoryRefs: Array<{ id: string }>;
+    relationships: Record<string, unknown>;
+    milestones?: Record<string, unknown>;
+  }>;
   onChange: (personas: PlayerPersona[]) => void;
   onSelectActive: (id: string | null) => void;
 };
@@ -88,8 +92,8 @@ export function PersonaLibrary({
       <p className="eyebrow">Your persona library</p>
       <h2>Who you play as</h2>
       <p>
-        Save multiple identities for roleplay. Each story can use its own persona.
-        Nothing here ever leaves your browser.
+        Save multiple identities locally in this browser. Each story can use its own persona.
+        When you use one in roleplay, a compiled profile is sent to your selected story engine.
       </p>
 
       <div className="persona-library-tools">
