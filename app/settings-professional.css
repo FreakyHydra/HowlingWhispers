@@ -1,0 +1,479 @@
+/*
+ * Professional Settings workspace
+ *
+ * This file intentionally contains only Settings-page presentation overrides.
+ * It does not change settings state, storage keys, provider logic, or generation.
+ */
+
+.settings-page {
+  --ui-font-scale: 1;
+  background:
+    radial-gradient(circle at 82% 0%, rgba(183, 101, 63, 0.075), transparent 34rem),
+    linear-gradient(180deg, #0d0b0e 0%, #09080a 100%);
+  min-height: 100%;
+  overflow-y: auto;
+  padding: clamp(30px, 4vw, 56px);
+}
+
+.settings-heading {
+  align-items: center;
+  gap: 28px;
+  margin-bottom: 28px;
+  max-width: 1280px;
+}
+
+.settings-heading > div {
+  max-width: 760px;
+}
+
+.settings-heading h1 {
+  font-size: clamp(42px, 4vw, 58px);
+  letter-spacing: -0.025em;
+  line-height: 1;
+  margin: 8px 0 10px;
+}
+
+.settings-heading > div > p:last-child {
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 700px;
+}
+
+.settings-heading .outline-button {
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding-inline: 16px;
+}
+
+.settings-grid {
+  align-items: start;
+  gap: 20px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  max-width: 1280px;
+}
+
+.engine-settings,
+.style-settings,
+.backup-settings {
+  grid-column: span 8;
+  grid-row: auto;
+}
+
+.account-settings,
+.privacy-settings,
+.update-settings {
+  grid-column: span 4;
+}
+
+.settings-panel {
+  background: rgba(18, 15, 19, 0.92);
+  border: 1px solid rgba(242, 222, 194, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+  padding: clamp(22px, 2.5vw, 30px);
+}
+
+.settings-panel::after {
+  display: none;
+}
+
+.settings-panel:hover {
+  border-color: rgba(183, 101, 63, 0.28);
+}
+
+.settings-panel .eyebrow {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+}
+
+.settings-panel h2 {
+  font-size: 26px;
+  line-height: 1.15;
+  margin-top: 7px;
+}
+
+.settings-panel > p:not(.eyebrow):not(.settings-attribution):not(.update-message):not(.backup-help) {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.settings-panel-title {
+  align-items: center;
+  gap: 18px;
+  padding-bottom: 18px;
+}
+
+.settings-status {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.connection-feedback {
+  background: rgba(7, 7, 9, 0.42);
+  border-color: rgba(242, 222, 194, 0.1);
+  border-radius: 8px;
+}
+
+.settings-form {
+  gap: 20px;
+}
+
+.settings-form label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.035em;
+}
+
+.settings-form label small {
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.settings-form input:not([type="range"]),
+.settings-form select,
+.style-settings select {
+  background: #0d0b0f;
+  border-color: rgba(242, 222, 194, 0.16);
+  border-radius: 7px;
+  color: var(--cream);
+  min-height: 44px;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.settings-form input:not([type="range"]):focus,
+.settings-form select:focus,
+.style-settings select:focus {
+  background: #100d11;
+  border-color: rgba(215, 138, 94, 0.72);
+  box-shadow: 0 0 0 3px rgba(183, 101, 63, 0.12);
+}
+
+/* Native select menus otherwise inherit an unreadable light popup on some browsers. */
+.settings-page select,
+.settings-page select option,
+.settings-page select optgroup {
+  background-color: #100d11;
+  color: #f2dec2;
+}
+
+.settings-page select option:checked {
+  background-color: #3a241d;
+  color: #fff3df;
+}
+
+.settings-field-grid {
+  gap: 16px;
+}
+
+.reply-style-options {
+  gap: 10px;
+}
+
+.reply-style-options button {
+  background: rgba(8, 7, 9, 0.55);
+  border-color: rgba(242, 222, 194, 0.12);
+  border-radius: 8px;
+  min-height: 86px;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.reply-style-options button:hover {
+  background: rgba(183, 101, 63, 0.08);
+  border-color: rgba(215, 138, 94, 0.55);
+  transform: translateY(-1px);
+}
+
+.reply-style-options button.active {
+  background: rgba(183, 101, 63, 0.12);
+  border-color: rgba(215, 138, 94, 0.72);
+  box-shadow: inset 3px 0 0 var(--copper-bright);
+}
+
+.story-control-fieldset {
+  background: rgba(7, 7, 9, 0.28);
+  border-color: rgba(242, 222, 194, 0.1);
+  border-radius: 9px;
+}
+
+.story-control-fieldset legend {
+  background: #121013;
+}
+
+/* --- Appearance: stable, professional control layout --- */
+.style-settings {
+  overflow: hidden;
+}
+
+.style-settings > h2 + p {
+  margin-bottom: 22px;
+}
+
+.style-grid {
+  display: grid;
+  gap: 16px 22px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.style-grid > label {
+  min-width: 0;
+}
+
+.style-grid > label:first-child,
+.style-grid > .font-preview,
+.style-grid > .font-size-setting {
+  grid-column: 1 / -1;
+}
+
+.style-grid > label:first-child {
+  display: grid;
+  gap: 8px 18px;
+  grid-template-columns: minmax(140px, 0.7fr) minmax(260px, 1.8fr);
+  align-items: center;
+}
+
+.style-grid > label:first-child > span {
+  grid-column: 1;
+}
+
+.style-grid > label:first-child > select {
+  grid-column: 2;
+  min-width: 0;
+  width: 100%;
+}
+
+.style-grid > label:first-child > small {
+  grid-column: 2;
+}
+
+.font-preview {
+  background: rgba(7, 7, 9, 0.42);
+  border: 1px solid rgba(242, 222, 194, 0.1);
+  border-radius: 9px;
+  min-height: 92px;
+  padding: 16px 18px;
+}
+
+.font-preview > span {
+  color: var(--muted);
+  display: block;
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.font-preview p {
+  margin: 0;
+}
+
+.font-size-setting {
+  align-items: center;
+  display: grid !important;
+  gap: 6px 16px !important;
+  grid-template-columns: minmax(145px, 0.75fr) minmax(220px, 1.8fr) 118px;
+  min-height: 66px;
+}
+
+.font-size-setting > span {
+  grid-column: 1;
+  white-space: nowrap;
+}
+
+.font-size-setting input[type="range"] {
+  accent-color: var(--copper-bright);
+  grid-column: 2;
+  margin: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.font-size-setting output {
+  color: var(--copper-bright);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  grid-column: 3;
+  min-width: 118px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.font-size-setting small {
+  grid-column: 2 / -1;
+  min-height: 15px;
+}
+
+.style-grid > label:not(.font-size-setting):not(:first-child) {
+  background: rgba(7, 7, 9, 0.28);
+  border: 1px solid rgba(242, 222, 194, 0.08);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.style-grid input[type="color"] {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  height: 38px;
+  padding: 0;
+  width: 100%;
+}
+
+.settings-attribution {
+  border-top: 1px solid rgba(242, 222, 194, 0.08);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+  margin: 20px 0 12px;
+  padding-top: 14px;
+}
+
+/* Small panels use the same quiet information hierarchy. */
+.account-settings,
+.privacy-settings,
+.update-settings {
+  text-align: left;
+}
+
+.account-settings .settings-avatar {
+  height: 60px;
+  margin: 20px 0 12px;
+  width: 60px;
+}
+
+.account-settings .settings-signout {
+  width: auto;
+}
+
+.privacy-settings li,
+.update-settings .version-row,
+.backup-server-item {
+  border-color: rgba(242, 222, 194, 0.08);
+}
+
+.update-settings .version-row {
+  background: rgba(7, 7, 9, 0.34);
+  border-radius: 7px;
+}
+
+.settings-actions {
+  border-color: rgba(242, 222, 194, 0.1);
+}
+
+@media (max-width: 1080px) {
+  .settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .engine-settings,
+  .style-settings,
+  .backup-settings,
+  .account-settings,
+  .privacy-settings,
+  .update-settings {
+    grid-column: span 1;
+  }
+
+  .engine-settings,
+  .style-settings,
+  .backup-settings {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .settings-page {
+    padding: 22px 14px 36px;
+  }
+
+  .settings-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-heading .outline-button {
+    align-self: flex-start;
+  }
+
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .engine-settings,
+  .style-settings,
+  .backup-settings,
+  .account-settings,
+  .privacy-settings,
+  .update-settings {
+    grid-column: 1;
+  }
+
+  .settings-panel-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .settings-field-grid,
+  .settings-popup-grid,
+  .reply-style-options,
+  .provider-choice-options,
+  .style-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .style-grid > label:first-child {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .style-grid > label:first-child > span,
+  .style-grid > label:first-child > select,
+  .style-grid > label:first-child > small,
+  .style-grid > label:not(.font-size-setting):not(:first-child) {
+    grid-column: 1;
+  }
+
+  .font-size-setting {
+    grid-template-columns: 1fr 88px;
+    min-height: 88px;
+  }
+
+  .font-size-setting > span {
+    grid-column: 1;
+  }
+
+  .font-size-setting output {
+    grid-column: 2;
+    min-width: 88px;
+  }
+
+  .font-size-setting input[type="range"] {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .font-size-setting small {
+    grid-column: 1 / -1;
+  }
+
+  .settings-actions,
+  .update-actions,
+  .backup-server-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .disconnect-button {
+    margin-left: 0;
+  }
+}
