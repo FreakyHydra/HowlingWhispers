@@ -1,0 +1,21 @@
+/* Keep Settings-only workspace structure from leaking into other feature pages.
+ * Add-ons and Living Cast deliberately reuse some settings visual primitives,
+ * but they do not contain the Settings .settings-grid and must remain normal pages.
+ */
+
+.settings-page:not(:has(> .settings-grid)) {
+  --ui-scale: initial;
+  display: block;
+  grid-template: none;
+  grid-template-areas: none;
+  min-height: calc(100dvh - calc(var(--topbar-height) * var(--ui-scale, 1)));
+  overflow-y: auto;
+}
+
+.settings-page:not(:has(> .settings-grid)) > .settings-heading {
+  grid-area: auto;
+}
+
+.settings-page:not(:has(> .settings-grid)) > .settings-section-nav {
+  display: none !important;
+}
