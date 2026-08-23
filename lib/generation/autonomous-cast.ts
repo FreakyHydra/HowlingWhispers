@@ -21,7 +21,7 @@
 //     "Melody distrust increased").
 //   - Drives are advisory state rendered into the prompt, not runtime controls.
 
-import { isRejectedAutonomyIdentity, matchesName } from "./living-cast.ts";
+import { isRejectedAutonomyIdentity, findCastEntryById } from "./living-cast.ts";
 
 export type AutonomyNeed =
   | "hunger"
@@ -160,10 +160,10 @@ export function seedAutonomyFromCast(
   cast: LivingCastShim[],
   now = Date.now(),
 ): Map<string, AutonomousAgent> {
-  const castNames = new Set(cast.map((member) => member.name.toLocaleLowerCase("en-US")).filter(Boolean));
+  const castIds = new Set(cast.map((member) => member.id).filter(Boolean));
   const working = new Map<string, AutonomousAgent>();
   for (const [id, entry] of agents) {
-    if (!castNames.has(entry.name.toLocaleLowerCase("en-US"))) continue;
+    if (!castIds.has(id)) continue;
     working.set(id, {
       ...entry,
       drive: { ...entry.drive, needs: { ...entry.drive.needs } },
@@ -268,7 +268,7 @@ export function updateAutonomyState(
   agents: Map<string, AutonomousAgent>,
   cast: LivingCastShim[],
   messages: MessageShim[],
-  options: { speakerName?: string | null; primaryName: string; now?: number },
+  options: { speakerId?: string | null; primaryId: string; now?: number },
 ): Map<string, AutonomousAgent> {
   const now = options.now ?? Date.now();
   const working = new Map<string, AutonomousAgent>();
@@ -281,18 +281,17 @@ export function updateAutonomyState(
   }
 
   const window = messages.slice(-3);
-  const primaryName = options.primaryName.toLocaleLowerCase("en-US");
 
   for (const member of cast) {
     if (!member.id || !member.name) continue;
-    if (member.name.toLocaleLowerCase("en-US") === primaryName) continue;
+    if (member.id === options.primaryId) continue;
     const entry = working.get(member.id);
     if (!entry) continue;
 
-    const isSpeaker = Boolean(options.speakerName) && matchesName(options.speakerName, member.name);
+    const isSpeaker = Boolean(options.speakerId) && options.speakerId === member.id;
     const beatText = window
       .filter((message) => message.sender === "character"
-        ? matchesName(message.speaker ?? "", member.name) || mentionsName(message.text, member.name)
+        ? (message.speaker ?? "") === member.name || mentionsName(message.text, member.name)
         : mentionsName(message.text, member.name))
       .map((message) => message.text)
       .join("\n");
@@ -373,9 +372,9 @@ export function deriveAutonomyPulse(
   agents: Map<string, AutonomousAgent>,
   cast: LivingCastShim[],
   options: {
-    speakerName?: string | null;
-    primaryName: string;
-    pendingTargetName?: string | null;
+    speakerId?: string | null;
+    primaryId: string;
+    pendingTargetId?: string | null;
     now?: number;
   },
 ): Map<string, AutonomousAgent> {
@@ -391,11 +390,11 @@ export function deriveAutonomyPulse(
 
   for (const member of cast) {
     const entry = working.get(member.id);
-    if (!entry || entry.name === options.primaryName) continue;
-    if (options.speakerName && member.name === options.speakerName) continue;
+    if (!entry || entry.id === options.primaryId) continue;
+    if (options.speakerId && member.id === options.speakerId) continue;
     const internal: string[] = [];
     const observable: string[] = [];
-    if (options.pendingTargetName && entry.name === options.pendingTargetName) {
+    if (options.pendingTargetId && entry.id === options.pendingTargetId) {
       internal.push(`${entry.name} has been asked and has not answered`);
       observable.push("keeps returning to a half-formed thought, lips pressed shut");
     } else {
@@ -429,21 +428,24 @@ export function renderPulseView(
   agents: Map<string, AutonomousAgent> | AutonomousAgent[],
   cast: LivingCastShim[],
   options: {
-    primaryName: string;
-    speakerName?: string | null;
-    pendingTargetName?: string | null;
+    primaryId: string;
+    speakerId?: string | null;
+    pendingTargetId?: string | null;
     now?: number;
   },
 ): PulseView {
   const agentMap = agents instanceof Map ? agents : new Map(agents.map((agent) => [agent.id, agent]));
   const derived = deriveAutonomyPulse(agentMap, cast, options);
-  const pending = options.pendingTargetName
-    ? { targetName: options.pendingTargetName, asker: null }
+  const pending = options.pendingTargetId
+    ? (() => {
+        const target = findCastEntryById(cast, options.pendingTargetId);
+        return { targetName: target?.name ?? null, asker: null };
+      })()
     : null;
   const viewAgents: PulseViewAgent[] = [];
-  for (const [id, entry] of derived) {
-    if (entry.name === options.primaryName) continue;
-    if (options.speakerName && entry.name === options.speakerName) continue;
+  for (const [, entry] of derived) {
+    if (entry.id === options.primaryId) continue;
+    if (options.speakerId && entry.id === options.speakerId) continue;
     const residue = recentResidue(entry);
     viewAgents.push({
       id: entry.id,
@@ -463,13 +465,13 @@ export function renderPulseView(
  */
 export function renderAutonomousBlock(
   agents: AutonomousAgent[],
-  options: { primaryName?: string } = {},
+  options: { primaryDisplayName?: string } = {},
 ): string {
   if (agents.length === 0) return "";
   const lines: string[] = ["<autonomy>"];
   let renderedAny = false;
   for (const agent of agents) {
-    if (options.primaryName && agent.name === options.primaryName) continue;
+    if (options.primaryDisplayName && agent.name === options.primaryDisplayName) continue;
     renderedAny = true;
     lines.push(`[NPC SUBTEXT: ${agent.name}]`);
     const drive = agent.drive;
@@ -504,9 +506,9 @@ export function renderAutonomousBlock(
  * NPC acts as an independent participant (may disagree, hesitate, refuse,
  * conceal, or change their mind) instead of being a puppet of the plot.
  */
-export function renderAutonomyInstruction(agent: AutonomousAgent, primaryName: string): string {
+export function renderAutonomyInstruction(agent: AutonomousAgent, primaryDisplayName: string): string {
   const lines = [
-    `As ${agent.name}, you are an independent participant, not a plot device. Follow your own goal and inner state, not only the player's: you may disagree, hesitate, refuse, conceal what you know, or change your mind. ${primaryName}'s influence shapes your choices but never overwrites them.`,
+    `As ${agent.name}, you are an independent participant, not a plot device. Follow your own goal and inner state, not only the player's: you may disagree, hesitate, refuse, conceal what you know, or change your mind. ${primaryDisplayName}'s influence shapes your choices but never overwrites them.`,
   ];
   const drive = agent.drive;
   const parts: string[] = [];

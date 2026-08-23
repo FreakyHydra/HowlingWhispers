@@ -17,7 +17,6 @@ import { parseStoryMetadata, type StoryMetadata } from "../../../lib/generation/
 import { formatPlayerTurn } from "../../../lib/generation/player-turn.ts";
 import {
   findCastEntryByName,
-  matchesName,
   sanitizeCast,
 } from "../../../lib/generation/living-cast.ts";
 import {
@@ -349,7 +348,7 @@ export async function POST(request: Request) {
     ? (() => {
       const entry = findCastEntryByName(livingCast, requestedSpeaker);
       if (!entry || entry.origin === "player" || entry.primary) return null;
-      if (matchesName(entry.name, character?.name ?? "")) return null;
+      if (entry.id === character?.id) return null;
       return entry;
     })()
     : null;
@@ -395,16 +394,16 @@ export async function POST(request: Request) {
     : autonomousCast;
   const autonomyUpdated = (autonomySeeded.size > 0 && livingCast.length > 0)
     ? updateAutonomyState(autonomySeeded, livingCast, messages, {
-      speakerName: castSpeaker?.name ?? null,
-      primaryName: character?.name ?? "",
+      speakerId: castSpeaker?.id ?? null,
+      primaryId: character?.id ?? "",
     })
     : autonomySeeded;
   const autonomyPulse = (autonomyUpdated.size > 0 || livingCast.length > 0)
     ? deriveAutonomyPulse(autonomyUpdated, livingCast, {
-      speakerName: castSpeaker?.name ?? null,
-      primaryName: character?.name ?? "",
-      pendingTargetName: castSpeaker && !matchesName(castSpeaker.name, character?.name ?? "")
-        ? castSpeaker.name
+      speakerId: castSpeaker?.id ?? null,
+      primaryId: character?.id ?? "",
+      pendingTargetId: castSpeaker && castSpeaker.id !== (character?.id ?? "")
+        ? castSpeaker.id
         : null,
     })
     : autonomyUpdated;

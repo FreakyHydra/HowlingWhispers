@@ -5,6 +5,7 @@ import {
   createCast,
   detectLivingCast,
   detectPendingInteraction,
+  findCastEntryById,
   matchesName,
   renderLivingCastBlock,
   renderSpeakerInstruction,
@@ -492,4 +493,16 @@ test("scene opening introducing a side character seeds them into initial livingC
   const agent = autonomy.get(melody.id);
   assert.ok(agent, "Melody autonomy entry should exist");
   assert.equal(agent.name, "Melody");
+});
+
+test("findCastEntryById returns the exact entry while duplicate display names stay separate", () => {
+  const cast = [
+    { id: "custom-a", name: "Peony", origin: "invited", presence: "active", addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+    { id: "custom-b", name: "Peony", origin: "invited", presence: "active", addedAt: 2, updatedAt: 2, notes: [], relationships: [] },
+    { id: "rc:peony", name: "Peony", origin: "permanent", presence: "active", addedAt: 3, updatedAt: 3, notes: [], relationships: [] },
+  ];
+  assert.equal(findCastEntryById(cast, "custom-a")?.id, "custom-a");
+  assert.equal(findCastEntryById(cast, "custom-b")?.id, "custom-b");
+  assert.equal(findCastEntryById(cast, "rc:peony")?.id, "rc:peony");
+  assert.equal(findCastEntryById(cast, "nonexistent"), null);
 });

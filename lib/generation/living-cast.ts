@@ -694,3 +694,9 @@ export function findCastEntryByName(cast: LivingCastEntry[], name: string): Livi
   const target = cast.find((entry) => matchesName(entry.name, name));
   return target ?? null;
 }
+
+/** Find a cast entry by immutable id. */
+export function findCastEntryById(cast: LivingCastEntry[], id: string): LivingCastEntry | null {
+  const target = cast.find((entry) => entry.id === id);
+  return target ?? null;
+}

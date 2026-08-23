@@ -206,7 +206,7 @@ export function compileContext(input: CompileContextInput): CompiledContext {
     })
     : "";
   const autonomyBlock = input.autonomy && input.autonomy.length > 0
-    ? renderAutonomousBlock(input.autonomy, { primaryName: input.character.identity.name })
+    ? renderAutonomousBlock(input.autonomy, { primaryDisplayName: input.character.identity.name })
     : "";
   const speakerInstruction = speakerEntry
     ? renderSpeakerInstruction(speakerEntry, input.character.identity.name)

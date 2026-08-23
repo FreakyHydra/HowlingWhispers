@@ -883,7 +883,7 @@ function isUserOwnedLocation(location: Location): boolean {
 }
 
 const handcraftedScenes: Record<string, SceneDefinition[]> = {
-  Coda: [
+  coda: [
     {
       id: "moonlit-study",
       title: "The Moonlit Study",
@@ -1029,7 +1029,7 @@ const handcraftedScenes: Record<string, SceneDefinition[]> = {
       },
     },
   ],
-  "Heather Whiteclaw": [
+  heather: [
     {
       id: "whiteclaw-borderlands",
       title: "Whiteclaw Borderlands",
@@ -1085,7 +1085,7 @@ const handcraftedScenes: Record<string, SceneDefinition[]> = {
       },
     },
   ],
-  Peony: [
+  peony: [
     {
       id: "garden-between-worlds",
       title: "The Garden Between Worlds",
@@ -1094,7 +1094,7 @@ const handcraftedScenes: Record<string, SceneDefinition[]> = {
       weather: "Violet dusk beneath greenhouse glass",
       background: "/assets/peony-void-garden-v2.png",
       backgroundFocalPoint: "70% 38%",
-      opening: initialCharacters.find((character) => character.name === "Peony")!.reply,
+      opening: initialCharacters.find((character) => character.id === "peony")!.reply,
       theme: {
         accent: "#d58af0",
         accentMuted: "#78458d",
@@ -1123,7 +1123,7 @@ const handcraftedScenes: Record<string, SceneDefinition[]> = {
       },
     },
   ],
-  "Senako Steel": [
+  "senako-steel": [
     {
       id: "lime-green-fortress",
       title: "The Lime-Green Fortress",
@@ -1132,7 +1132,7 @@ const handcraftedScenes: Record<string, SceneDefinition[]> = {
       weather: "Rain taps the bedroom window",
       background: "/assets/senako-steel-bedroom.png",
       backgroundFocalPoint: "74% 45%",
-      opening: initialCharacters.find((character) => character.name === "Senako Steel")!.reply,
+      opening: initialCharacters.find((character) => character.id === "senako-steel")!.reply,
       theme: {
         accent: "#b7d620",
         accentMuted: "#617514",
@@ -1195,7 +1195,7 @@ function sandboxSceneFor(character: Character): SceneDefinition {
 }
 
 function scenesFor(character: Character): SceneDefinition[] {
-  return handcraftedScenes[character.name] ?? [{
+  return handcraftedScenes[character.id] ?? [{
     id: "opening-scene",
     title: character.scene,
     subtitle: character.role,
@@ -1303,7 +1303,7 @@ function mergeBuiltInCharacters(saved: Character[]): Character[] {
     });
   for (const character of initialCharacters) {
     const exists = merged.some(
-      (candidate) => candidate.id === character.id || candidate.name === character.name,
+      (candidate) => candidate.id === character.id,
     );
     if (!exists) merged.push(character);
   }
@@ -3732,9 +3732,7 @@ export default function DreamboundApp() {
         livingCast: activeSession?.livingCast ?? [],
         playerName: effectivePlayerName,
       });
-      const invitedSpeaker = respondAs
-        ? baselineCast.find((entry) => entry.name === respondAs)
-        : null;
+      const invitedSpeaker = nextSpeaker ?? null;
       if (invitedSpeaker && livingCastConfig.enabled) {
         scoreCharacterReply(replyMessage.id, replyMessage.text, [...conversation, replyMessage], invitedSpeaker.id);
       } else {
@@ -4108,7 +4106,7 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
     const name = String(form.get("name") || "Unnamed soul").trim();
     const role = String(form.get("role") || "New companion").trim();
     const spark = String(form.get("spark") || "").trim();
-    const id = `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
+    const id = newCharacterId();
     const newCharacter: Character = {
       id,
       name,

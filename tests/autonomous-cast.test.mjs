@@ -58,8 +58,8 @@ test("deriveAutonomyPulse records unanswered pressure on the pending cast member
   const melody = seededAgent("Melody");
   const map = new Map([["rc:melody", melody]]);
   const pulse = deriveAutonomyPulse(map, [{ id: "rc:melody", name: "Melody" }], {
-    primaryName: "Senako Steel",
-    pendingTargetName: "Melody",
+    primaryId: "rc:senako-steel",
+    pendingTargetId: "rc:melody",
     now: NOW,
   });
   const entry = pulse.get("rc:melody");
@@ -76,8 +76,8 @@ test("deriveAutonomyPulse marks bystander NPCs as present but unaddressed withou
   });
   const map = new Map([["rc:melody", melody]]);
   const pulse = deriveAutonomyPulse(map, [{ id: "rc:melody", name: "Melody" }], {
-    primaryName: "Senako Steel",
-    pendingTargetName: null,
+    primaryId: "rc:senako-steel",
+    pendingTargetId: null,
     now: NOW,
   });
   const entry = pulse.get("rc:melody");
@@ -98,7 +98,7 @@ test("deriveAutonomyPulse keeps the primary and the current speaker out of the p
       { id: "rc:senako-steel", name: "Senako Steel" },
       { id: "rc:melody", name: "Melody" },
     ],
-    { primaryName: "Senako Steel", speakerName: "Melody", now: NOW },
+    { primaryId: "rc:senako-steel", speakerId: "rc:melody", now: NOW },
   );
   assert.equal(pulse.get("rc:senako-steel")?.revisions.length, 0);
   assert.equal(pulse.get("rc:melody")?.revisions.length, 0);
@@ -116,7 +116,7 @@ test("renderAutonomyBlock includes the strong drive fields and hides none of the
   });
   melody.revisions = [{ internal: ["Melody intends to leave"], observable: ["keeps glancing toward the way out"] }];
   melody.updatedAt = NOW;
-  const block = renderAutonomousBlock([melody], { primaryName: "Senako Steel" });
+  const block = renderAutonomousBlock([melody], { primaryDisplayName: "Senako Steel" });
   assert.ok(block.includes("[NPC SUBTEXT: Melody]"));
   assert.ok(block.includes("Goal: leave before the winter market closes"));
   assert.ok(block.includes("Fears: being caught; losing the ledger"));
@@ -127,7 +127,7 @@ test("renderAutonomyBlock includes the strong drive fields and hides none of the
 
 test("renderAutonomyBlock omits the primary character", () => {
   const senako = seededAgent("Senako Steel", { ...blankDrive(), goal: "guard the entryway" });
-  const block = renderAutonomousBlock([senako], { primaryName: "Senako Steel" });
+  const block = renderAutonomousBlock([senako], { primaryDisplayName: "Senako Steel" });
   assert.equal(block, "");
 });
 
@@ -217,11 +217,11 @@ test("a derived pulse after seeding produces a prompt-ready subtext block for a 
     { id: "rc:melody", name: "Melody" },
   ], NOW);
   const pulse = deriveAutonomyPulse(seeded, [{ id: "rc:melody", name: "Melody" }], {
-    primaryName: "Senako Steel",
-    pendingTargetName: null,
+    primaryId: "rc:senako-steel",
+    pendingTargetId: null,
     now: NOW,
   });
-  const block = renderAutonomousBlock(autonomousAgentsToArray(pulse), { primaryName: "Senako Steel" });
+  const block = renderAutonomousBlock(autonomousAgentsToArray(pulse), { primaryDisplayName: "Senako Steel" });
   assert.ok(block.includes("[NPC SUBTEXT: Melody]"));
   assert.ok(block.includes("has not been given a clear reason to speak yet"));
   assert.ok(block.includes("[OBSERVABLE] Melody — Melody keeps to themselves, still but watchful"));
@@ -310,7 +310,7 @@ test("updateAutonomyState lowers hunger when the cast member eats", () => {
   const updated = updateAutonomyState(
     agents, castModules("Melody"),
     [{ sender: "character", text: "*Melody ate the bread hungrily.*", speaker: "Melody" }],
-    { speakerName: "Melody", primaryName: "Senako Steel", now: NOW },
+    { speakerId: "rc:melody", primaryId: "rc:senako-steel", now: NOW },
   );
   const needs = updated.get("rc:melody").drive.needs;
   assert.ok(needs.hunger < 0.9, `hunger should fall, got ${needs.hunger}`);
@@ -323,7 +323,7 @@ test("updateAutonomyState lowers fatigue when the cast member rests", () => {
   const updated = updateAutonomyState(
     new Map([["rc:melody", melody]]), castModules("Melody"),
     [{ sender: "character", text: "*Melody lay down and slept deeply.*", speaker: "Melody" }],
-    { speakerName: "Melody", primaryName: "Senako Steel", now: NOW },
+    { speakerId: "rc:melody", primaryId: "rc:senako-steel", now: NOW },
   );
   const needs = updated.get("rc:melody").drive.needs;
   assert.ok(needs.fatigue < 0.8);
@@ -335,7 +335,7 @@ test("updateAutonomyState resolves a concern when discovery answers the open que
   const updated = updateAutonomyState(
     new Map([["rc:melody", melody]]), castModules("Melody"),
     [{ sender: "character", text: "*She recalled where the ledger had been left.*", speaker: "Melody" }],
-    { speakerName: "Melody", primaryName: "Senako Steel", now: NOW },
+    { speakerId: "rc:melody", primaryId: "rc:senako-steel", now: NOW },
   );
   const drive = updated.get("rc:melody").drive;
   assert.ok(!drive.concerns.includes("the missing ledger"), "concern should resolve");
@@ -347,7 +347,7 @@ test("updateAutonomyState records an unanswered question as a concern for a byst
   const updated = updateAutonomyState(
     new Map([["rc:melody", melody]]), castModules("Melody"),
     [{ sender: "player", text: "*She turned to Melody.* What happened to the ledger?" }],
-    { speakerName: null, primaryName: "Senako Steel", now: NOW },
+    { speakerId: null, primaryId: "rc:senako-steel", now: NOW },
   );
   const drive = updated.get("rc:melody").drive;
   assert.ok(drive.concerns.some((concern) => concern.includes("has not answered")));
@@ -361,7 +361,7 @@ test("updateAutonomyState clears the pending concern when the speaker (respondAs
   const updated = updateAutonomyState(
     new Map([["rc:melody", melody]]), castModules("Melody"),
     [{ sender: "player", text: "*She turned to Melody.* What happened to the ledger?" }],
-    { speakerName: "Melody", primaryName: "Senako Steel", now: NOW },
+    { speakerId: "rc:melody", primaryId: "rc:senako-steel", now: NOW },
   );
   const drive = updated.get("rc:melody").drive;
   assert.ok(!drive.concerns.some((concern) => concern.includes("has not answered")), "answered concern cleared");
@@ -372,7 +372,7 @@ test("updateAutonomyState creates a safety fear on conflict (never mechanically 
   const updated = updateAutonomyState(
     new Map([["rc:melody", melody]]), castModules("Melody"),
     [{ sender: "character", text: "*Melody stared at them through the shouting, fists clenched.*", speaker: "Melody" }],
-    { speakerName: "Melody", primaryName: "Senako Steel", now: NOW },
+    { speakerId: "rc:melody", primaryId: "rc:senako-steel", now: NOW },
   );
   const fears = updated.get("rc:melody").drive.fears;
   assert.ok(fears.some((fear) => /brewing conflict/i.test(fear)));
@@ -383,7 +383,7 @@ test("updateAutonomyState clears a completed goal", () => {
   const updated = updateAutonomyState(
     new Map([["rc:melody", melody]]), castModules("Melody"),
     [{ sender: "character", text: "*Finally, she found the ledger and tucked it away.*", speaker: "Melody" }],
-    { speakerName: "Melody", primaryName: "Senako Steel", now: NOW },
+    { speakerId: "rc:melody", primaryId: "rc:senako-steel", now: NOW },
   );
   const drive = updated.get("rc:melody").drive;
   assert.equal(drive.goal, "");
@@ -396,7 +396,7 @@ test("updateAutonomyState leaves state stable when nothing meaningful happens", 
   const updated = updateAutonomyState(
     baseline, castModules("Melody"),
     [{ sender: "character", text: "*Melody polished the glass.*", speaker: "Melody" }],
-    { speakerName: "Melody", primaryName: "Senako Steel", now: NOW },
+    { speakerId: "rc:melody", primaryId: "rc:senako-steel", now: NOW },
   );
   const drive = updated.get("rc:melody").drive;
   assert.deepEqual(drive.needs, melodyDrive().needs);
@@ -408,7 +408,7 @@ test("updateAutonomyState never lets needs leave 0..1", () => {
   const updated = updateAutonomyState(
     new Map([["rc:melody", melody]]), castModules("Melody"),
     [{ sender: "character", text: "*Melody climbed into the bath, then ate dinner.*", speaker: "Melody" }],
-    { speakerName: "Melody", primaryName: "Senako Steel", now: NOW },
+    { speakerId: "rc:melody", primaryId: "rc:senako-steel", now: NOW },
   );
   const needs = updated.get("rc:melody").drive.needs;
   for (const key of Object.keys(needs)) {
@@ -422,9 +422,9 @@ test("seedAutonomyFromCast then updateAutonomyState round-trips through renderAu
   const updated = updateAutonomyState(
     seeded, castModules("Melody"),
     [{ sender: "character", text: "*Melody ate her fill and stretched.*", speaker: "Melody" }],
-    { speakerName: "Melody", primaryName: "Senako Steel", now: NOW },
+    { speakerId: "rc:melody", primaryId: "rc:senako-steel", now: NOW },
   );
-  const block = renderAutonomousBlock(autonomousAgentsToArray(updated), { primaryName: "Senako Steel" });
+  const block = renderAutonomousBlock(autonomousAgentsToArray(updated), { primaryDisplayName: "Senako Steel" });
   assert.ok(block.includes("[NPC SUBTEXT: Melody]"));
   assert.ok(updated.get("rc:melody").drive.needs.hunger < 0.9);
   assert.ok(block.includes("Goal: slip out before the market closes"));
@@ -434,7 +434,7 @@ test("renderPulseView returns a detached plain-data projection and does not muta
   const melody = seededAgent("Melody", melodyDrive({ goal: "find the ledger" }));
   const agents = new Map([["rc:melody", melody]]);
   const view = renderPulseView(agents, [{ id: "rc:melody", name: "Melody" }], {
-    primaryName: "Senako Steel",
+    primaryId: "rc:senako-steel",
     now: NOW,
   });
   assert.ok(Array.isArray(view.agents));
@@ -459,7 +459,7 @@ test("renderPulseView omits the primary character and the current speaker", () =
   const view = renderPulseView(agents, [
     { id: "rc:senako-steel", name: "Senako Steel" },
     { id: "rc:melody", name: "Melody" },
-  ], { primaryName: "Senako Steel", speakerName: "Melody", now: NOW });
+  ], { primaryId: "rc:senako-steel", speakerId: "rc:melody", now: NOW });
   assert.ok(!view.agents.some((agent) => agent.name === "Senako Steel"), "primary must be omitted");
   assert.ok(!view.agents.some((agent) => agent.name === "Melody"), "speaker must be omitted");
 });
@@ -467,9 +467,56 @@ test("renderPulseView omits the primary character and the current speaker", () =
 test("renderPulseView accepts an array of agents as well as a Map", () => {
   const melody = seededAgent("Melody", melodyDrive());
   const view = renderPulseView([melody], [{ id: "rc:melody", name: "Melody" }], {
-    primaryName: "Senako Steel",
+    primaryId: "rc:senako-steel",
     now: NOW,
   });
   assert.equal(view.agents.length, 1);
   assert.equal(view.agents[0].name, "Melody");
+});
+
+test("seedAutonomyFromCast preserves distinct agents that share a display name but have different ids", () => {
+  const ocA = seededAgent("Peony", { ...blankDrive(), goal: "tend the void garden" });
+  const ocB = seededAgent("Peony", { ...blankDrive(), goal: "repair the book" });
+  const seeded = seedAutonomyFromCast(
+    new Map([
+      ["custom-peony-a", ocA],
+      ["custom-peony-b", ocB],
+    ]),
+    [
+      { id: "custom-peony-a", name: "Peony" },
+      { id: "custom-peony-b", name: "Peony" },
+    ],
+    NOW,
+  );
+  assert.equal(seeded.size, 2, "both Peony OCs must retain separate autonomy state");
+  assert.equal(seeded.get("custom-peony-a")?.drive.goal, "tend the void garden");
+  assert.equal(seeded.get("custom-peony-b")?.drive.goal, "repair the book");
+});
+
+test("deriveAutonomyPulse filters by id, not display name, so duplicate names stay isolated", () => {
+  const ocA = { id: "custom-peony-a", name: "Peony", drive: blankDrive(), revisions: [], updatedAt: NOW - 10 };
+  const ocB = { id: "custom-peony-b", name: "Peony", drive: blankDrive(), revisions: [], updatedAt: NOW - 10 };
+  const primary = { id: "rc:coda", name: "Coda", drive: blankDrive(), revisions: [], updatedAt: NOW - 10 };
+  const map = new Map([
+    ["custom-peony-a", ocA],
+    ["custom-peony-b", ocB],
+    ["rc:coda", primary],
+  ]);
+  const pulse = deriveAutonomyPulse(map, [
+    { id: "custom-peony-a", name: "Peony" },
+    { id: "custom-peony-b", name: "Peony" },
+    { id: "rc:coda", name: "Coda" },
+  ], {
+    primaryId: "rc:coda",
+    speakerId: "custom-peony-a",
+    pendingTargetId: "custom-peony-b",
+    now: NOW,
+  });
+  const entryA = pulse.get("custom-peony-a");
+  const entryB = pulse.get("custom-peony-b");
+  assert.ok(entryA, "first Peony must keep autonomy entry");
+  assert.ok(entryB, "second Peony must keep autonomy entry");
+  assert.equal(entryA.revisions.length, 0, "speaker Peony must not receive pulse revision");
+  assert.ok(entryB.revisions[0].internal.some((line) => line.includes("asked and has not answered")), "pending target must be recorded on the correct Peony");
+  assert.ok(!entryA.revisions.some((rev) => rev.internal.some((line) => line.includes("asked and has not answered"))), "speaker Peony must not get pending concern");
 });
