@@ -182,6 +182,53 @@ export function RoleplayArea(props: RoleplayAreaProps) {
         ? "Choose somewhere to begin"
         : "Choose a story to enter";
 
+  const startScenario = (scenario: Scenario) => {
+    const linkedCharacter = (scenario.linkedCharacterIds ?? [])
+      .map((id) => props.characters.find((character) => character.id === id))
+      .find((character): character is Character => Boolean(character));
+    const character = linkedCharacter ?? props.selected ?? props.characters[0];
+    if (!character) return;
+
+    const fallbackTheme = {
+      accent: "#b7653f",
+      accentMuted: "#6f3b2b",
+      glow: "#2a1715",
+      surface: "#171012",
+      wash: "#09090b",
+      motif: "scenario",
+    };
+    const theme = props.scenesFor(character)[0]?.theme ?? fallbackTheme;
+    const opening = [
+      scenario.openingSituation?.trim()
+        || scenario.description?.trim()
+        || scenario.shortDescription?.trim()
+        || `The scenario “${scenario.name}” begins.`,
+      scenario.startingConditions?.length
+        ? `Starting conditions: ${scenario.startingConditions.join("; ")}`
+        : "",
+      scenario.activeElements?.length
+        ? `Already in motion: ${scenario.activeElements.join("; ")}`
+        : "",
+      scenario.possibleHooks?.length
+        ? `Possible hooks: ${scenario.possibleHooks.join("; ")}`
+        : "",
+    ].filter(Boolean).join("\n\n");
+
+    const scene: SceneDefinition = {
+      id: `scenario:${scenario.id}`,
+      title: scenario.name,
+      subtitle: scenario.shortDescription?.trim() || scenario.description?.trim().slice(0, 180) || "Scenario",
+      status: scenario.atmosphere?.trim() || "Scenario active",
+      weather: scenario.atmosphere?.trim() || "",
+      background: scenario.image?.trim() || "",
+      backgroundFocalPoint: "center",
+      opening,
+      theme,
+    };
+
+    props.requestPersonaStart({ kind: "scene", characterId: character.id, scene });
+  };
+
   return (
     <>
       {props.view === "roleplay" && (
@@ -487,7 +534,7 @@ export function RoleplayArea(props: RoleplayAreaProps) {
                   <ScenarioCard
                     key={scenario.id}
                     scenario={scenario}
-                    onOpen={() => {}}
+                    onOpen={() => startScenario(scenario)}
                     onEdit={props.isUserOwnedScenario(scenario) ? (scenario) => props.setEditingScenario(scenario) : undefined}
                     onDelete={props.isUserOwnedScenario(scenario) ? (scenario) => props.setConfirmDeleteScenario(scenario) : undefined}
                     onExport={props.isUserOwnedScenario(scenario) ? (scenario) => props.exportScenario(scenario) : undefined}

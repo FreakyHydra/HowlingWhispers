@@ -203,21 +203,24 @@ function BrowsePanel({
   const [reportTarget, setReportTarget] = useState<SearchResult | null>(null);
 
   const runSearch = useCallback(
-    (pageNumber = 1) =>
-      archive
-        .search({
+    async (pageNumber = 1) => {
+      try {
+        const res = await archive.search({
           q: query,
           tags: tag ? [tag] : undefined,
           age: age || undefined,
           rating: rating || undefined,
           page: pageNumber,
-        })
-        .then((res) => {
-          setResults(res.publications);
-          setTotalPages(res.totalPages);
-          setPage(res.page);
-        })
-        .catch((e) => onError("err", e.message)),
+        });
+        setResults(res.publications);
+        setTotalPages(res.totalPages);
+        setPage(res.page);
+      } catch (error) {
+        onError("err", error instanceof Error ? error.message : "Archive search failed.");
+      } finally {
+        setWorking(false);
+      }
+    },
     [query, tag, age, rating, onError],
   );
 
@@ -304,7 +307,17 @@ function BrowsePanel({
                 </span>
                 <button
                   className="link-button"
-                  onClick={() => onImport(pub as unknown as ArchivePublication)}
+                  onClick={async () => {
+                    setWorking(true);
+                    try {
+                      const { publication } = await archive.get(pub.id);
+                      onImport(publication);
+                    } catch (error) {
+                      onError("err", error instanceof Error ? error.message : "The character could not be imported.");
+                    } finally {
+                      setWorking(false);
+                    }
+                  }}
                 >
                   Import as copy
                 </button>

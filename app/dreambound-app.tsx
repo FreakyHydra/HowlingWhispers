@@ -440,7 +440,7 @@ type Viewpoint = "user" | "character" | "roving";
 type StoryTense = "present" | "past";
 type TokenStorageMode = "tab" | "computer";
 type UpdateState = "idle" | "checking" | "current" | "available" | "unconfigured" | "error";
-export type AppView = "roleplay" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas" | "living-cast";
+export type AppView = "roleplay" | "scenes" | "chat" | "changelog" | "settings" | "archive" | "personas" | "addons" | "living-cast";
 export type ProviderState =
   | "disconnected"
   | "ready"
