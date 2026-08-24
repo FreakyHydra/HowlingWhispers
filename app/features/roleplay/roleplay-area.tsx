@@ -181,13 +181,16 @@ export function RoleplayArea(props: RoleplayAreaProps) {
 
   useEffect(() => {
     if (!pendingVersionId || !props.characters.some((character) => character.id === pendingVersionId)) return;
-    const family = curatedFamilyForCharacterId(pendingVersionId);
-    if (family) {
-      savePreferredCuratedVersion(family.familyId, pendingVersionId);
-      setVersionSelections((current) => ({ ...current, [family.familyId]: pendingVersionId }));
-    }
-    setPendingVersionId(null);
-    setVersionLoadError("");
+    const timeout = window.setTimeout(() => {
+      const family = curatedFamilyForCharacterId(pendingVersionId);
+      if (family) {
+        savePreferredCuratedVersion(family.familyId, pendingVersionId);
+        setVersionSelections((current) => ({ ...current, [family.familyId]: pendingVersionId }));
+      }
+      setPendingVersionId(null);
+      setVersionLoadError("");
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [pendingVersionId, props.characters]);
 
   const chooseCuratedVersion = async (familyId: string, versionId: string) => {

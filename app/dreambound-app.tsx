@@ -3326,7 +3326,12 @@ export default function DreamboundApp() {
           authorNotes: contextLibrary.authorNotes,
           lorebooks: contextLibrary.lorebooks,
         },
-        messages: conversation.slice(-30).map(({ sender, text, speaker }) => ({ sender, text, speaker })),
+        messages: conversation.slice(-30).map(({ id, sender, text, speaker }) => ({
+          sender,
+          text,
+          speaker,
+          timestamp: id,
+        })),
     };
 
     if (storyProvider === "device") {
@@ -3679,13 +3684,14 @@ export default function DreamboundApp() {
       : resetCast({ id: selected.id, name: selected.name }, effectivePlayerName);
 
     let respondAs: string | undefined;
+    let nextSpeaker: LivingCastEntry | null = null;
     if (livingCastConfig.enabled && mode === "Speak" && activeSession) {
       const selector = createParticipantSelector(
         livingCastConfig.participationMode,
         baselineCast,
         selected.name,
       );
-      const nextSpeaker = selector.next(conversation);
+      nextSpeaker = selector.next(conversation);
       if (nextSpeaker) {
         respondAs = nextSpeaker.name;
         if (livingCastConfig.participationMode === "round-robin") {

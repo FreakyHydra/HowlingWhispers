@@ -299,6 +299,7 @@ test("relationship scoring never leaks deltas into visible roleplay", () => {
     { sender: "character", text: "Coda nuzzles closer, glad you said that." },
   ];
   const state = freshState();
+  getOrCreateRecord(state, "coda", "default", 0);
   commit(state, { turnId: "c:9", delta: result.delta, reason: result.reason });
   assert.equal(conversation[1].delta, undefined);
   assert.equal(conversation[1].reason, undefined);

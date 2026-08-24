@@ -9,14 +9,14 @@ const assignmentBefore = `      const nextSpeaker = selector.next(conversation);
 const assignmentAfter = `      nextSpeaker = selector.next(conversation);`;
 
 const alreadyFixed = source.split(declarationAfter).length - 1;
-if (alreadyFixed === 2) {
+if (alreadyFixed === 1) {
   console.log("nextSpeaker scope already fixed.");
   process.exit(0);
 }
 
 const declarationCount = source.split(declarationBefore).length - 1;
 const assignmentCount = source.split(assignmentBefore).length - 1;
-if (declarationCount !== 2 || assignmentCount !== 2) {
+if (declarationCount !== 1 || assignmentCount !== 1) {
   throw new Error(
     `Refusing unsafe nextSpeaker patch: declarations=${declarationCount}, assignments=${assignmentCount}, fixed=${alreadyFixed}`,
   );
@@ -25,4 +25,4 @@ if (declarationCount !== 2 || assignmentCount !== 2) {
 source = source.replaceAll(declarationBefore, declarationAfter);
 source = source.replaceAll(assignmentBefore, assignmentAfter);
 writeFileSync(path, source, "utf8");
-console.log("Patched both nextSpeaker scope sites.");
+console.log("Patched nextSpeaker scope site.");

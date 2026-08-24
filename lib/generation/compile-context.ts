@@ -16,13 +16,19 @@ import {
 } from "./living-cast.ts";
 import { renderAutonomousBlock, renderAutonomyInstruction, type AutonomousAgent } from "./autonomous-cast.ts";
 import { renderPlayerVoicePolicy, renderProseQualityPolicy } from "./prose-quality.ts";
+import { renderWorldClockContext } from "./world-clock.ts";
 import { getXiaolongCompatibilityInstructions } from "./xiaolong-compatibility.ts";
 import type { ContextInput } from "../context/types.ts";
 import { selectHWLorebooks, renderMemoryBlock, renderAuthorNoteBlock, renderHWLorebookBlock, type HWLoreSelection } from "../context/compile.ts";
 
 export type ContextMode = "character" | "balanced" | "story";
 export type GenerationProvider = "local" | "novelai";
-export type RoleplayMessage = { sender: "character" | "player" | "narrator"; text: string; speaker?: string };
+export type RoleplayMessage = {
+  sender: "character" | "player" | "narrator";
+  text: string;
+  speaker?: string;
+  timestamp?: number;
+};
 export type StoryPreferences = {
   initiative: "reactive" | "balanced" | "proactive";
   viewpoint: "user" | "character" | "roving";
@@ -184,6 +190,7 @@ export function compileContext(input: CompileContextInput): CompiledContext {
   const loreBlock = loreSelection.entries.map(({ entry }) => renderLoreEntry(entry)).join("\n\n");
   const personaBlock = renderPlayerPersona(input.playerPersona);
   const stateBlock = renderState(input);
+  const worldClockBlock = renderWorldClockContext(input.messages);
   const memoryBlock = renderMemoryBlock(input.contextInput?.memories ?? []);
   const filteredAuthorNotes = filterAuthorNotes(input.contextInput?.authorNotes ?? [], input.character.id, input.sceneId);
   const authorNoteBlock = renderAuthorNoteBlock(filteredAuthorNotes);
@@ -233,6 +240,7 @@ export function compileContext(input: CompileContextInput): CompiledContext {
     memoryBlock,
     authorNoteBlock,
     stateBlock,
+    worldClockBlock,
     castBlock,
     autonomyBlock,
     prosePolicyBlock,
@@ -253,6 +261,7 @@ export function compileContext(input: CompileContextInput): CompiledContext {
     memoryBlock,
     authorNoteBlock,
     stateBlock,
+    worldClockBlock,
     castBlock,
     autonomyBlock,
     history,
@@ -355,6 +364,7 @@ type PromptParts = {
   loreBlock: string;
   personaBlock: string;
   stateBlock: string;
+  worldClockBlock: string;
   castBlock: string;
   autonomyBlock: string;
   history: {
@@ -401,6 +411,8 @@ function buildLegacyPrompt(parts: PromptParts): string {
     ...(parts.autonomyBlock ? [parts.autonomyBlock, ""] : []),
     parts.stateBlock,
     "",
+    parts.worldClockBlock,
+    "",
     parts.prosePolicyBlock,
     "",
     "Conversation history:",
@@ -428,6 +440,7 @@ function buildNovelAiPrompt(parts: PromptParts): string {
       ...(parts.castBlock ? ["", parts.castBlock] : []),
       ...(parts.autonomyBlock ? ["", parts.autonomyBlock] : []),
       parts.stateBlock,
+      parts.worldClockBlock,
       parts.prosePolicyBlock,
     ].join("\n"),
   ];

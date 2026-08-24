@@ -225,7 +225,8 @@ function BrowsePanel({
   );
 
   useEffect(() => {
-    runSearch(1);
+    const timeout = window.setTimeout(() => void runSearch(1), 0);
+    return () => window.clearTimeout(timeout);
   }, [runSearch]);
 
   const busy = working || results === null;

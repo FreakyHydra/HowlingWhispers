@@ -14,6 +14,17 @@ const tabs: { id: SettingsTab; label: string; icon: string; description: string 
   { id: "updates", label: "Updates", icon: "↻", description: "Version and release channel" },
 ];
 
+function updateRangeValue(range: HTMLInputElement, value: number) {
+  range.value = String(value);
+  range.dispatchEvent(new Event("input", { bubbles: true }));
+  range.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function updateSettingsTab(target: HTMLElement, active: SettingsTab | null) {
+  if (active) target.dataset.settingsTab = active;
+  else delete target.dataset.settingsTab;
+}
+
 function NumberBridge({ label }: { label: HTMLLabelElement }) {
   const range = label.querySelector<HTMLInputElement>('input[type="range"]');
   const [value, setValue] = useState(range?.value ?? "");
@@ -43,9 +54,7 @@ function NumberBridge({ label }: { label: HTMLLabelElement }) {
     if (!Number.isFinite(parsed)) return;
     const next = clamp ? Math.min(max, Math.max(min, parsed)) : parsed;
     if (next < min || next > max) return;
-    range.value = String(next);
-    range.dispatchEvent(new Event("input", { bubbles: true }));
-    range.dispatchEvent(new Event("change", { bubbles: true }));
+    updateRangeValue(range, next);
     setValue(String(next));
   };
 
@@ -102,9 +111,9 @@ export default function SettingsTabsEnhancer() {
 
   useEffect(() => {
     if (!target) return;
-    target.dataset.settingsTab = active;
+    updateSettingsTab(target, active);
     return () => {
-      delete target.dataset.settingsTab;
+      updateSettingsTab(target, null);
     };
   }, [target, active]);
 

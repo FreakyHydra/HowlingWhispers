@@ -18,6 +18,10 @@ type RadioApi = {
 
 const RadioContext = createContext<RadioApi | undefined>(undefined);
 
+function setAudioVolume(audio: HTMLAudioElement, volume: number) {
+  audio.volume = volume;
+}
+
 export function useRadio(): RadioApi {
   const ctx = useContext(RadioContext);
   if (!ctx) {
@@ -46,7 +50,7 @@ export default function RadioProvider({ children }: { children: React.ReactNode 
       window.localStorage.setItem(VOLUME_STORAGE_KEY, String(v));
     }
     if (audioRef.current) {
-      audioRef.current.volume = v;
+      setAudioVolume(audioRef.current, v);
     }
   }, []);
 
@@ -58,7 +62,7 @@ export default function RadioProvider({ children }: { children: React.ReactNode 
       audio.addEventListener("ended", () => setState({ isPlaying: false, connected: false }));
       audio.addEventListener("error", () => setState({ isPlaying: false, connected: false }));
     }
-    audio.volume = volume;
+    setAudioVolume(audio, volume);
 
     void audio.play()
       .then(() => setState({ isPlaying: true, connected: true }))

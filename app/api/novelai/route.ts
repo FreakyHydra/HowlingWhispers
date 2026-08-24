@@ -15,6 +15,7 @@ import {
 import { parseContextInput } from "../../../lib/context/import-export.ts";
 import { parseStoryMetadata, type StoryMetadata } from "../../../lib/generation/story-metadata.ts";
 import { formatPlayerTurn } from "../../../lib/generation/player-turn.ts";
+import { normalizeWorldTimestamp } from "../../../lib/generation/world-clock.ts";
 import {
   findCastEntryByName,
   sanitizeCast,
@@ -1099,7 +1100,13 @@ function parseMessages(v: unknown): RoleplayMessage[] {
     const text = limitedString(m.text, 4000);
     if (!ALLOWED_SENDERS.has(sender) || !text) return null;
     const speaker = m.speaker ? limitedString(m.speaker, 120) : undefined;
-    return { sender: sender as RoleplayMessage["sender"], text, speaker: speaker || undefined };
+    const timestamp = normalizeWorldTimestamp(m.timestamp);
+    return {
+      sender: sender as RoleplayMessage["sender"],
+      text,
+      speaker: speaker || undefined,
+      ...(timestamp !== undefined ? { timestamp } : {}),
+    };
   }).filter((m): m is RoleplayMessage => m !== null);
 }
 

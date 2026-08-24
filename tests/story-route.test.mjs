@@ -88,6 +88,35 @@ test("POST normal send returns a JSON reply instead of crashing", async () => {
   }
 });
 
+test("POST preserves valid world timestamps and ignores legacy message ids", async () => {
+  const calls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (typeof url === "string" && url.startsWith(NOVELAI_COMPLETIONS)) {
+      calls.push(JSON.parse(String(init?.body)));
+      return Response.json({ choices: [{ text: "Peony waits beside the greenhouse door." }] });
+    }
+    return Response.json({ error: "unexpected fetch" }, { status: 500 });
+  };
+  try {
+    const first = Date.UTC(2025, 7, 24, 12, 0, 0);
+    const response = await POST(makeRequest({
+      ...baseBody,
+      messages: [
+        { sender: "character", text: "Legacy greeting.", timestamp: 2 },
+        { sender: "player", text: "I will be back soon.", timestamp: first },
+        { sender: "player", text: "I am back.", timestamp: first + 20 * 60_000 },
+      ],
+    }));
+    assert.equal(response.status, 200);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].prompt, /Gap between the two most recent timestamped turns: 20 minutes\./);
+    assert.doesNotMatch(calls[0].prompt, /1970/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 test("POST blank-start impersonate returns a JSON player turn without a prior message", async () => {
   const restore = stubNovelAi("I push the greenhouse door open and step inside out of the rain, shaking water from my sleeves as the warm, green air settles around me.");
   try {
