@@ -1,0 +1,47 @@
+name: Fix nextSpeaker scope
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - '.github/workflows/fix-next-speaker-scope.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+          cache: npm
+      - name: Patch nextSpeaker scope bug
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/dreambound-app.tsx')
+          text = p.read_text()
+          old = '''    let respondAs: string | undefined;\n    if (livingCastConfig.enabled && mode === "Speak" && activeSession) {\n      const selector = createParticipantSelector(\n        livingCastConfig.participationMode,\n        baselineCast,\n        selected.name,\n      );\n      const nextSpeaker = selector.next(conversation);'''
+          new = '''    let respondAs: string | undefined;\n    let nextSpeaker: LivingCastEntry | undefined;\n    if (livingCastConfig.enabled && mode === "Speak" && activeSession) {\n      const selector = createParticipantSelector(\n        livingCastConfig.participationMode,\n        baselineCast,\n        selected.name,\n      );\n      nextSpeaker = selector.next(conversation);'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one nextSpeaker scope pattern, found {count}')
+          p.write_text(text.replace(old, new, 1))
+          PY
+      - run: npm ci
+      - run: npm run build:local
+      - run: npm run lint
+      - name: Commit fix
+        shell: bash
+        run: |
+          git config user.name "Howling Whispers Bug Fix"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/dreambound-app.tsx
+          git commit -m "fix(chat): keep selected next speaker in request scope"
+          git push origin HEAD:dev
