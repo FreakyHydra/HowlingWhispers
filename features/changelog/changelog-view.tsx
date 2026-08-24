@@ -17,6 +17,20 @@ export function ChangelogView(props: ChangelogViewProps) {
 
            <div className="changelog-list">
              <article className="changelog-entry featured latest">
+               <span className="changelog-mark">🖼️</span>
+               <div>
+                 <span className="changelog-version">Version 0.10.1.1 · Riley Steps Into Frame</span>
+                 <h2>Riley Steps Into Frame</h2>
+                 <p>Riley now has dedicated artwork throughout her curated Contact and roleplay views.</p>
+                 <h3>🛠 Fixed</h3>
+                 <ul>
+                   <li><strong>Riley portrait</strong> — Riley&apos;s dedicated portrait now appears on her curated Contact card</li>
+                   <li><strong>Riley scene artwork</strong> — her gaming-room artwork now appears as the roleplay scene background with tailored focal points for both layouts</li>
+                 </ul>
+               </div>
+             </article>
+
+             <article className="changelog-entry featured">
                <span className="changelog-mark">🎮</span>
                <div>
                  <span className="changelog-version">Version 0.10.1.0 · Player Two Arrives</span>

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.1.1 — Riley Steps Into Frame
+
+### 🛠 Fixed
+
+- **Riley portrait** — Riley's dedicated portrait now appears on her curated Contact card
+- **Riley scene artwork** — her gaming-room artwork now appears as the roleplay scene background with tailored focal points for both layouts
+
+---
+
 ## 0.10.1.0 — Player Two Arrives
 
 ### ✨ Added
