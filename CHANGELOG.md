@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.10.0.0 — The Clock Starts
+
+🏆 MAJOR FEATURE RELEASE
+
+> The clock is the backbone. This release gives roleplay a canonical time source and elapsed-time continuity without a constantly running background simulation.
+
+### ✨ Added
+
+- **Canonical roleplay world clock** — generation now receives the current date, time, weekday, and day period in the roleplay's canonical Europe/Berlin time zone
+- **Elapsed-time continuity** — timestamped turns let the story reason about natural gaps, waiting, sleep, travel, schedules, and other time-dependent events without forcing clock references into the prose
+- **On-demand clock context** — elapsed time is evaluated when generation happens, so the clock does not require an AI process running continuously in the background
+- **Curated Contact versions** — curated Contacts can expose multiple canon versions from one library card; the original Peony remains intact beside Peony V2
+- **Persistent version preference** — the selected curated Contact version is remembered across sessions, with existing stored Peony V2 data and artwork migrated safely
+
+### 🔄 Changed
+
+- **Relationship continuity** — relationship changes now build on each Contact/persona pair's established baseline instead of replacing it
+- **Relationship meter precision** — small bond changes remain visible instead of being rounded out of the meter
+
+### 🛠 Fixed
+
+- **Imported card downloads** — downloading an imported CCV2/HWCC card preserves its original standard fields, extension namespaces, and author data instead of flattening them
+- **Legacy roleplay timestamps** — old numeric message IDs are ignored as clock data, preventing legacy sessions from appearing to begin in 1970
+- **Reroll timing** — rerolled turns keep their original timestamp so regeneration does not falsely advance the roleplay clock
+
+---
+
 ## 0.9.1.1 — Rooms in Order
 
 A focused stability pass across the Roleplay hub and the rest of the app.

@@ -16,7 +16,35 @@ export function ChangelogView(props: ChangelogViewProps) {
       </header>
 
            <div className="changelog-list">
-             <article className="changelog-entry featured latest">
+             <article className="changelog-entry milestone latest">
+               <span className="changelog-mark">◆</span>
+               <div>
+                 <span className="changelog-version">Version 0.10.0.0 · The Clock Starts</span>
+                 <h2>The Clock Starts</h2>
+                 <p>The clock is the backbone. This release gives roleplay a canonical time source and elapsed-time continuity without a constantly running background simulation.</p>
+                 <h3>✨ Added</h3>
+                 <ul>
+                   <li><strong>Canonical roleplay world clock</strong> — generation now receives the current date, time, weekday, and day period in the roleplay&apos;s canonical Europe/Berlin time zone</li>
+                   <li><strong>Elapsed-time continuity</strong> — timestamped turns let the story reason about natural gaps, waiting, sleep, travel, schedules, and other time-dependent events without forcing clock references into the prose</li>
+                   <li><strong>On-demand clock context</strong> — elapsed time is evaluated when generation happens, so the clock does not require an AI process running continuously in the background</li>
+                   <li><strong>Curated Contact versions</strong> — curated Contacts can expose multiple canon versions from one library card; the original Peony remains intact beside Peony V2</li>
+                   <li><strong>Persistent version preference</strong> — the selected curated Contact version is remembered across sessions, with existing stored Peony V2 data and artwork migrated safely</li>
+                 </ul>
+                 <h3>🔄 Changed</h3>
+                 <ul>
+                   <li><strong>Relationship continuity</strong> — relationship changes now build on each Contact/persona pair&apos;s established baseline instead of replacing it</li>
+                   <li><strong>Relationship meter precision</strong> — small bond changes remain visible instead of being rounded out of the meter</li>
+                 </ul>
+                 <h3>🛠 Fixed</h3>
+                 <ul>
+                   <li><strong>Imported card downloads</strong> — downloading an imported CCV2/HWCC card preserves its original standard fields, extension namespaces, and author data instead of flattening them</li>
+                   <li><strong>Legacy roleplay timestamps</strong> — old numeric message IDs are ignored as clock data, preventing legacy sessions from appearing to begin in 1970</li>
+                   <li><strong>Reroll timing</strong> — rerolled turns keep their original timestamp so regeneration does not falsely advance the roleplay clock</li>
+                 </ul>
+               </div>
+             </article>
+
+             <article className="changelog-entry featured">
                <span className="changelog-mark">◐</span>
                <div>
                  <span className="changelog-version">Version 0.9.1.1 · Rooms in Order</span>
@@ -48,7 +76,7 @@ export function ChangelogView(props: ChangelogViewProps) {
                </div>
              </article>
 
-             <article className="changelog-entry featured latest">
+             <article className="changelog-entry featured">
                <span className="changelog-mark">◐</span>
                <div>
                  <span className="changelog-version">Version 0.9.1 · Community Opens</span>
@@ -69,7 +97,7 @@ export function ChangelogView(props: ChangelogViewProps) {
                </div>
              </article>
 
-             <article className="changelog-entry milestone latest">
+             <article className="changelog-entry milestone">
               <span className="changelog-mark">🏆</span>
               <div>
                 <span className="changelog-version">Version 0.9.0 · Worlds Take Shape</span>
