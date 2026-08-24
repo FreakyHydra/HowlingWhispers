@@ -1,10 +1,16 @@
 "use client";
 
-import React, { type ComponentType, useState } from "react";
+import React, { type ComponentType, useEffect, useState } from "react";
 import type { Character, SceneDefinition, StoryEditor, CommonScene, Message } from "../dreambound-app";
 import type { Location } from "../../lib/locations/types";
 import type { Scenario } from "../../lib/scenarios/types";
 import type { OllamaModelInfo } from "../../lib/ollama";
+import {
+  CURATED_CHARACTER_FAMILIES,
+  curatedFamilyForCharacterId,
+  preferredCuratedVersion,
+  savePreferredCuratedVersion,
+} from "../../../lib/characters/curated-versions";
 import { CharacterFactory } from "../characters/character-factory";
 import { LocationCard } from "../locations/location-card";
 import { LocationFactory } from "../locations/location-factory";
@@ -73,6 +79,7 @@ export interface RoleplayAreaProps {
   saveStory: (event: React.FormEvent<HTMLFormElement>) => void;
   commonSceneEditor: { mode: "create" | "edit"; scene: CommonScene } | null;
   setCommonSceneEditor: (editor: { mode: "create" | "edit"; scene: CommonScene } | null) => void;
+  setCommonScenes: React.Dispatch<React.SetStateAction<CommonScene[]>>;
   openStoryCreator: () => void;
   requestPersonaStart: (start: { kind: string; characterId?: string; location?: import("../../lib/locations/types").Location; scene?: import("../dreambound-app").SceneDefinition }) => void;
   selectedScenes: SceneDefinition[];
@@ -125,23 +132,91 @@ export interface RoleplayAreaProps {
   exportScenario: (scenario: Scenario) => void;
 }
 
+const curatedVersionIds = new Set(
+  Object.values(CURATED_CHARACTER_FAMILIES).flatMap((family) =>
+    family.versions.map((version) => version.id),
+  ),
+);
+
+function isVersionManagedCharacter(character: Character): boolean {
+  return curatedVersionIds.has(character.id);
+}
+
 export function RoleplayArea(props: RoleplayAreaProps) {
   const { Portrait } = props;
   const [roleplayType, setRoleplayType] = useState<"characters" | "locations" | "scenarios">("characters");
   const [characterTab, setCharacterTab] = useState<"curated" | "custom">("curated");
   const [locationTab, setLocationTab] = useState<"curated" | "custom">("curated");
   const [scenarioTab, setScenarioTab] = useState<"curated" | "custom">("curated");
-  const curatedCharacters = (props.characters ?? []).filter((character) => !props.isUserOwnedCharacter(character));
-  const customCharacters = (props.characters ?? []).filter((character) => props.isUserOwnedCharacter(character));
+  const [openVersionFamily, setOpenVersionFamily] = useState<string | null>(null);
+  const [pendingVersionId, setPendingVersionId] = useState<string | null>(null);
+  const [versionLoadError, setVersionLoadError] = useState("");
+  const [versionSelections, setVersionSelections] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      Object.values(CURATED_CHARACTER_FAMILIES).map((family) => [
+        family.familyId,
+        preferredCuratedVersion(family.familyId),
+      ]),
+    ),
+  );
+
+  const curatedCharacters = (props.characters ?? []).filter((character) =>
+    !props.isUserOwnedCharacter(character) || isVersionManagedCharacter(character),
+  );
+  const customCharacters = (props.characters ?? []).filter((character) =>
+    props.isUserOwnedCharacter(character) && !isVersionManagedCharacter(character),
+  );
+  const visibleCuratedCharacters = curatedCharacters.filter((character) => {
+    const family = curatedFamilyForCharacterId(character.id);
+    if (!family) return true;
+    const preferredId = versionSelections[family.familyId] ?? family.defaultVersionId;
+    const preferredAvailable = props.characters.some((candidate) => candidate.id === preferredId);
+    const displayId = preferredAvailable ? preferredId : family.defaultVersionId;
+    return character.id === displayId;
+  });
   const curatedLocations = (props.locations ?? []).filter((location) => !props.isUserOwnedLocation(location));
   const customLocations = (props.locations ?? []).filter((location) => props.isUserOwnedLocation(location));
   const curatedScenarios = (props.scenarios ?? []).filter((scenario) => !props.isUserOwnedScenario(scenario));
   const customScenarios = (props.scenarios ?? []).filter((scenario) => props.isUserOwnedScenario(scenario));
 
+  useEffect(() => {
+    if (!pendingVersionId || !props.characters.some((character) => character.id === pendingVersionId)) return;
+    const family = curatedFamilyForCharacterId(pendingVersionId);
+    if (family) {
+      savePreferredCuratedVersion(family.familyId, pendingVersionId);
+      setVersionSelections((current) => ({ ...current, [family.familyId]: pendingVersionId }));
+    }
+    setPendingVersionId(null);
+    setVersionLoadError("");
+  }, [pendingVersionId, props.characters]);
+
+  const chooseCuratedVersion = async (familyId: string, versionId: string) => {
+    setOpenVersionFamily(null);
+    setVersionLoadError("");
+    if (props.characters.some((character) => character.id === versionId)) {
+      savePreferredCuratedVersion(familyId, versionId);
+      setVersionSelections((current) => ({ ...current, [familyId]: versionId }));
+      return;
+    }
+
+    if (versionId !== "peony-v2") return;
+    setPendingVersionId(versionId);
+    try {
+      const response = await fetch("/curated/peony-v2.json", { cache: "no-store" });
+      if (!response.ok) throw new Error(`Peony V2 could not be loaded (HTTP ${response.status}).`);
+      const file = new File([await response.text()], "peony-v2.json", { type: "application/json" });
+      const input = { files: [file], value: "" } as unknown as HTMLInputElement;
+      props.importCharacterFile({ target: input } as React.ChangeEvent<HTMLInputElement>);
+    } catch (error) {
+      setPendingVersionId(null);
+      setVersionLoadError(error instanceof Error ? error.message : "Peony V2 could not be loaded.");
+    }
+  };
+
   const countLabel =
     roleplayType === "characters"
       ? characterTab === "curated"
-        ? `${curatedCharacters.length} curated contacts`
+        ? `${visibleCuratedCharacters.length} curated contacts`
         : `${customCharacters.length} custom contacts`
       : roleplayType === "locations"
         ? locationTab === "curated"
@@ -339,15 +414,22 @@ export function RoleplayArea(props: RoleplayAreaProps) {
                 </button>
                 {props.characterBackupMsg && <span className="backup-feedback ok">{props.characterBackupMsg}</span>}
                 {props.characterBackupError && <span className="backup-feedback err">{props.characterBackupError}</span>}
+                {versionLoadError && <span className="backup-feedback err">{versionLoadError}</span>}
               </div>
 
               <div className="character-gallery">
-                {(characterTab === "curated" ? curatedCharacters : customCharacters).map((character) => {
+                {(characterTab === "curated" ? visibleCuratedCharacters : customCharacters).map((character) => {
                   const characterTheme = props.scenesFor(character)[0].theme;
+                  const versionFamily = characterTab === "curated"
+                    ? curatedFamilyForCharacterId(character.id)
+                    : null;
+                  const selectedVersionId = versionFamily
+                    ? versionSelections[versionFamily.familyId] ?? versionFamily.defaultVersionId
+                    : null;
                   return (
                     <article
                       className="home-character"
-                      key={character.id}
+                      key={versionFamily?.familyId ?? character.id}
                       onClick={() => props.openSceneLibrary(character.id)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
@@ -364,10 +446,87 @@ export function RoleplayArea(props: RoleplayAreaProps) {
                             : "linear-gradient(145deg, #2b1c1e, #0c0c0e)",
                           "--character-accent": characterTheme.accent,
                           "--card-position": character.portraitFocalPoint ?? "center",
+                          position: "relative",
                         } as React.CSSProperties
                       }
                     >
                       <div className="home-character-wash" />
+                      {versionFamily && versionFamily.versions.length > 1 && (
+                        <div
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => event.stopPropagation()}
+                          style={{ position: "absolute", top: 12, right: 12, zIndex: 5 }}
+                        >
+                          <button
+                            type="button"
+                            aria-label={`Choose ${character.name} version`}
+                            aria-haspopup="menu"
+                            aria-expanded={openVersionFamily === versionFamily.familyId}
+                            title="Choose character version"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setOpenVersionFamily((current) => current === versionFamily.familyId ? null : versionFamily.familyId);
+                            }}
+                            style={{
+                              minWidth: 42,
+                              minHeight: 34,
+                              padding: "5px 9px",
+                              borderRadius: 10,
+                              border: "1px solid color-mix(in srgb, var(--character-accent) 60%, transparent)",
+                              background: "rgba(12, 10, 14, 0.88)",
+                              color: "var(--character-accent)",
+                              fontWeight: 800,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {pendingVersionId ? "V…" : "V⌄"}
+                          </button>
+                          {openVersionFamily === versionFamily.familyId && (
+                            <div
+                              role="menu"
+                              aria-label={`${character.name} versions`}
+                              style={{
+                                position: "absolute",
+                                top: 40,
+                                right: 0,
+                                minWidth: 170,
+                                padding: 6,
+                                borderRadius: 10,
+                                border: "1px solid rgba(255,255,255,0.16)",
+                                background: "rgba(10, 8, 12, 0.97)",
+                                boxShadow: "0 10px 28px rgba(0,0,0,0.45)",
+                              }}
+                            >
+                              {versionFamily.versions.map((version) => (
+                                <button
+                                  key={version.id}
+                                  type="button"
+                                  role="menuitemradio"
+                                  aria-checked={selectedVersionId === version.id}
+                                  disabled={pendingVersionId !== null}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void chooseCuratedVersion(versionFamily.familyId, version.id);
+                                  }}
+                                  style={{
+                                    display: "block",
+                                    width: "100%",
+                                    padding: "9px 10px",
+                                    border: 0,
+                                    borderRadius: 7,
+                                    background: selectedVersionId === version.id ? "rgba(255,255,255,0.09)" : "transparent",
+                                    color: "#f2dec2",
+                                    textAlign: "left",
+                                    cursor: pendingVersionId ? "wait" : "pointer",
+                                  }}
+                                >
+                                  {selectedVersionId === version.id ? "✓ " : ""}{version.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="home-character-copy">
                         <span className="home-character-status">
                           <i />
@@ -389,6 +548,11 @@ export function RoleplayArea(props: RoleplayAreaProps) {
                         </h3>
                         <p>{character.role}</p>
                         <small>{character.scene}</small>
+                        {versionFamily && (
+                          <small className="home-character-credit">
+                            {versionFamily.versions.find((version) => version.id === selectedVersionId)?.label ?? "V1 — Original"}
+                          </small>
+                        )}
                         {character.credit && (
                           <small className="home-character-credit">{character.credit}</small>
                         )}
@@ -411,7 +575,7 @@ export function RoleplayArea(props: RoleplayAreaProps) {
                             >
                               Download
                             </button>
-                        {props.isUserOwnedCharacter(character) && (<>
+                        {props.isUserOwnedCharacter(character) && !isVersionManagedCharacter(character) && (<>
                             <button
                               className="home-character-edit"
                               aria-label={`Edit ${character.name}`}
@@ -654,7 +818,7 @@ export function RoleplayArea(props: RoleplayAreaProps) {
               <button className="outline-button" type="button" onClick={() => props.exportV2Json(props.downloadingCharacter)}>
                 V2 JSON
               </button>
-              {props.isUserOwnedCharacter(props.downloadingCharacter) && (
+              {props.isUserOwnedCharacter(props.downloadingCharacter) && !isVersionManagedCharacter(props.downloadingCharacter) && (
                 <button className="outline-button" type="button" onClick={() => props.exportNativeCharacter(props.downloadingCharacter)}>
                   Howling Whispers Backup
                 </button>
@@ -852,7 +1016,7 @@ export function RoleplayArea(props: RoleplayAreaProps) {
               <button className="outline-button" onClick={() => props.setView("roleplay")}>
                 ← Back to roleplay
               </button>
-              {props.isUserOwnedCharacter(props.selected) && (
+              {props.isUserOwnedCharacter(props.selected) && !isVersionManagedCharacter(props.selected) && (
                 <span className="scene-library-actions">
                   <button
                     className="outline-button"
