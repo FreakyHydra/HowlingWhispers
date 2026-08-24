@@ -16,6 +16,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+          cache: npm
       - name: Fix nextSpeaker scope regression
         shell: bash
         run: |
@@ -33,13 +37,15 @@ jobs:
               raise SystemExit(f'Expected 2 nextSpeaker scope sites, found {count}')
           p.write_text(text.replace(old, new))
           PY
-
-      - name: Remove temporary workflow and commit
+      - run: npm ci
+      - run: npm run build:local
+      - run: node --test tests/story-route.test.mjs
+      - name: Commit fix and clean temporary workflows
         shell: bash
         run: |
           git config user.name "Howling Whispers Hotfix"
           git config user.email "actions@users.noreply.github.com"
-          git rm .github/workflows/hotfix-nextspeaker.yml
+          git rm -f .github/workflows/hotfix-nextspeaker.yml .github/workflows/fix-next-speaker-scope.yml || true
           git add app/dreambound-app.tsx
           git commit -m "fix(chat): keep nextSpeaker in scope after generation"
           git push origin HEAD:dev
