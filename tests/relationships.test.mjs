@@ -110,7 +110,6 @@ test("reroll replaces the previous event instead of stacking", () => {
   const state = freshState();
   commit(state, { turnId: "char-5", delta: 12, reason: "warm exchange" });
   assert.equal(state["coda::default"].events.length, 1);
-  // A reroll of the same turn produces a different delta; it must replace.
   commit(state, { turnId: "char-5", delta: -8, reason: "rerolled, colder" });
   assert.equal(state["coda::default"].events.length, 1);
   assert.equal(state["coda::default"].score, -8);
@@ -129,7 +128,6 @@ test("deleting one scored turn reverses its effect", () => {
   const state = freshState();
   commit(state, { turnId: "char-2", delta: 14, reason: "shared" });
   commit(state, { turnId: "char-3", delta: 9, reason: "kindness" });
-  // Delete only the first scored character turn.
   removeEventsForTurns(state, "coda", "default", ["char-2"]);
   const record = state["coda::default"];
   assert.equal(record.events.length, 1);
@@ -142,7 +140,6 @@ test("rewind removes events for every rolled-back character turn", () => {
   commit(state, { turnId: "char-2", delta: 14, reason: "shared" });
   commit(state, { turnId: "char-5", delta: 9, reason: "kindness" });
   commit(state, { turnId: "char-8", delta: 22, reason: "confided" });
-  // Rewind removes char-8 and everything after it.
   removeEventsForTurns(state, "coda", "default", ["char-5", "char-8"]);
   assert.equal(state["coda::default"].events.length, 1);
   assert.equal(state["coda::default"].score, 14);
@@ -163,7 +160,6 @@ test("reconcile drops events for turns no longer in the conversation", () => {
   commit(state, { turnId: "char-2", delta: 14, reason: "a" });
   commit(state, { turnId: "char-5", delta: 9, reason: "b" });
   commit(state, { turnId: "char-8", delta: 22, reason: "c" });
-  // Surviving character turn ids are char-2 and char-8 only (char-5 was edited away).
   reconcileRecord(state, "coda", "default", new Set(["char-2", "char-8"]));
   const record = state["coda::default"];
   assert.equal(record.events.length, 2);
@@ -178,17 +174,50 @@ test("migration seeds score from legacy bond without destroying it", () => {
   assert.equal(migrateBondToScore(undefined), 0);
   assert.equal(migrateBondToScore(-5), 0);
   assert.equal(migrateBondToScore(120), RELATIONSHIP_MAX);
-  // No record yet: effective score falls back to the bond seed.
   assert.equal(effectiveScore(state, "coda", "default", 50), 5000);
-  // getOrCreateRecord seeds from bond and persists the record.
   const record = getOrCreateRecord(state, "senako-steel", "default", 34);
   assert.equal(record.score, 3400);
+  assert.equal(record.baselineScore, 3400);
   assert.equal(record.events.length, 0);
 });
 
-test("meter percent normalizes the -1000..10000 range", () => {
+test("starting bond remains the baseline after scored turns", () => {
+  const state = freshState();
+  getOrCreateRecord(state, "peony", "default", 14);
+  commit(state, { characterId: "peony", turnId: "char-2", delta: 6, reason: "trust" });
+  assert.equal(state["peony::default"].baselineScore, 1400);
+  assert.equal(state["peony::default"].score, 1406);
+  assert.equal(effectiveScore(state, "peony", "default", 14), 1406);
+});
+
+test("legacy event-only records recover the bond baseline when it is observed", () => {
+  const state = {
+    "peony::default": {
+      characterId: "peony",
+      personaId: "default",
+      score: 6,
+      updatedAt: 1,
+      events: [{
+        id: "old",
+        characterId: "peony",
+        personaId: "default",
+        turnId: "char-2",
+        delta: 6,
+        reason: "trust",
+        createdAt: 1,
+      }],
+    },
+  };
+  assert.equal(effectiveScore(state, "peony", "default", 14), 1406);
+  commit(state, { characterId: "peony", turnId: "char-3", delta: 3, reason: "thanks" });
+  assert.equal(state["peony::default"].baselineScore, 1400);
+  assert.equal(state["peony::default"].score, 1409);
+});
+
+test("meter percent normalizes the -1000..10000 range without hiding small movement", () => {
   assert.equal(relationshipMeterPercent(RELATIONSHIP_MIN), 0);
-  assert.equal(relationshipMeterPercent(0), 9);
+  assert.equal(relationshipMeterPercent(0), 9.09);
+  assert.equal(relationshipMeterPercent(10), 9.18);
   assert.equal(relationshipMeterPercent(RELATIONSHIP_MAX), 100);
 });
 
@@ -211,7 +240,6 @@ test("heuristic scorer is provider-neutral and pure", () => {
   const positive = scorer.evaluate({ ...base, playerMessage: "I trust you, and I'm here for you.", characterReply: "Coda smiles, glad you came back." });
   assert.ok(positive, "a positive turn yields a delta");
   assert.ok(positive.delta > 0, "positive delta is > 0");
-  // Deterministic for the same input (no internal randomness).
   const again = scorer.evaluate({ ...base, playerMessage: "I trust you, and I'm here for you.", characterReply: "Coda smiles, glad you came back." });
   assert.deepEqual(again, positive);
 
@@ -233,18 +261,18 @@ test("relationship state survives a save/load round trip", () => {
   };
   try {
     const state = freshState();
+    getOrCreateRecord(state, "coda", "default", 12);
     commit(state, { turnId: "char-2", delta: 12, reason: "trust" });
     saveRelationships(state);
-    // Simulate a reload: rehydrate a fresh state from storage.
     const reloaded = loadRelationships();
     const record = reloaded["coda::default"];
     assert.ok(record, "record persisted across save/load");
-    assert.equal(record.score, 12);
+    assert.equal(record.baselineScore, 1200);
+    assert.equal(record.score, 1212);
     assert.equal(record.events.length, 1);
     assert.equal(record.events[0].turnId, "char-2");
     assert.equal(record.events[0].delta, 12);
     assert.equal(record.events[0].reason, "trust");
-    // An unrecorded persona has no record.
     assert.equal(loadRelationships()["coda::rinn"], undefined);
   } finally {
     if (original === undefined) delete globalThis.localStorage;
@@ -253,8 +281,6 @@ test("relationship state survives a save/load round trip", () => {
 });
 
 test("relationship scoring never leaks deltas into visible roleplay", () => {
-  // 1. The scorer exposes only { delta, reason } — never visible text that
-  //    could be injected into a character reply.
   const result = heuristicRelationshipScorer.evaluate({
     characterId: "coda",
     personaId: "default",
@@ -268,9 +294,6 @@ test("relationship scoring never leaks deltas into visible roleplay", () => {
   assert.ok(result);
   assert.deepEqual(Object.keys(result).sort(), ["delta", "reason"]);
 
-  // 2. Committing the event stores delta/reason ONLY in the relationship
-  //    event store; the player's conversation is never mutated with
-  //    relationship fields.
   const conversation = [
     { sender: "player", text: "I trust you completely." },
     { sender: "character", text: "Coda nuzzles closer, glad you said that." },
@@ -283,8 +306,6 @@ test("relationship scoring never leaks deltas into visible roleplay", () => {
   assert.equal(state["coda::default"].events.length, 1);
   assert.equal(state["coda::default"].score, result.delta);
 
-  // 3. The label fed to the generation context is a non-commanding tier
-  //    phrase; it never carries the raw delta or a numeric score.
   assert.equal(deriveRelationshipLabel(14), "Stranger");
   const phrase = relationshipTierPhrase(14);
   assert.equal(typeof phrase, "string");
