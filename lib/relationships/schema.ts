@@ -54,6 +54,10 @@ export type RelationshipEvent = {
 export type RelationshipRecord = {
   characterId: string;
   personaId: string;
+  // Stable starting point for this character/persona pair. For migrated
+  // characters this is derived from the old 0..100 bond value. Events are
+  // always added on top of this value instead of replacing it.
+  baselineScore?: number;
   score: number;
   updatedAt: number;
   events: RelationshipEvent[];
