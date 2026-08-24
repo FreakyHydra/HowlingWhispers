@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.2.0 — Riley Picks the Battlefield
+
+### ✨ Added
+
+- **Player Two** — meet Riley as a stranger in a rainy late-night gaming lounge and survive her thirty-second co-op test
+- **The Unbeaten Score** — face Riley beside the arcade cabinet that no longer displays the score she expected
+- **Last Cookie Standing** — argue your case when Riley secures the final packet of chocolate cookies
+- **Dedicated scene artwork** — every Riley scene has its own optimized widescreen illustration matching her established look and atmosphere
+- **Scene-aware Riley lore** — each premise activates only its own setting and scenario facts without inventing trust, player actions, or shared history
+
+---
+
 ## 0.10.1.1 — Riley Steps Into Frame
 
 ### 🛠 Fixed

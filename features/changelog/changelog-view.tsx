@@ -17,6 +17,22 @@ export function ChangelogView(props: ChangelogViewProps) {
 
            <div className="changelog-list">
              <article className="changelog-entry featured latest">
+               <span className="changelog-mark">🕹️</span>
+               <div>
+                 <span className="changelog-version">Version 0.10.2.0 · Riley Picks the Battlefield</span>
+                 <h2>Riley Picks the Battlefield</h2>
+                 <p>Three first-meeting scenes let Riley test a stranger through games, rivalry, and one very important packet of cookies.</p>
+                 <h3>✨ Added</h3>
+                 <ul>
+                   <li><strong>Player Two</strong> — meet Riley in a rainy late-night gaming lounge and survive her thirty-second co-op test</li>
+                   <li><strong>The Unbeaten Score</strong> — face Riley beside the arcade cabinet that no longer displays the score she expected</li>
+                   <li><strong>Last Cookie Standing</strong> — argue your case when Riley secures the final packet of chocolate cookies</li>
+                   <li><strong>Dedicated artwork and lore</strong> — every scene has its own optimized widescreen illustration and premise-specific world context</li>
+                 </ul>
+               </div>
+             </article>
+
+             <article className="changelog-entry featured">
                <span className="changelog-mark">🖼️</span>
                <div>
                  <span className="changelog-version">Version 0.10.1.1 · Riley Steps Into Frame</span>

@@ -322,6 +322,23 @@ test("Riley canon preserves her adult source behind the mature-content gate", ()
   assert.ok(mature.manifest.includedSections.includes("adult-private-source"));
 });
 
+test("Riley curated scenes activate only their matching scenario lore", () => {
+  const sceneIds = ["player-two", "unbeaten-score", "last-cookie-standing"];
+  for (const sceneId of sceneIds) {
+    const result = compile(RILEY, {
+      worldLore: RILEY_WORLD_LORE,
+      scene: sceneId,
+      sceneId,
+    });
+    assert.ok(result.manifest.includedLore.some(({ id, reason }) =>
+      id === `scenario-${sceneId}` && reason === "scene",
+    ));
+    for (const otherSceneId of sceneIds.filter((id) => id !== sceneId)) {
+      assert.equal(result.manifest.includedLore.some(({ id }) => id === `scenario-${otherSceneId}`), false);
+    }
+  }
+});
+
 test("Peony private adult canon remains gated in compiled context", () => {
   const gated = compile(PEONY, { matureContentRequested: false });
   assert.doesNotMatch(gated.prompt, /Private adult intimacy/);
