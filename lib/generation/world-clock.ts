@@ -14,6 +14,9 @@ export type WorldClockSnapshot = {
   dayPeriod: "night" | "morning" | "afternoon" | "evening";
 };
 
+const MIN_PLAUSIBLE_WORLD_TIMESTAMP = 946_684_800_000; // 2000-01-01T00:00:00Z
+const MAX_PLAUSIBLE_WORLD_TIMESTAMP = 8_640_000_000_000_000;
+
 const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: WORLD_TIME_ZONE,
   year: "numeric",
@@ -61,9 +64,17 @@ export function captureWorldTime(timestamp = Date.now()): WorldClockSnapshot {
 export function normalizeWorldTimestamp(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   const timestamp = Math.floor(value);
-  // Reject obviously invalid dates while allowing old imported conversations.
-  if (timestamp < 0 || timestamp > 8_640_000_000_000_000) return undefined;
+  // Message ids 1, 2, etc. exist in legacy/built-in conversations. Modern
+  // message ids are epoch milliseconds, so ignore anything older than 2000.
+  if (timestamp < MIN_PLAUSIBLE_WORLD_TIMESTAMP || timestamp > MAX_PLAUSIBLE_WORLD_TIMESTAMP) return undefined;
   return timestamp;
+}
+
+export function formatWorldTimestamp(value: unknown): string {
+  const timestamp = normalizeWorldTimestamp(value);
+  if (timestamp === undefined) return "";
+  const snapshot = captureWorldTime(timestamp);
+  return `${snapshot.localDateTime} ${WORLD_TIME_ZONE}`;
 }
 
 export function elapsedWorldTime(fromTimestamp: number, toTimestamp: number): string {
@@ -91,13 +102,10 @@ export function renderWorldClockContext(
   nowTimestamp = Date.now(),
 ): string {
   const now = captureWorldTime(nowTimestamp);
-  let latestTimestamp: number | undefined;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
+  const recentTimestamps: number[] = [];
+  for (let index = messages.length - 1; index >= 0 && recentTimestamps.length < 2; index -= 1) {
     const candidate = normalizeWorldTimestamp(messages[index]?.timestamp);
-    if (candidate !== undefined) {
-      latestTimestamp = candidate;
-      break;
-    }
+    if (candidate !== undefined && candidate <= now.timestamp) recentTimestamps.push(candidate);
   }
 
   const lines = [
@@ -106,10 +114,16 @@ export function renderWorldClockContext(
     "Treat timestamps as continuity facts. Use them to reason about elapsed time, day/night, waiting, sleep, travel duration, schedules, and other time-dependent events when relevant.",
     "Do not mention the clock or timestamps unless time is naturally relevant in the scene.",
   ];
-  if (latestTimestamp !== undefined && latestTimestamp <= now.timestamp) {
+  if (recentTimestamps.length > 0) {
+    const latestTimestamp = recentTimestamps[0];
     const latest = captureWorldTime(latestTimestamp);
     lines.push(
       `Most recent timestamped turn: ${latest.localDateTime}; ${elapsedWorldTime(latestTimestamp, now.timestamp)} elapsed before this generation.`,
+    );
+  }
+  if (recentTimestamps.length > 1) {
+    lines.push(
+      `Gap between the two most recent timestamped turns: ${elapsedWorldTime(recentTimestamps[1], recentTimestamps[0])}.`,
     );
   }
   lines.push("</world-clock>");
