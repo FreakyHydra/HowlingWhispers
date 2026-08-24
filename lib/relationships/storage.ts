@@ -37,9 +37,13 @@ export function loadRelationships(): RelationshipState {
       const score = typeof record.score === "number" && Number.isFinite(record.score)
         ? Math.round(record.score)
         : 0;
+      const baselineScore = typeof record.baselineScore === "number" && Number.isFinite(record.baselineScore)
+        ? Math.round(record.baselineScore)
+        : undefined;
       state[key] = {
         characterId: typeof record.characterId === "string" ? record.characterId : "",
         personaId: typeof record.personaId === "string" ? record.personaId : "",
+        baselineScore,
         score,
         updatedAt: typeof record.updatedAt === "number" ? record.updatedAt : 0,
         events,
