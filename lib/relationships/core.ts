@@ -20,11 +20,12 @@ export function clampScore(score: number): number {
   return Math.max(RELATIONSHIP_MIN, Math.min(RELATIONSHIP_MAX, Math.round(score)));
 }
 
-// Linear normalization to a 0..100 meter position. -1000 -> 0, 0 -> ~9, 10000 -> 100.
+// Linear normalization to a 0..100 meter position. Keep two decimals so small
+// relationship changes are not visually rounded away by the UI.
 export function relationshipMeterPercent(score: number): number {
   const clamped = clampScore(score);
   const percent = ((clamped - RELATIONSHIP_MIN) / (RELATIONSHIP_MAX - RELATIONSHIP_MIN)) * 100;
-  return Math.max(0, Math.min(100, Math.round(percent)));
+  return Math.max(0, Math.min(100, Math.round(percent * 100) / 100));
 }
 
 const TIER_BOUNDARIES: ReadonlyArray<{ min: number; tier: RelationshipTier }> = [
@@ -61,11 +62,31 @@ export function relationshipTierPhrase(score: number): string {
   return tier.description ? `${tier.label} — ${tier.description}` : tier.label;
 }
 
-// Sum of surviving event deltas, clamped. This is the single source of truth for
-// the effective score, so it always stays mathematically consistent with history.
-export function scoreFromEvents(events: RelationshipEvent[]): number {
-  const sum = events.reduce((total, event) => total + event.delta, 0);
-  return clampScore(sum);
+function eventDeltaTotal(events: RelationshipEvent[]): number {
+  return events.reduce((total, event) => total + event.delta, 0);
+}
+
+// The latest legacy bond seed seen for a character/persona pair. The UI and
+// scorer already call effectiveScore with that seed before committing turns, so
+// this lets old event-only records migrate without changing the chat workflow.
+const baselineHints = new Map<string, number>();
+
+function recordBaseline(key: string, record: RelationshipRecord): number {
+  if (typeof record.baselineScore === "number" && Number.isFinite(record.baselineScore)) {
+    return clampScore(record.baselineScore);
+  }
+  const hinted = baselineHints.get(key);
+  if (typeof hinted === "number" && Number.isFinite(hinted)) return clampScore(hinted);
+
+  // Old records stored score = sum(events). If a record predates the baseline
+  // field and no bond hint has been observed yet, preserve its current score by
+  // deriving whatever baseline it already implied instead of resetting it.
+  return clampScore(record.score - eventDeltaTotal(record.events));
+}
+
+// Sum surviving event deltas on top of the stable starting relationship.
+export function scoreFromEvents(events: RelationshipEvent[], baselineScore = RELATIONSHIP_NEUTRAL): number {
+  return clampScore(baselineScore + eventDeltaTotal(events));
 }
 
 // Migrate a legacy 0..100 `bond` into the 0..10000 score space. bond 0 -> 0
@@ -86,7 +107,8 @@ export function getRecord(
 }
 
 // Ensure a record exists, seeding from a legacy bond value on first use so that
-// existing saves keep their prior progress without the bond field going forward.
+// existing saves keep their prior progress. Legacy event-only records are also
+// upgraded here when a bond seed is available.
 export function getOrCreateRecord(
   state: RelationshipState,
   characterId: string,
@@ -94,12 +116,27 @@ export function getOrCreateRecord(
   seedBond?: number,
 ): RelationshipRecord {
   const key = relationshipKey(characterId, personaId);
+  const seedScore = migrateBondToScore(seedBond);
+  baselineHints.set(key, seedScore);
   const existing = state[key];
-  if (existing) return existing;
+  if (existing) {
+    if (typeof existing.baselineScore === "number" && Number.isFinite(existing.baselineScore)) {
+      return existing;
+    }
+    const upgraded: RelationshipRecord = {
+      ...existing,
+      baselineScore: seedScore,
+      score: scoreFromEvents(existing.events, seedScore),
+      updatedAt: Date.now(),
+    };
+    state[key] = upgraded;
+    return upgraded;
+  }
   const record: RelationshipRecord = {
     characterId,
     personaId,
-    score: migrateBondToScore(seedBond),
+    baselineScore: seedScore,
+    score: seedScore,
     updatedAt: Date.now(),
     events: [],
   };
@@ -113,9 +150,12 @@ export function effectiveScore(
   personaId: string,
   seedBond?: number,
 ): number {
-  const record = getRecord(state, characterId, personaId);
-  if (record) return record.score;
-  return migrateBondToScore(seedBond);
+  const key = relationshipKey(characterId, personaId);
+  const hasSeed = typeof seedBond === "number" && Number.isFinite(seedBond);
+  if (hasSeed) baselineHints.set(key, migrateBondToScore(seedBond));
+  const record = state[key];
+  if (!record) return migrateBondToScore(seedBond);
+  return scoreFromEvents(record.events, recordBaseline(key, record));
 }
 
 export function effectivePersonaId(
@@ -140,18 +180,24 @@ export function commitEvent(
   event: Omit<RelationshipEvent, "id" | "createdAt"> & { createdAt?: number },
 ): RelationshipState {
   const key = relationshipKey(event.characterId, event.personaId);
-  const record = state[key] ?? {
+  const existing = state[key];
+  const baselineScore = existing
+    ? recordBaseline(key, existing)
+    : baselineHints.get(key) ?? RELATIONSHIP_NEUTRAL;
+  const record: RelationshipRecord = existing ?? {
     characterId: event.characterId,
     personaId: event.personaId,
-    score: RELATIONSHIP_NEUTRAL,
+    baselineScore,
+    score: baselineScore,
     updatedAt: Date.now(),
     events: [],
   };
-  const withoutOld = record.events.filter((existing) => existing.turnId !== event.turnId);
+  const withoutOld = record.events.filter((current) => current.turnId !== event.turnId);
   if (event.delta === 0) {
     state[key] = {
       ...record,
-      score: scoreFromEvents(withoutOld),
+      baselineScore,
+      score: scoreFromEvents(withoutOld, baselineScore),
       events: withoutOld,
       updatedAt: Date.now(),
     };
@@ -166,7 +212,8 @@ export function commitEvent(
   withNew.sort((a, b) => a.createdAt - b.createdAt);
   state[key] = {
     ...record,
-    score: scoreFromEvents(withNew),
+    baselineScore,
+    score: scoreFromEvents(withNew, baselineScore),
     events: withNew,
     updatedAt: Date.now(),
   };
@@ -187,9 +234,11 @@ export function removeEventsForTurns(
   if (!record) return state;
   const removed = new Set(turnIds);
   const surviving = record.events.filter((event) => !removed.has(event.turnId));
+  const baselineScore = recordBaseline(key, record);
   state[key] = {
     ...record,
-    score: scoreFromEvents(surviving),
+    baselineScore,
+    score: scoreFromEvents(surviving, baselineScore),
     events: surviving,
     updatedAt: Date.now(),
   };
@@ -211,9 +260,11 @@ export function reconcileRecord(
   if (!record) return state;
   const surviving = record.events.filter((event) => survivingTurnIds.has(event.turnId));
   if (surviving.length === record.events.length) return state;
+  const baselineScore = recordBaseline(key, record);
   state[key] = {
     ...record,
-    score: scoreFromEvents(surviving),
+    baselineScore,
+    score: scoreFromEvents(surviving, baselineScore),
     events: surviving,
     updatedAt: Date.now(),
   };
