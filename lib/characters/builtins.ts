@@ -1,4 +1,5 @@
 import { PEONY } from "./builtins/peony.ts";
+import { RILEY } from "./builtins/riley.ts";
 import type { CanonicalCharacterV1 } from "./canonical.ts";
 
 const PEONY_V2: CanonicalCharacterV1 = {
@@ -14,6 +15,7 @@ const PEONY_V2: CanonicalCharacterV1 = {
 const BUILTIN_CANON: Readonly<Record<string, CanonicalCharacterV1>> = {
   peony: PEONY,
   "peony-v2": PEONY_V2,
+  riley: RILEY,
 };
 
 export function resolveLatestBuiltinCanon(id: string): CanonicalCharacterV1 | null {

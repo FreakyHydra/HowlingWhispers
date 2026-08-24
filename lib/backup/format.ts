@@ -25,6 +25,7 @@ export const CURATED_CHARACTER_IDS: ReadonlySet<string> = new Set([
   "coda",
   "heather",
   "peony",
+  "riley",
   "senako-steel",
 ]);
 

@@ -15,10 +15,12 @@ import {
   PEONY_DB_PERSONA_SHA256,
   PEONY_EDITORIAL_BIBLE_SHA256,
 } from "../lib/characters/builtins/peony.ts";
+import { RILEY } from "../lib/characters/builtins/riley.ts";
 import { resolveBuiltinWorldLore } from "../lib/worlds/builtins.ts";
 import { CODA_WORLD_LORE } from "../lib/worlds/builtins/coda.ts";
 import { HEATHER_WORLD_LORE } from "../lib/worlds/builtins/heather.ts";
 import { PEONY_WORLD_LORE } from "../lib/worlds/builtins/peony.ts";
+import { RILEY_WORLD_LORE } from "../lib/worlds/builtins/riley.ts";
 import { SENAKO_WORLD_LORE } from "../lib/worlds/builtins/senako.ts";
 import { legacyCharacterToWorldLore, parseWorldLorebook, WORLD_LORE_VERSION } from "../lib/worlds/schema.ts";
 
@@ -90,7 +92,7 @@ test("world lore parser accepts Coda canon and rejects future versions", () => {
 });
 
 test("every curated character resolves an authoritative world lorebook", () => {
-  const lorebooks = [CODA_WORLD_LORE, HEATHER_WORLD_LORE, PEONY_WORLD_LORE, SENAKO_WORLD_LORE];
+  const lorebooks = [CODA_WORLD_LORE, HEATHER_WORLD_LORE, PEONY_WORLD_LORE, RILEY_WORLD_LORE, SENAKO_WORLD_LORE];
   for (const lorebook of lorebooks) {
     assert.equal(resolveBuiltinWorldLore(lorebook.worldId), lorebook);
     assert.equal(parseWorldLorebook(lorebook)?.revision, "0.1.0");
@@ -303,6 +305,21 @@ test("latest Peony canon preserves its authoritative source and provenance", () 
     PEONY_DB_PERSONA_SHA256,
   );
   assert.ok(PEONY.sections.every((section) => section.sourceRefs.length > 0));
+});
+
+test("Riley canon preserves her adult source behind the mature-content gate", () => {
+  assert.equal(resolveLatestBuiltinCanon("riley"), RILEY);
+  assert.equal(RILEY.safety.ageCategory, "adult");
+  assert.equal(RILEY.safety.isMinor, false);
+  assert.equal(RILEY.sections.some((section) => section.rating === "general"), true);
+  assert.equal(RILEY.sections.some((section) => section.rating === "mature"), true);
+
+  const ordinary = compile(RILEY);
+  const mature = compile(RILEY, { matureContentRequested: true });
+  assert.ok(ordinary.manifest.omittedSections.some(({ id, reason }) =>
+    id === "adult-private-source" && reason === "mature-gated",
+  ));
+  assert.ok(mature.manifest.includedSections.includes("adult-private-source"));
 });
 
 test("Peony private adult canon remains gated in compiled context", () => {

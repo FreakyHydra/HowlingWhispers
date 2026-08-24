@@ -180,6 +180,7 @@ test("curated helper matches the curated ids", () => {
   assert.equal(isCuratedCharacterId("coda"), true);
   assert.equal(isCuratedCharacterId("heather"), true);
   assert.equal(isCuratedCharacterId("peony"), true);
+  assert.equal(isCuratedCharacterId("riley"), true);
   assert.equal(isCuratedCharacterId("senako-steel"), true);
   assert.equal(isCuratedCharacterId("my-own"), false);
 });

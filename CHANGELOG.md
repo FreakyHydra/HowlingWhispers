@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.1.0 — Player Two Arrives
+
+### ✨ Added
+
+- **Riley** — the fiercely competitive, scruffy gamer joins the Curated Contacts library with her complete supplied character sheet
+- **Stable curated identity** — Riley uses the permanent `riley` identity across conversations, backups, downloads, and duplicate-ID protection
+
+### 🔄 Changed
+
+- **Stranger starting point** — Riley begins each new Contact/persona relationship at 0 points so trust can develop naturally through roleplay
+
+---
+
 ## 0.10.0.0 — The Clock Starts
 
 🏆 MAJOR FEATURE RELEASE

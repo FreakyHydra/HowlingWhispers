@@ -83,6 +83,7 @@ test("oversized character files are rejected", () => {
 test("curated built-in ids are never imported", () => {
   assert.equal(isCuratedBuiltinId("coda"), true);
   assert.equal(isCuratedBuiltinId("heather"), true);
+  assert.equal(isCuratedBuiltinId("riley"), true);
   const result = ensureUniqueCharacterIds(
     [{ ...sample, id: "coda" }],
     [],

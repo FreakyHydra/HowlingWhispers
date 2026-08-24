@@ -16,7 +16,25 @@ export function ChangelogView(props: ChangelogViewProps) {
       </header>
 
            <div className="changelog-list">
-             <article className="changelog-entry milestone latest">
+             <article className="changelog-entry featured latest">
+               <span className="changelog-mark">🎮</span>
+               <div>
+                 <span className="changelog-version">Version 0.10.1.0 · Player Two Arrives</span>
+                 <h2>Player Two Arrives</h2>
+                 <p>Riley joins the Curated Contacts library, ready to judge whether anyone can keep up.</p>
+                 <h3>✨ Added</h3>
+                 <ul>
+                   <li><strong>Riley</strong> — the fiercely competitive, scruffy gamer joins the Curated Contacts library with her complete supplied character sheet</li>
+                   <li><strong>Stable curated identity</strong> — Riley uses the permanent <code>riley</code> identity across conversations, backups, downloads, and duplicate-ID protection</li>
+                 </ul>
+                 <h3>🔄 Changed</h3>
+                 <ul>
+                   <li><strong>Stranger starting point</strong> — Riley begins each new Contact/persona relationship at 0 points so trust can develop naturally through roleplay</li>
+                 </ul>
+               </div>
+             </article>
+
+             <article className="changelog-entry milestone">
                <span className="changelog-mark">◆</span>
                <div>
                  <span className="changelog-version">Version 0.10.0.0 · The Clock Starts</span>

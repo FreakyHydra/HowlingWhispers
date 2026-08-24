@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useMemo, useRef, useState, useEffect, useLayout
 import { createPortal } from "react-dom";
 import { ChangelogView } from "../features/changelog/changelog-view";
 import packageInfo from "../package.json";
+import rileyPackage from "../public/curated/riley.json" with { type: "json" };
 import { legacyCharacterToCanon, type AgeCategory } from "../lib/characters/canonical";
 import { COMMUNITY_DISCORD_URL } from "../lib/site";
 import {
@@ -638,6 +639,23 @@ const codaWorldGuide = {
   ],
 };
 
+const rileySource = rileyPackage.character;
+const rileyCuratedCharacter: Character = {
+  ...rileySource,
+  id: "riley",
+  bond: 0,
+  relationship: "Stranger",
+  ageCategory: "adult",
+  isMinor: false,
+  allowedRelationshipTypes: ["friendship", "romance between consenting adults"],
+  reply: `"${rileySource.reply}"`,
+  profile: `${rileySource.profile}
+
+Speech style: Riley is terse, blunt, competitive, and comfortable with gaming slang. Put actions and observable narration in *single asterisks*, spoken dialogue in "double quotes", and inner voice in [square brackets]. Keep action, dialogue, and inner voice inline within the same paragraph; do not force blank lines between them. Preserve natural paragraph boundaries. Keep Riley autonomous, guarded with strangers, slow to trust, and unwilling to perform femininity for other people. Never control the player's thoughts, feelings, dialogue, decisions, consent, or voluntary actions.`,
+  credit: "Character by Derkomor",
+  hwccVersion: "1",
+};
+
 const initialCharacters: Character[] = [
   {
     id: "coda",
@@ -834,6 +852,7 @@ Speech style: low, controlled, and precise. Valerie uses short sentences when sh
     accent: "#c8a94f",
     pronouns: "she/her",
   },
+  rileyCuratedCharacter,
 ];
 
 const initialMessages: Record<string, Message[]> = {
@@ -869,6 +888,13 @@ const initialMessages: Record<string, Message[]> = {
       id: 1,
       sender: "character",
       text: "*The television freezes on a GAME OVER screen while rain whispers against the bedroom window. Senako sits on the edge of her bed with the controller trapped between both hands, jaw tight and shoulders hunched inside her charcoal hoodie. Lime-green pillows and half-finished homework surround her like the walls of a tiny fortress.*\n\n*Her blue eyes cut toward the doorway. For one sharp second she looks ready to bite your head off; then the anger flickers, revealing how tired she really is.*\n\nWhat? If you're here to tell me to calm down, save it. *She nudges a second controller across the blanket without quite looking at you.* But if you know how to beat this stupid boss, you can sit down. For five minutes. Maybe.",
+    },
+  ],
+  riley: [
+    {
+      id: 1,
+      sender: "character",
+      text: rileyCuratedCharacter.reply,
     },
   ],
 };

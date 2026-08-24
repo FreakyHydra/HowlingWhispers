@@ -8,7 +8,7 @@ const MAX_MEMORIES = 40;
 const MAX_MEMORY_LENGTH = 600;
 const MAX_LIBRARY_CHARACTERS = 60;
 
-const CURATED_BUILTIN_IDS = new Set(["coda", "heather", "peony", "senako-steel"]);
+const CURATED_BUILTIN_IDS = new Set(["coda", "heather", "peony", "riley", "senako-steel"]);
 const AGE_CATEGORIES = new Set(["adult", "minor", "unknown"]);
 
 import { sanitizeTraits } from "./traits.ts";
