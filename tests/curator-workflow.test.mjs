@@ -36,7 +36,7 @@ test("curated controls and exports use the central capability", async () => {
 test("curated identity remains stable when display data changes", async () => {
   const app = await read("app/dreambound-app.tsx");
   assert.match(app, /id: advancedEditingCharacter\.id/);
-  assert.doesNotMatch(app, /curated.*name\.toLowerCase\(\).*id/is);
+  assert.match(app, /record\.id === record\.character\.id/);
 });
 
 
@@ -52,7 +52,7 @@ test("Archive uses Discord auth and Human Verified approval", async () => {
   assert.match(archiveAuth, /humanVerified/);
   assert.match(archiveAuth, /canUseArchive/);
   assert.match(archiveAuth, /Discord login and Human Verified approval are required/);
-  assert.match(adminBridge, /auth\/identity/);
+  assert.match(adminBridge, /login\|logout\|identity/);
 });
 
 
