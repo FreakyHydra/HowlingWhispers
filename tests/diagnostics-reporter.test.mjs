@@ -11,6 +11,8 @@ test("diagnostics are opt-in, previewed, and privacy bounded", () => {
   assert.match(reporter, /Report a problem/);
   assert.match(reporter, /Review report/);
   assert.match(reporter, /Send diagnostic report/);
+  assert.match(reporter, /View the exact technical details/);
+  assert.match(reporter, /JSON\.stringify\(report, null, 2\)/);
   assert.match(reporter, /MAX_SIGNALS = 30/);
   assert.match(reporter, /notes\.slice\(0, 2000\)/);
   assert.doesNotMatch(reporter, /document\.cookie|localStorage|sessionStorage/);
