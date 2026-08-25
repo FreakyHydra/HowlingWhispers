@@ -2046,6 +2046,9 @@ export default function DreamboundApp() {
 
   useEffect(() => {
     void refreshDiscordIdentity();
+    const refresh = () => void refreshDiscordIdentity();
+    window.addEventListener("howling:discord-auth-changed", refresh);
+    return () => window.removeEventListener("howling:discord-auth-changed", refresh);
   }, [refreshDiscordIdentity]);
 
   useEffect(() => {
@@ -2506,7 +2509,9 @@ export default function DreamboundApp() {
       });
     } finally {
       setDiscordIdentity(null);
+      setArchiveUser(null);
       setAccountMenuOpen(false);
+      window.dispatchEvent(new Event("howling:discord-auth-changed"));
     }
   }
 
