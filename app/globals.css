@@ -9313,3 +9313,185 @@ a:focus-visible {
   font-size: calc(13px * var(--ui-font-scale, 1));
   margin-top: 10px;
 }
+
+
+/* Persona identity hub */
+.persona-command-deck {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.9fr);
+  margin: 22px 0 18px;
+}
+
+.persona-default-identity,
+.persona-library-vitals {
+  background:
+    linear-gradient(135deg, rgba(69, 184, 179, 0.09), rgba(183, 101, 63, 0.05)),
+    rgba(8, 7, 9, 0.48);
+  border: 1px solid rgba(69, 184, 179, 0.3);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+.persona-default-identity {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 72px 1fr;
+}
+
+.persona-hero-avatar {
+  border-color: var(--rune);
+  box-shadow: 0 0 24px rgba(69, 184, 179, 0.16);
+  font-size: calc(30px * var(--ui-font-scale, 1));
+  height: 72px;
+  width: 72px;
+}
+
+.persona-command-label {
+  color: var(--rune);
+  font-size: calc(10px * var(--ui-font-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.persona-default-identity h3 {
+  font-family: var(--serif);
+  font-size: calc(30px * var(--ui-font-scale, 1));
+  font-weight: 500;
+  line-height: 1;
+  margin: 5px 0 8px;
+}
+
+.persona-default-identity p {
+  margin: 0;
+}
+
+.persona-identity-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.persona-identity-status span {
+  background: rgba(242, 222, 194, 0.05);
+  border: 1px solid rgba(242, 222, 194, 0.16);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: calc(10px * var(--ui-font-scale, 1));
+  padding: 5px 9px;
+}
+
+.persona-identity-status span.locked {
+  background: rgba(69, 184, 179, 0.1);
+  border-color: rgba(69, 184, 179, 0.34);
+  color: #9edbd7;
+}
+
+.persona-library-vitals {
+  align-content: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.persona-library-vitals > div {
+  border-right: 1px solid rgba(183, 101, 63, 0.2);
+  min-width: 0;
+  padding: 3px 10px;
+}
+
+.persona-library-vitals > div:nth-child(3) {
+  border-right: 0;
+}
+
+.persona-library-vitals strong,
+.persona-library-vitals span {
+  display: block;
+}
+
+.persona-library-vitals strong {
+  color: var(--cream);
+  font-family: var(--serif);
+  font-size: calc(27px * var(--ui-font-scale, 1));
+  font-weight: 500;
+}
+
+.persona-library-vitals span {
+  color: var(--muted);
+  font-size: calc(9px * var(--ui-font-scale, 1));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+}
+
+.persona-anchor-preview {
+  border-top: 1px solid rgba(183, 101, 63, 0.22);
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding-top: 11px;
+}
+
+.persona-anchor-preview summary {
+  color: var(--copper-bright);
+  cursor: pointer;
+  font-size: calc(11px * var(--ui-font-scale, 1));
+}
+
+.persona-anchor-preview pre {
+  color: var(--muted);
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  line-height: 1.5;
+  margin: 10px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.persona-library-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
+}
+
+.persona-library-grid .persona-card {
+  align-content: start;
+  grid-template-columns: 52px 1fr;
+  min-height: 100%;
+  padding: 16px;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.persona-library-grid .persona-card:hover {
+  border-color: rgba(215, 138, 94, 0.55);
+  transform: translateY(-1px);
+}
+
+.persona-library-grid .persona-card.active {
+  background:
+    linear-gradient(135deg, rgba(69, 184, 179, 0.1), rgba(183, 101, 63, 0.05));
+  border-color: rgba(69, 184, 179, 0.5);
+}
+
+.persona-library-grid .persona-card-actions {
+  border-top: 1px solid rgba(183, 101, 63, 0.18);
+  grid-column: 1 / -1;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+@media (max-width: 800px) {
+  .persona-command-deck {
+    grid-template-columns: 1fr;
+  }
+
+  .persona-default-identity {
+    grid-template-columns: 56px 1fr;
+  }
+
+  .persona-hero-avatar {
+    font-size: calc(24px * var(--ui-font-scale, 1));
+    height: 56px;
+    width: 56px;
+  }
+}
