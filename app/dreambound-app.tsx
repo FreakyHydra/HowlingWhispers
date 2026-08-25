@@ -2504,6 +2504,11 @@ export default function DreamboundApp() {
     setView("roleplay");
   }
 
+  function handleDiscordLogin() {
+    const welcomeMat = new URL("/", window.location.origin).toString();
+    window.location.assign(`/api/curator/auth/login?return_to=${encodeURIComponent(welcomeMat)}`);
+  }
+
   async function handleDiscordLogout() {
     try {
       await fetch("/api/curator/auth/logout", {
@@ -5821,6 +5826,28 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             <button className="primary-button" type="button" onClick={handleEnter} autoFocus>
               Enter The Howling Whispers
             </button>
+            {curatorAuthLoading ? (
+              <span className="login-hint">Checking Discord…</span>
+            ) : discordIdentity ? (
+              <div className="login-discord-status">
+                <span className="login-hint">Signed in with Discord as @{discordIdentity.username}</span>
+                {discordIdentity.archiveRole === "moderator" && (
+                  <a
+                    className="login-community-button"
+                    href="https://admin.thehowlingwhispers.com"
+                  >
+                    Open Admin
+                  </a>
+                )}
+                <button className="text-button" type="button" onClick={() => void handleDiscordLogout()}>
+                  Logout of Discord
+                </button>
+              </div>
+            ) : (
+              <button className="login-community-button" type="button" onClick={handleDiscordLogin}>
+                Login with Discord
+              </button>
+            )}
             <a
               href={COMMUNITY_DISCORD_URL}
               className="login-community-button"
@@ -6116,7 +6143,7 @@ Roleplay
                     </button>
                   </>
                 ) : (
-                  <button className="account-menu-login" onClick={() => { window.location.assign("/api/curator/auth/login"); }} role="menuitem">
+                  <button className="account-menu-login" onClick={handleDiscordLogin} role="menuitem">
                     Login with Discord
                   </button>
                 )}
