@@ -20,6 +20,7 @@ import { renderWorldClockContext } from "./world-clock.ts";
 import { getXiaolongCompatibilityInstructions } from "./xiaolong-compatibility.ts";
 import type { ContextInput } from "../context/types.ts";
 import { selectHWLorebooks, renderMemoryBlock, renderAuthorNoteBlock, renderHWLorebookBlock, type HWLoreSelection } from "../context/compile.ts";
+import { buildPlayerIdentityAnchor } from "../personas/identity.ts";
 
 export type ContextMode = "character" | "balanced" | "story";
 export type GenerationProvider = "local" | "novelai";
@@ -189,6 +190,7 @@ export function compileContext(input: CompileContextInput): CompiledContext {
   const canonBlock = selectedSections.map(({ section }) => renderSection(section.title, section.content)).join("\n\n");
   const loreBlock = loreSelection.entries.map(({ entry }) => renderLoreEntry(entry)).join("\n\n");
   const personaBlock = renderPlayerPersona(input.playerPersona);
+  const personaAnchorBlock = buildPlayerIdentityAnchor(input.playerName, Boolean(personaBlock));
   const stateBlock = renderState(input);
   const worldClockBlock = renderWorldClockContext(input.messages);
   const memoryBlock = renderMemoryBlock(input.contextInput?.memories ?? []);
@@ -236,6 +238,7 @@ export function compileContext(input: CompileContextInput): CompiledContext {
     canonBlock,
     loreBlock,
     hwLoreBlock,
+    personaAnchorBlock,
     personaBlock,
     memoryBlock,
     authorNoteBlock,
@@ -257,6 +260,7 @@ export function compileContext(input: CompileContextInput): CompiledContext {
     canonBlock,
     loreBlock,
     hwLoreBlock,
+    personaAnchorBlock,
     personaBlock,
     memoryBlock,
     authorNoteBlock,
@@ -362,6 +366,7 @@ type PromptParts = {
   traitBlock: string;
   canonBlock: string;
   loreBlock: string;
+  personaAnchorBlock: string;
   personaBlock: string;
   stateBlock: string;
   worldClockBlock: string;
@@ -406,6 +411,7 @@ function buildLegacyPrompt(parts: PromptParts): string {
     ...(parts.hwLoreBlock ? ["<relevant-world-lore>", parts.hwLoreBlock, "</relevant-world-lore>", ""] : []),
     ...(parts.memoryBlock ? [parts.memoryBlock, ""] : []),
     ...(parts.authorNoteBlock ? [parts.authorNoteBlock, ""] : []),
+    ...(parts.personaAnchorBlock ? [parts.personaAnchorBlock, ""] : []),
     ...(parts.personaBlock ? [parts.personaBlock, ""] : []),
     ...(parts.castBlock ? [parts.castBlock, ""] : []),
     ...(parts.autonomyBlock ? [parts.autonomyBlock, ""] : []),
@@ -436,6 +442,7 @@ function buildNovelAiPrompt(parts: PromptParts): string {
       ...(parts.memoryBlock ? ["", parts.memoryBlock] : []),
       ...(parts.authorNoteBlock ? ["", parts.authorNoteBlock] : []),
       ...(parts.hwLoreBlock ? ["", "<hw-lorebook>", parts.hwLoreBlock, "</hw-lorebook>"] : []),
+      ...(parts.personaAnchorBlock ? ["", parts.personaAnchorBlock] : []),
       ...(parts.personaBlock ? ["", parts.personaBlock] : []),
       ...(parts.castBlock ? ["", parts.castBlock] : []),
       ...(parts.autonomyBlock ? ["", parts.autonomyBlock] : []),

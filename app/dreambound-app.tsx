@@ -73,6 +73,7 @@ import {
   migrateLegacyPlayerProfile,
 } from "../lib/personas/storage";
 import { compilePlayerPersona } from "../lib/personas/compile";
+import { detectPersonaIdentityDrift } from "../lib/personas/identity";
 import type { PlayerPersona } from "../lib/personas/schema";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
 import { readContextLibrary, writeContextLibrary, type ContextLibrary } from "../lib/context/storage.ts";
@@ -2518,10 +2519,10 @@ export default function DreamboundApp() {
   const allCommonScenes = [...commonScenes, ...addonCommonScenes];
   const activeRelationshipPersonaId = useMemo(
     () => effectivePersonaId(
-      activePersona?.id ?? null,
       activeSession?.playerPersonaId ?? null,
+      activePersona?.id ?? null,
     ),
-    [activePersona?.id, activeSession?.playerPersonaId],
+    [activeSession?.playerPersonaId, activePersona?.id],
   );
   const relationshipKeyForSelected = selectedLocation
     ? ""
@@ -2588,7 +2589,7 @@ export default function DreamboundApp() {
               });
         })()
       : selectedScenes.find((scene) => scene.id === activeSession?.sceneId) ?? selectedScenes[0];
-  const activePlayerName = activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim();
+  const activePlayerName = activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name.trim();
   const sessionUsesDefaultPersona = Boolean(
     !activeSession?.playerName?.trim() && !activeSession?.playerPersona?.trim(),
   );
@@ -3327,13 +3328,28 @@ export default function DreamboundApp() {
     playerDirection?: string,
     reroll = false,
     respondAs?: string,
+    identityRetry = false,
   ): Promise<{ reply: string; metadata: StoryMetadata | null }> {
     const controller = new AbortController();
     generationAbortRef.current?.abort();
     generationAbortRef.current = controller;
     const requestSignal = controller.signal;
-    const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
-    const effectivePlayerPersona = activePersona ?? (activeSession?.playerPersona?.trim() || compiledActivePersona || playerProfile.persona).trim();
+    const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
+    const compiledPlayerPersona = (activeSession?.playerPersona?.trim() || compiledActivePersona || playerProfile.persona).trim();
+    const effectivePlayerPersona = identityRetry
+      ? [
+          `IDENTITY CORRECTION: The player in this story is ${effectivePlayerName}. Do not use a different persona name.`,
+          compiledPlayerPersona,
+        ].filter(Boolean).join("\n")
+      : compiledPlayerPersona;
+    const conflictingPersonaNames = [activePersona?.name, playerProfile.name];
+    const correctPersonaDrift = async (result: { reply: string; metadata: StoryMetadata | null }) => {
+      const conflict = detectPersonaIdentityDrift(result.reply, effectivePlayerName, conflictingPersonaNames);
+      if (!identityRetry && conflict) {
+        return requestStoryReply(conversation, action, playerDirection, reroll, respondAs, true);
+      }
+      return result;
+    };
     const sessionCast = livingCastConfig.enabled
       ? (activeSession?.livingCast?.length ? activeSession.livingCast : resetCast({ id: selected.id, name: selected.name }, effectivePlayerName))
       : [];
@@ -3466,7 +3482,7 @@ export default function DreamboundApp() {
         setContextManifests((current) => ({ ...current, [activeMessageKey]: prepared.context! }));
       }
       persistSessionAutonomy(prepared.autonomy);
-      return { reply: finalized.reply, metadata: finalized.metadata ?? null };
+      return correctPersonaDrift({ reply: finalized.reply, metadata: finalized.metadata ?? null });
     }
     const response = await fetch("/api/novelai", {
       method: "POST",
@@ -3482,7 +3498,7 @@ export default function DreamboundApp() {
       setContextManifests((current) => ({ ...current, [activeMessageKey]: payload.context! }));
     }
     persistSessionAutonomy(payload.autonomy);
-    return { reply: payload.reply, metadata: payload.metadata ?? null };
+    return correctPersonaDrift({ reply: payload.reply, metadata: payload.metadata ?? null });
   }
 
   const requestStoryReplyRef = useRef<typeof requestStoryReply | null>(null);
@@ -3542,7 +3558,7 @@ export default function DreamboundApp() {
           characterId: session?.characterId ?? selected.id,
           characterName: selected.name,
           livingCast: session?.livingCast ?? [],
-          playerName: activePersonaRef.current?.name.trim() || session?.playerName?.trim() || "",
+          playerName: session?.playerName?.trim() || activePersonaRef.current?.name.trim() || "",
         });
         setProviderState("connected");
       }
@@ -3663,7 +3679,7 @@ export default function DreamboundApp() {
     const effectiveCharacterId = characterId ?? selected.id;
     if (isLocationSession || selectedLocation || effectiveCharacterId.startsWith("location:")) return;
     const personaId = activeRelationshipPersonaId;
-    const playerName = activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim();
+    const playerName = activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name.trim();
     const previousScore = effectiveScore(
       relationshipsRef.current,
       effectiveCharacterId,
@@ -3716,7 +3732,7 @@ export default function DreamboundApp() {
     const result = (heuristicRelationshipScorer as RelationshipScorer).evaluate({
       characterId: selected.id,
       personaId,
-      playerName: activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim(),
+      playerName: activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name.trim(),
       characterName: selected.name,
       previousScore: effectiveScore(next, selected.id, personaId, selected.bond),
       playerMessage: lastPlayerMessageText(conversation),
@@ -3760,7 +3776,7 @@ export default function DreamboundApp() {
             : text,
     };
     const conversation = [...activeMessages, playerMessage];
-    const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
+    const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
     const baselineCast = activeSession?.livingCast?.length
       ? activeSession.livingCast
       : resetCast({ id: selected.id, name: selected.name }, effectivePlayerName);
@@ -3854,7 +3870,7 @@ export default function DreamboundApp() {
   }
 
 async function impersonateTurn(conversation: Message[], playerDirection: string): Promise<string> {
-    const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
+    const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
     let suggestion = formatPlayerTurn(
       (await requestStoryReply(conversation, "impersonate", playerDirection)).reply,
       effectivePlayerName,

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import type { PlayerPersona } from "../../lib/personas/schema";
 import { clonePersona } from "../../lib/personas/schema";
+import { compilePlayerPersona } from "../../lib/personas/compile";
 import {
   ensureUniquePersonaIds,
   parsePersonaImport,
@@ -51,6 +52,11 @@ export function PersonaLibrary({
   const [deleteTarget, setDeleteTarget] = useState<PlayerPersona | null>(null);
   const [importError, setImportError] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
+  const activePersona = personas.find((persona) => persona.id === activePersonaId) ?? null;
+  const memoryTotal = Object.values(memoryCards)
+    .reduce((total, card) => total + (card.memoryRefs?.length ?? 0), 0);
+  const relationshipTotal = Object.values(memoryCards)
+    .reduce((total, card) => total + Object.keys(card.relationships ?? {}).length, 0);
 
   function handleImportFile(file: File) {
     setImportError("");
@@ -96,6 +102,48 @@ export function PersonaLibrary({
         When you use one in roleplay, a compiled profile is sent to your selected story engine.
       </p>
 
+      <div className="persona-command-deck">
+        <section className="persona-default-identity">
+          <span className="persona-avatar persona-hero-avatar" aria-hidden="true">
+            {activePersona?.avatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={activePersona.avatar} alt="" />
+            ) : (
+              activePersona?.name.trim().charAt(0).toUpperCase() || "◇"
+            )}
+          </span>
+          <div>
+            <span className="persona-command-label">Default identity</span>
+            <h3>{activePersona?.name || "No default persona"}</h3>
+            <p>
+              {activePersona
+                ? activePersona.description || "This identity is ready for new stories."
+                : "Choose a persona below. Individual stories can still use their own identity."}
+            </p>
+            <div className="persona-identity-status">
+              <span className={activePersona ? "locked" : ""}>
+                {activePersona ? "◆ Identity anchor active" : "◇ Identity anchor waiting"}
+              </span>
+              {activePersona?.identity?.pronouns && <span>{activePersona.identity.pronouns}</span>}
+            </div>
+          </div>
+        </section>
+
+        <section className="persona-library-vitals" aria-label="Persona library summary">
+          <div><strong>{personas.length}</strong><span>Identities</span></div>
+          <div><strong>{memoryTotal}</strong><span>Memories</span></div>
+          <div><strong>{relationshipTotal}</strong><span>Relationships</span></div>
+          <details className="persona-anchor-preview">
+            <summary>What the story engine receives</summary>
+            <pre>
+              {activePersona
+                ? compilePlayerPersona(activePersona)
+                : "No default persona selected. A story-specific persona can still be chosen when starting a scene."}
+            </pre>
+          </details>
+        </section>
+      </div>
+
       <div className="persona-library-tools">
         <button className="outline-button" type="button" onClick={() => setEditor({ mode: "create" })}>
           ＋ New persona
@@ -136,11 +184,11 @@ export function PersonaLibrary({
           No saved personas yet. Create one, or continue with just a name.
         </p>
       ) : (
-        <ul className="persona-list">
+        <ul className="persona-list persona-library-grid">
           {personas.map((persona) => {
             const active = persona.id === activePersonaId;
             return (
-              <li className="persona-card" key={persona.id}>
+              <li className={`persona-card${active ? " active" : ""}`} key={persona.id}>
                 <span className="persona-avatar" aria-hidden="true">
                   {persona.avatar ? (
                     // eslint-disable-next-line @next/next/no-img-element
