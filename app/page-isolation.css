@@ -19,3 +19,22 @@
 .settings-page:not(:has(> .settings-grid)) > .settings-section-nav {
   display: none !important;
 }
+
+
+/* Persona is a feature page, never the two-column Settings workspace.
+ * Keep this explicit instead of relying only on :has(), which can fail in
+ * stale or partially updated browser bundles. */
+.settings-page.persona-page {
+  --ui-scale: initial;
+  display: block;
+  grid-template: none;
+  grid-template-areas: none;
+  min-height: calc(100dvh - calc(var(--topbar-height) * var(--ui-scale, 1)));
+  overflow-y: auto;
+}
+
+.settings-page.persona-page > .persona-library {
+  margin-inline: auto;
+  max-width: 1180px;
+  width: 100%;
+}
