@@ -2969,7 +2969,7 @@ export default function DreamboundApp() {
     const description = character.profile && !character.credit
       ? compileCharacterProfile(character)
       : "";
-    const { session, initialMessages } = buildSessionInitialState(character, scene, {
+    const { session, initialMessages } = buildSessionInitialState(character, scene, null, {
       description,
       characterMessage: character.reply,
       persona,
@@ -2991,7 +2991,7 @@ export default function DreamboundApp() {
     }
     const character = characters.find((candidate) => candidate.id === selected.id) ?? characters[0];
     const scene = commonSceneToSceneDefinition(commonScene);
-    const { session, initialMessages } = buildSessionInitialState(character, scene, {
+    const { session, initialMessages } = buildSessionInitialState(character, scene, null, {
       persona,
     });
     setMessages((current) => ({
@@ -3045,7 +3045,7 @@ export default function DreamboundApp() {
       ? codaWorldGuide.roles.find((candidate) => candidate.name === selectedCodaRole)
       : null;
     const customRole = customCodaRole.trim().slice(0, 800);
-    const { session, initialMessages } = buildSessionInitialState(character, scene, {
+    const { session, initialMessages } = buildSessionInitialState(character, scene, null, {
       playerRole: role?.name,
       playerRoleContext: role?.name === "Custom Role"
         ? customRole || "No external player-role facts are established."
@@ -3100,7 +3100,7 @@ export default function DreamboundApp() {
     const character =
       characters.find((candidate) => candidate.id === characterId) ?? characters[0];
     const scene = sandboxSceneFor(character);
-    const { session, initialMessages } = buildSessionInitialState(character, scene, {
+    const { session, initialMessages } = buildSessionInitialState(character, scene, null, {
       sandbox: true,
       persona,
     });
@@ -3131,7 +3131,7 @@ export default function DreamboundApp() {
       : selected;
     const scene = sandboxSceneFor(target);
     const seed = autopilotSeed.trim();
-    const { session, initialMessages } = buildSessionInitialState(target, scene, {
+    const { session, initialMessages } = buildSessionInitialState(target, scene, null, {
       sandbox: true,
       autopilot: true,
       autopilotPaused: false,
