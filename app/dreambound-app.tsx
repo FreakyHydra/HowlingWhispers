@@ -2498,6 +2498,18 @@ export default function DreamboundApp() {
     setView("roleplay");
   }
 
+  async function handleDiscordLogout() {
+    try {
+      await fetch("/api/curator/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+    } finally {
+      setDiscordIdentity(null);
+      setAccountMenuOpen(false);
+    }
+  }
+
   function updatePlayerProfile(patch: Partial<{ name: string; persona: string }>) {
     const next = { ...playerProfile, ...patch };
     setPlayerProfile(next);
