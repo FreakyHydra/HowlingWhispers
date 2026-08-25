@@ -12,6 +12,9 @@ export type AdvancedCharacterEditorProps = {
   onSave: (character: Character) => void;
   onCancel: () => void;
   mode?: "create" | "edit";
+  saving?: boolean;
+  saveError?: string;
+  contextLabel?: string;
   onUploadPortrait?: (bytes: Uint8Array) => Promise<string>;
   onUploadScene?: (bytes: Uint8Array) => Promise<string>;
   onRemovePortrait?: (reference: string) => void;
@@ -84,7 +87,9 @@ export function AdvancedCharacterEditor(props: AdvancedCharacterEditorProps) {
   const isDirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(character), [draft, character]);
   const isCreate = props.mode === "create";
   const canSave = isCreate ? Boolean(draft.name.trim()) : isDirty;
-  const saveLabel = isCreate ? "Create character" : "Save changes";
+  const saveLabel = props.saving
+    ? "Saving…"
+    : isCreate ? "Create character" : "Save changes";
 
   const handleSave = useCallback(() => {
     onSave(draft);
@@ -127,19 +132,20 @@ export function AdvancedCharacterEditor(props: AdvancedCharacterEditorProps) {
     <div className="advanced-character-editor" role="dialog" aria-modal="true" aria-label={`Advanced editor for ${character.name || "character"}`}>
       <header className="ace-header">
         <div>
-          <p className="eyebrow">Advanced Character Editor · HWCC v1</p>
+          <p className="eyebrow">{props.contextLabel ?? "Advanced Character Editor"} · HWCC v1</p>
           <h2>{draft.name || "Unnamed character"}</h2>
         </div>
         <div className="ace-header-actions">
           <button type="button" className="outline-button" onClick={onCancel}>
             Close
           </button>
-          <button type="button" className="primary-button" onClick={handleSave} disabled={!canSave}>
+          <button type="button" className="primary-button" onClick={handleSave} disabled={!canSave || props.saving}>
             {saveLabel}
           </button>
         </div>
       </header>
 
+      {props.saveError && <p className="form-error" role="alert">{props.saveError}</p>}
       <div className="ace-body">
         <nav className="ace-sidebar" aria-label="Character sections">
           {SECTIONS.map((section) => (
