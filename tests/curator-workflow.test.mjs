@@ -72,10 +72,11 @@ test("Discord bridge preserves cookies, encoded IDs, and shared logout state", a
 
 
 test("welcome mat owns Discord login and only admins receive the Admin entry", async () => {
-  const [app, archiveView, styles] = await Promise.all([
+  const [app, archiveView, styles, pageIsolation] = await Promise.all([
     read("app/dreambound-app.tsx"),
     read("components/archive/archive-view.tsx"),
     read("app/globals.css"),
+    read("app/page-isolation.css"),
   ]);
 
   assert.match(app, /archiveRole\?: "user" \| "moderator"/);
@@ -88,4 +89,7 @@ test("welcome mat owns Discord login and only admins receive the Admin entry", a
   assert.match(archiveView, /discordLoginUrl\(new URL\("\/", window\.location\.origin\)\.toString\(\)\)/);
   assert.doesNotMatch(app, /return_to=.*admin\.thehowlingwhispers\.com/);
   assert.match(styles, /\.settings-page > \.persona-library\s*\{[\s\S]*?margin-inline: auto;[\s\S]*?max-width: 1180px;[\s\S]*?width: 100%;/);
+  assert.match(app, /className="settings-page persona-page"/);
+  assert.match(pageIsolation, /\.settings-page\.persona-page\s*\{[\s\S]*?display: block;[\s\S]*?grid-template: none;/);
+  assert.match(pageIsolation, /\.settings-page\.persona-page > \.persona-library\s*\{[\s\S]*?margin-inline: auto;/);
 });
