@@ -5789,6 +5789,15 @@ a:focus-visible {
   margin-top: 0.5rem;
 }
 
+.login-discord-status {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.login-discord-status .text-button {
+  justify-self: center;
+}
+
 .login-hint {
   font-size: 0.8rem;
   color: var(--text-secondary);
