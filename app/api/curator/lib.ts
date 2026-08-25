@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
 
-const ALLOWED_SUFFIX = /^\/(?:auth\/(?:login|logout|identity)|curated-characters(?:\/authorize-export|\/[a-zA-Z0-9._:-]+(?:\/export)?)?)$/;
+const ID_SEGMENT = String.raw`(?:[a-zA-Z0-9._:-]|%[0-9A-Fa-f]{2})+`;
+const ALLOWED_SUFFIX = new RegExp(
+  String.raw`^\\/(?:auth\\/(?:login|logout|identity)|curated-characters(?:\\/authorize-export|\\/${ID_SEGMENT}(?:\\/export)?)?)import { NextRequest } from "next/server";
+
+,
+);
 
 export function curatorBridgeOrigin(): string {
   const override = process.env.CODA_ADMIN_ORIGIN;
@@ -46,9 +51,17 @@ export async function forwardCurator(req: NextRequest): Promise<Response> {
   try {
     const upstream = await fetch(target, init);
     const responseHeaders = new Headers();
-    for (const name of ["content-type", "location", "set-cookie", "cache-control"]) {
+    for (const name of ["content-type", "location", "cache-control"]) {
       const value = upstream.headers.get(name);
       if (value) responseHeaders.set(name, value);
+    }
+    const setCookies =
+      (upstream.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.() ?? [];
+    if (setCookies.length > 0) {
+      setCookies.forEach(value => responseHeaders.append("set-cookie", value));
+    } else {
+      const value = upstream.headers.get("set-cookie");
+      if (value) responseHeaders.set("set-cookie", value);
     }
     responseHeaders.set("cache-control", "no-store");
     return new Response(upstream.body, {
