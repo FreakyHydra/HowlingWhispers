@@ -4591,28 +4591,62 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
     setDownloadingCharacter(null);
   }
 
-  function exportV2Json(character: Character) {
-    const portable = portableExportSource(character);
-    const card = character.hwccVersion
-      ? characterToHWCCCard(portable)
-      : howlingCharacterToV2(portable);
-    downloadTextFile(
-      `${fileSlug(character.name)}.v2.json`,
-      JSON.stringify(card, null, 2),
+  async function authorizedExportSource(character: Character): Promise<Character> {
+    if (isUserOwnedCharacter(character)) return character;
+
+    const storedResponse = await fetch(
+      `/api/curator/curated-characters/${encodeURIComponent(character.id)}/export`,
+      { cache: "no-store", credentials: "same-origin" },
     );
-    setDownloadingCharacter(null);
+    if (storedResponse.ok) {
+      const payload = await storedResponse.json() as { character?: CuratedCharacterRecord };
+      return payload.character?.character ?? character;
+    }
+    if (storedResponse.status !== 404) {
+      const payload = await storedResponse.json().catch(() => ({})) as { error?: string };
+      throw new Error(payload.error || "Curator permission is required to download curated characters.");
+    }
+
+    const authorization = await fetch("/api/curator/curated-characters/authorize-export", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+    if (!authorization.ok) {
+      const payload = await authorization.json().catch(() => ({})) as { error?: string };
+      throw new Error(payload.error || "Curator permission is required to download curated characters.");
+    }
+    return character;
+  }
+
+  async function exportV2Json(character: Character) {
+    setCharacterDownloadError("");
+    try {
+      const exportable = await authorizedExportSource(character);
+      const portable = portableExportSource(exportable);
+      const card = exportable.hwccVersion
+        ? characterToHWCCCard(portable)
+        : howlingCharacterToV2(portable);
+      downloadTextFile(
+        `${fileSlug(exportable.name)}.v2.json`,
+        JSON.stringify(card, null, 2),
+      );
+      setDownloadingCharacter(null);
+    } catch (error) {
+      setCharacterDownloadError(error instanceof Error ? error.message : "The V2 JSON could not be created.");
+    }
   }
 
   async function exportV2Png(character: Character) {
     setCharacterDownloadError("");
     try {
-      const portrait = await portraitPngBytes(character);
-      const portable = portableExportSource(character);
-      const card = character.hwccVersion
+      const exportable = await authorizedExportSource(character);
+      const portrait = await portraitPngBytes(exportable);
+      const portable = portableExportSource(exportable);
+      const card = exportable.hwccVersion
         ? characterToHWCCCard(portable)
         : howlingCharacterToV2(portable);
       const png = embedCharacterCardV2InPng(portrait, card);
-      downloadBinaryFile(`${fileSlug(character.name)}.card.png`, png, "image/png");
+      downloadBinaryFile(`${fileSlug(exportable.name)}.card.png`, png, "image/png");
       setDownloadingCharacter(null);
     } catch (error) {
       setCharacterDownloadError(error instanceof Error ? error.message : "The V2 card could not be created.");
