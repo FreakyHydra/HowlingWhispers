@@ -6066,6 +6066,27 @@ Roleplay
                   What&apos;s new
                 </button>
                 <div className="account-menu-divider" />
+                {curatorAuthLoading ? (
+                  <div className="account-menu-identity"><small>Checking Discord…</small></div>
+                ) : discordIdentity ? (
+                  <>
+                    <div className="account-menu-identity">
+                      <small>Discord identity</small>
+                      <strong>@{discordIdentity.username}</strong>
+                      {discordIdentity.canManageCuratedCharacters && (
+                        <span className="account-curator-badge">Curator access</span>
+                      )}
+                    </div>
+                    <button onClick={() => void handleDiscordLogout()} role="menuitem">
+                      Logout of Discord
+                    </button>
+                  </>
+                ) : (
+                  <a className="account-menu-login" href="/api/curator/auth/login" role="menuitem">
+                    Login with Discord
+                  </a>
+                )}
+                <div className="account-menu-divider" />
                 <button onClick={() => { setAccountMenuOpen(false); handleSignOut(); }} role="menuitem">
                   Return to entrance
                 </button>
