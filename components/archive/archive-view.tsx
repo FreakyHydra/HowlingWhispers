@@ -844,7 +844,7 @@ function AccountPanel({
   }, []);
 
   const signIn = () => {
-    window.location.assign(archive.discordLoginUrl(window.location.href));
+    window.location.assign(archive.discordLoginUrl(new URL("/", window.location.origin).toString()));
   };
 
   const signOut = async () => {
