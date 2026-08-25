@@ -16,6 +16,7 @@
 ### 🛠 Fixed
 
 - **Persona precedence** — the selected persona now overrides the older session name during roleplay
+- **Open Sandbox isolation** — sandbox sessions no longer inherit Riley's Player Two scene, preset memories, or other scene metadata
 - **Authentication return** — users and admins return to the welcoming mat instead of being redirected into Admin
 
 ---
