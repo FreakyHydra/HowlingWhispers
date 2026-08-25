@@ -52,3 +52,16 @@ test("Archive uses Discord auth and Human Verified approval", () => {
   assert.match(archiveAuth, /Discord login and Human Verified approval are required/);
   assert.match(adminBridge, /auth\/identity/);
 });
+
+
+test("Discord bridge preserves cookies, encoded IDs, and shared logout state", () => {
+  const bridge = read("app/api/curator/lib.ts");
+  const app = read("app/dreambound-app.tsx");
+  const archiveView = read("components/archive/archive-view.tsx");
+
+  assert.match(bridge, /getSetCookie/);
+  assert.match(bridge, /%\[0-9A-Fa-f\]/);
+  assert.match(app, /setArchiveUser\(null\)/);
+  assert.match(app, /howling:discord-auth-changed/);
+  assert.match(archiveView, /howling:discord-auth-changed/);
+});
