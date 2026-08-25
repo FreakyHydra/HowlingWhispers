@@ -38,3 +38,17 @@ test("curated identity remains stable when display data changes", async () => {
   assert.match(app, /id: advancedEditingCharacter\.id/);
   assert.doesNotMatch(app, /curated.*name\.toLowerCase\(\).*id/is);
 });
+
+
+test("Archive uses Discord auth and Human Verified approval", () => {
+  const archiveView = read("components/archive/archive-view.tsx");
+  const archiveAuth = read("server/archive/auth.ts");
+  const adminBridge = read("app/api/curator/lib.ts");
+
+  assert.match(archiveView, /Continue with Discord/);
+  assert.doesNotMatch(archiveView, /type="password"/);
+  assert.match(archiveAuth, /humanVerified/);
+  assert.match(archiveAuth, /canUseArchive/);
+  assert.match(archiveAuth, /Discord login and Human Verified approval are required/);
+  assert.match(adminBridge, /auth\/identity/);
+});
