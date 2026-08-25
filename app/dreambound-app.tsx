@@ -4249,7 +4249,9 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ""));
       reader.onerror = () => reject(new Error("The curated image could not be prepared for publishing."));
-      reader.readAsDataURL(new Blob([bytes], { type: "image/png" }));
+      const copy = new Uint8Array(bytes.byteLength);
+      copy.set(bytes);
+      reader.readAsDataURL(new Blob([copy.buffer], { type: "image/png" }));
     });
   }
 
