@@ -24,6 +24,9 @@ export async function forwardCurator(req: NextRequest): Promise<Response> {
     : `/api${suffix}`;
   const target = new URL(`${curatorBridgeOrigin()}${upstreamPath}`);
   req.nextUrl.searchParams.forEach((value, key) => target.searchParams.append(key, value));
+  if (suffix === "/auth/login" && !target.searchParams.has("return_to")) {
+    target.searchParams.set("return_to", req.nextUrl.origin);
+  }
 
   const headers = new Headers();
   for (const name of ["accept", "content-type", "cookie"]) {
