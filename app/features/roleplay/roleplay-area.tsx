@@ -583,7 +583,7 @@ export function RoleplayArea(props: RoleplayAreaProps) {
                               Download
                             </button>
                         )}
-                        {!props.isUserOwnedCharacter(character) && props.canManageCuratedCharacters && (
+                        {characterTab === "curated" && props.canManageCuratedCharacters && (
                             <button
                               className="home-character-edit"
                               aria-label={`Edit curated character ${character.name}`}
