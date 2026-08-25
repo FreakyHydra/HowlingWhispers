@@ -213,7 +213,7 @@ async function guard(
   user: AuthenticatedUser | null,
 ): Promise<boolean> {
   if (!user) {
-    error(res, 401, "You must be signed in to do that.");
+    error(res, 401, "Discord login and Human Verified approval are required.");
     return false;
   }
   return true;

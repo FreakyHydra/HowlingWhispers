@@ -1,19 +1,6 @@
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { getPool } from "./db.ts";
-import {
-  clearSessionCookie,
-  COOKIE_NAME,
-  error,
-  json,
-  newId,
-  newTokenBytes,
-  parseCookies,
-  setSessionCookie,
-} from "./http.ts";
-
-export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,32}$/;
+import { getPool, loadConfig } from "./db.ts";
+import { error, json } from "./http.ts";
 
 export type SessionUser = {
   id: string;
@@ -21,46 +8,106 @@ export type SessionUser = {
   role: string;
 };
 
-function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(password, salt, 64).toString("hex");
-  return `${salt}:${hash}`;
+type DiscordIdentity = {
+  discord_user_id: string;
+  username: string;
+  avatar?: string | null;
+  isGuildMember: boolean;
+  humanVerified: boolean;
+  canUseArchive: boolean;
+  archiveRole?: "user" | "moderator";
+};
+
+function codaOrigin(): string {
+  const config = loadConfig();
+  const configured = process.env.CODA_ADMIN_ORIGIN || config.CODA_ADMIN_ORIGIN;
+  return configured && /^https?:\/\//.test(configured)
+    ? configured.replace(/\/$/, "")
+    : "http://127.0.0.1:3000";
 }
 
-function verifyPassword(password: string, stored: string): boolean {
-  const [salt, hash] = stored.split(":");
-  if (!salt || !hash) return false;
-  const candidate = scryptSync(password, salt, 64);
-  const expected = Buffer.from(hash, "hex");
-  return candidate.length === expected.length && timingSafeEqual(candidate, expected);
+async function discordIdentity(req: IncomingMessage): Promise<DiscordIdentity | null> {
+  try {
+    const cookie = req.headers.cookie;
+    const response = await fetch(`${codaOrigin()}/api/coda/auth/identity`, {
+      headers: cookie ? { cookie } : {},
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { user?: DiscordIdentity | null };
+    return body.user ?? null;
+  } catch {
+    return null;
+  }
 }
 
-export function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
+function publicDiscordUser(identity: DiscordIdentity) {
+  return {
+    id: identity.discord_user_id,
+    username: identity.username,
+    avatar: identity.avatar ?? null,
+  };
 }
 
-async function mintSession(userId: string): Promise<string> {
-  const token = newTokenBytes();
-  const tokenHash = hashToken(token);
-  await getPool().query(
-    "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, now() + interval '30 days')",
-    [tokenHash, userId],
+async function archiveUserFor(identity: DiscordIdentity): Promise<SessionUser> {
+  const pool = getPool();
+  const id = `discord:${identity.discord_user_id}`;
+  const desiredRole = identity.archiveRole === "moderator" ? "moderator" : "user";
+  const existing = await pool.query(
+    "SELECT id, username, role FROM users WHERE id = $1",
+    [id],
   );
-  return token;
+
+  if (existing.rows.length > 0) {
+    try {
+      await pool.query(
+        "UPDATE users SET username = $1, role = $2 WHERE id = $3",
+        [identity.username, desiredRole, id],
+      );
+    } catch (err) {
+      if ((err as { code?: string }).code !== "23505") throw err;
+      await pool.query("UPDATE users SET role = $1 WHERE id = $2", [desiredRole, id]);
+    }
+    const refreshed = await pool.query(
+      "SELECT id, username, role FROM users WHERE id = $1",
+      [id],
+    );
+    return refreshed.rows[0] as SessionUser;
+  }
+
+  const base = identity.username.trim() || `discord-${identity.discord_user_id}`;
+  const candidates = [
+    base,
+    `${base}-${identity.discord_user_id.slice(-4)}`,
+    `discord-${identity.discord_user_id}`,
+  ];
+
+  for (const username of candidates) {
+    try {
+      await pool.query(
+        "INSERT INTO users (id, username, password_hash, role) VALUES ($1, $2, $3, $4)",
+        [id, username, "!discord-oauth", desiredRole],
+      );
+      return { id, username, role: desiredRole };
+    } catch (err) {
+      if ((err as { code?: string }).code !== "23505") throw err;
+      const raced = await pool.query(
+        "SELECT id, username, role FROM users WHERE id = $1",
+        [id],
+      );
+      if (raced.rows.length > 0) return raced.rows[0] as SessionUser;
+    }
+  }
+
+  throw new Error("Could not reserve an Archive display name.");
 }
 
 export async function currentUser(req: IncomingMessage): Promise<SessionUser | null> {
-  const token = parseCookies(req)[COOKIE_NAME];
-  if (!token) return null;
-  const res = await getPool().query(
-    `SELECT u.id, u.username, u.role
-       FROM sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.token_hash = $1 AND s.expires_at > now()`,
-    [hashToken(token)],
-  );
-  if (res.rows.length === 0) return null;
-  const row = res.rows[0];
-  return { id: row.id, username: row.username, role: row.role };
+  const identity = await discordIdentity(req);
+  if (!identity?.isGuildMember || !identity.humanVerified || !identity.canUseArchive) {
+    return null;
+  }
+  return archiveUserFor(identity);
 }
 
 export async function requireUser(
@@ -69,73 +116,54 @@ export async function requireUser(
 ): Promise<SessionUser | null> {
   const user = await currentUser(req);
   if (!user) {
-    error(res, 401, "You must be signed in to do that.");
+    error(res, 401, "Discord login and Human Verified approval are required.");
     return null;
   }
   return user;
 }
 
-export async function registerHandler(req: IncomingMessage, res: ServerResponse, body: unknown) {
-  const b = (body ?? {}) as Record<string, unknown>;
-  const username = typeof b.username === "string" ? b.username.trim() : "";
-  const password = typeof b.password === "string" ? b.password : "";
-
-  if (!USERNAME_RE.test(username)) {
-    return error(res, 400, "Username must be 3-32 characters: letters, numbers, _ . -");
-  }
-  if (password.length < 8 || password.length > 200) {
-    return error(res, 400, "Password must be between 8 and 200 characters.");
-  }
-
-  const pool = getPool();
-  const existing = await pool.query("SELECT 1 FROM users WHERE username = $1", [username]);
-  if (existing.rows.length > 0) {
-    return error(res, 409, "That username is already taken.");
-  }
-
-  const id = newId("u");
-  await pool.query(
-    "INSERT INTO users (id, username, password_hash) VALUES ($1, $2, $3)",
-    [id, username, hashPassword(password)],
-  );
-  const token = await mintSession(id);
-  setSessionCookie(res, token, SESSION_TTL_MS / 1000);
-  return json(res, 201, { user: { id, username, role: "user" } });
+export async function registerHandler(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  _body: unknown,
+) {
+  return error(res, 410, "Archive passwords were replaced by Discord login.");
 }
 
-export async function loginHandler(req: IncomingMessage, res: ServerResponse, body: unknown) {
-  const b = (body ?? {}) as Record<string, unknown>;
-  const username = typeof b.username === "string" ? b.username.trim() : "";
-  const password = typeof b.password === "string" ? b.password : "";
-
-  const pool = getPool();
-  const found = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
-  if (found.rows.length === 0 || !found.rows[0].password_hash) {
-    return error(res, 401, "Invalid username or password.");
-  }
-  const row = found.rows[0];
-  if (!verifyPassword(password, row.password_hash)) {
-    return error(res, 401, "Invalid username or password.");
-  }
-  const token = await mintSession(row.id);
-  setSessionCookie(res, token, SESSION_TTL_MS / 1000);
-  return json(res, 200, { user: { id: row.id, username: row.username, role: row.role } });
+export async function loginHandler(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  _body: unknown,
+) {
+  return error(res, 410, "Archive passwords were replaced by Discord login.");
 }
 
-export async function logoutHandler(req: IncomingMessage, res: ServerResponse) {
-  const token = parseCookies(req)[COOKIE_NAME];
-  if (token) {
-    try {
-      await getPool().query("DELETE FROM sessions WHERE token_hash = $1", [hashToken(token)]);
-    } catch {
-      /* ignore */
-    }
-  }
-  clearSessionCookie(res);
+export async function logoutHandler(_req: IncomingMessage, res: ServerResponse) {
   return json(res, 200, { ok: true });
 }
 
 export async function meHandler(req: IncomingMessage, res: ServerResponse) {
-  const user = await currentUser(req);
-  return json(res, 200, { user });
+  const identity = await discordIdentity(req);
+  if (!identity) {
+    return json(res, 200, {
+      user: null,
+      discordUser: null,
+      humanVerified: false,
+    });
+  }
+
+  if (!identity.isGuildMember || !identity.humanVerified || !identity.canUseArchive) {
+    return json(res, 200, {
+      user: null,
+      discordUser: publicDiscordUser(identity),
+      humanVerified: false,
+    });
+  }
+
+  const user = await archiveUserFor(identity);
+  return json(res, 200, {
+    user,
+    discordUser: publicDiscordUser(identity),
+    humanVerified: true,
+  });
 }
