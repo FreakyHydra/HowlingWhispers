@@ -208,6 +208,10 @@ export default function DiagnosticsReporter() {
                   <div><span>Loaded assets</span><strong>{report?.environment.assets.length || 0}</strong></div>
                 </div>
                 {notes ? <div className="diagnostics-note-preview">{notes}</div> : null}
+                <details className="diagnostics-technical-preview">
+                  <summary>View the exact technical details</summary>
+                  <pre>{JSON.stringify(report, null, 2)}</pre>
+                </details>
                 <div className="diagnostics-actions">
                   <button className="outline-button" type="button" onClick={() => setReviewing(false)}>Back</button>
                   <button className="primary-button" type="button" disabled={sending} onClick={send}>
