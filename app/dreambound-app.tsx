@@ -73,6 +73,7 @@ import {
   migrateLegacyPlayerProfile,
 } from "../lib/personas/storage";
 import { compilePlayerPersona } from "../lib/personas/compile";
+import { detectPersonaIdentityDrift } from "../lib/personas/identity";
 import type { PlayerPersona } from "../lib/personas/schema";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
 import { readContextLibrary, writeContextLibrary, type ContextLibrary } from "../lib/context/storage.ts";
@@ -3327,13 +3328,28 @@ export default function DreamboundApp() {
     playerDirection?: string,
     reroll = false,
     respondAs?: string,
+    identityRetry = false,
   ): Promise<{ reply: string; metadata: StoryMetadata | null }> {
     const controller = new AbortController();
     generationAbortRef.current?.abort();
     generationAbortRef.current = controller;
     const requestSignal = controller.signal;
     const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
-    const effectivePlayerPersona = (activeSession?.playerPersona?.trim() || compiledActivePersona || playerProfile.persona).trim();
+    const compiledPlayerPersona = (activeSession?.playerPersona?.trim() || compiledActivePersona || playerProfile.persona).trim();
+    const effectivePlayerPersona = identityRetry
+      ? [
+          `IDENTITY CORRECTION: The player in this story is ${effectivePlayerName}. Do not use a different persona name.`,
+          compiledPlayerPersona,
+        ].filter(Boolean).join("\n")
+      : compiledPlayerPersona;
+    const conflictingPersonaNames = [activePersona?.name, playerProfile.name];
+    const correctPersonaDrift = async (result: { reply: string; metadata: StoryMetadata | null }) => {
+      const conflict = detectPersonaIdentityDrift(result.reply, effectivePlayerName, conflictingPersonaNames);
+      if (!identityRetry && conflict) {
+        return requestStoryReply(conversation, action, playerDirection, reroll, respondAs, true);
+      }
+      return result;
+    };
     const sessionCast = livingCastConfig.enabled
       ? (activeSession?.livingCast?.length ? activeSession.livingCast : resetCast({ id: selected.id, name: selected.name }, effectivePlayerName))
       : [];
@@ -3466,7 +3482,7 @@ export default function DreamboundApp() {
         setContextManifests((current) => ({ ...current, [activeMessageKey]: prepared.context! }));
       }
       persistSessionAutonomy(prepared.autonomy);
-      return { reply: finalized.reply, metadata: finalized.metadata ?? null };
+      return correctPersonaDrift({ reply: finalized.reply, metadata: finalized.metadata ?? null });
     }
     const response = await fetch("/api/novelai", {
       method: "POST",
@@ -3482,7 +3498,7 @@ export default function DreamboundApp() {
       setContextManifests((current) => ({ ...current, [activeMessageKey]: payload.context! }));
     }
     persistSessionAutonomy(payload.autonomy);
-    return { reply: payload.reply, metadata: payload.metadata ?? null };
+    return correctPersonaDrift({ reply: payload.reply, metadata: payload.metadata ?? null });
   }
 
   const requestStoryReplyRef = useRef<typeof requestStoryReply | null>(null);
