@@ -311,6 +311,7 @@ type DiscordIdentity = {
   hasCuratorRole: boolean;
   manualCurator: boolean;
   canManageCuratedCharacters: boolean;
+  archiveRole?: "user" | "moderator";
 };
 
 type CuratedCharacterRecord = {
@@ -6101,6 +6102,15 @@ Roleplay
                         <span className="account-curator-badge">Curator access</span>
                       )}
                     </div>
+                    {discordIdentity.archiveRole === "moderator" && (
+                      <a
+                        className="account-menu-login"
+                        href="https://admin.thehowlingwhispers.com"
+                        role="menuitem"
+                      >
+                        Open Admin
+                      </a>
+                    )}
                     <button onClick={() => void handleDiscordLogout()} role="menuitem">
                       Logout of Discord
                     </button>
