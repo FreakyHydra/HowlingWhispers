@@ -2046,6 +2046,7 @@ export default function DreamboundApp() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshDiscordIdentity();
     const refresh = () => void refreshDiscordIdentity();
     window.addEventListener("howling:discord-auth-changed", refresh);
@@ -6105,9 +6106,9 @@ Roleplay
                     </button>
                   </>
                 ) : (
-                  <a className="account-menu-login" href="/api/curator/auth/login" role="menuitem">
+                  <button className="account-menu-login" onClick={() => { window.location.assign("/api/curator/auth/login"); }} role="menuitem">
                     Login with Discord
-                  </a>
+                  </button>
                 )}
                 <div className="account-menu-divider" />
                 <button onClick={() => { setAccountMenuOpen(false); handleSignOut(); }} role="menuitem">
