@@ -2,9 +2,7 @@ import { NextRequest } from "next/server";
 
 const ID_SEGMENT = String.raw`(?:[a-zA-Z0-9._:-]|%[0-9A-Fa-f]{2})+`;
 const ALLOWED_SUFFIX = new RegExp(
-  String.raw`^\\/(?:auth\\/(?:login|logout|identity)|curated-characters(?:\\/authorize-export|\\/${ID_SEGMENT}(?:\\/export)?)?)import { NextRequest } from "next/server";
-
-,
+  `^/(?:auth/(?:login|logout|identity)|curated-characters(?:/authorize-export|/${ID_SEGMENT}(?:/export)?)?)$`,
 );
 
 export function curatorBridgeOrigin(): string {
