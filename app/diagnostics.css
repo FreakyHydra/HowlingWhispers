@@ -1,0 +1,128 @@
+.diagnostics-trigger {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80;
+  border: 1px solid color-mix(in srgb, var(--accent, #df8b55) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface, #151113) 94%, transparent);
+  color: var(--text, #f3e4d2);
+  padding: 10px 15px;
+  box-shadow: 0 12px 36px rgb(0 0 0 / 35%);
+  font: inherit;
+  cursor: pointer;
+}
+
+.diagnostics-trigger:hover,
+.diagnostics-trigger:focus-visible {
+  background: color-mix(in srgb, var(--accent, #df8b55) 18%, var(--surface, #151113));
+}
+
+.diagnostics-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 72%);
+}
+
+.diagnostics-dialog {
+  width: min(640px, 100%);
+  max-height: min(780px, 92vh);
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--accent, #df8b55) 42%, transparent);
+  border-radius: 16px;
+  background: var(--surface, #151113);
+  color: var(--text, #f3e4d2);
+  padding: clamp(20px, 4vw, 32px);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 55%);
+}
+
+.diagnostics-heading,
+.diagnostics-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.diagnostics-heading h2 {
+  margin: 2px 0 0;
+}
+
+.diagnostics-close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 28px;
+  cursor: pointer;
+}
+
+.diagnostics-notes {
+  width: 100%;
+  resize: vertical;
+  margin: 12px 0;
+  border: 1px solid color-mix(in srgb, var(--text, #f3e4d2) 22%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface, #151113) 84%, black);
+  color: inherit;
+  padding: 12px;
+  font: inherit;
+}
+
+.diagnostics-privacy,
+.diagnostics-note-preview {
+  margin: 12px 0 18px;
+  border-left: 3px solid var(--accent, #df8b55);
+  background: color-mix(in srgb, var(--accent, #df8b55) 8%, transparent);
+  padding: 12px 14px;
+  line-height: 1.55;
+}
+
+.diagnostics-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.diagnostics-preview > div {
+  border: 1px solid color-mix(in srgb, var(--text, #f3e4d2) 16%, transparent);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.diagnostics-preview span,
+.diagnostics-preview strong {
+  display: block;
+}
+
+.diagnostics-preview span {
+  margin-bottom: 4px;
+  opacity: 0.7;
+  font-size: 0.8rem;
+}
+
+.diagnostics-result {
+  margin: 16px 0 0;
+  color: var(--accent, #df8b55);
+}
+
+@media (max-width: 640px) {
+  .diagnostics-trigger {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .diagnostics-backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .diagnostics-dialog {
+    max-height: 92vh;
+    border-radius: 16px 16px 0 0;
+  }
+}
