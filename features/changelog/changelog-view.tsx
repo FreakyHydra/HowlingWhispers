@@ -36,6 +36,7 @@ export function ChangelogView(props: ChangelogViewProps) {
                  <h3>🛠 Fixed</h3>
                  <ul>
                    <li><strong>Persona precedence</strong> — the selected persona now overrides the older session name during roleplay</li>
+                   <li><strong>Open Sandbox isolation</strong> — sandbox sessions no longer inherit Riley&apos;s Player Two scene, preset memories, or other scene metadata</li>
                    <li><strong>Authentication return</strong> — users and admins return to the welcoming mat instead of being redirected into Admin</li>
                  </ul>
                </div>
