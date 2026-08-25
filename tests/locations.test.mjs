@@ -475,6 +475,27 @@ test("legacy Location session with obsolete locationId is removed", () => {
   assert.equal(migrated.length, 0, "obsolete location session must be removed");
 });
 
+test("legacy open-sandbox sessions recover their missing sandbox flag", () => {
+  const legacySession = {
+    id: "session-sandbox-1",
+    characterId: "riley",
+    sceneId: "open-sandbox",
+    title: "Open Sandbox",
+    messageKey: "session-sandbox-1",
+    createdAt: 1,
+    updatedAt: 1,
+  };
+
+  const migrated = migrateLegacySessions(
+    [legacySession],
+    new Set(),
+    new Set(["ash", "seraphina"]),
+  );
+
+  assert.equal(migrated.length, 1);
+  assert.equal(migrated[0].sandbox, true);
+});
+
 test("retired character sessions are still filtered out", () => {
   const retired = new Set(["ash", "seraphina"]);
   const validLocationIds = new Set(["custom-loc-1"]);
