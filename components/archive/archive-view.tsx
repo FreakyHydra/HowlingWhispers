@@ -821,19 +821,25 @@ function AccountPanel({
 
   useEffect(() => {
     let active = true;
-    archive
-      .discordIdentity()
-      .then(({ user: discordUser }) => {
-        if (active) setIdentity(discordUser);
-      })
-      .catch(() => {
-        if (active) setIdentity(null);
-      })
-      .finally(() => {
-        if (active) setChecking(false);
-      });
+    const refresh = () => {
+      setChecking(true);
+      archive
+        .discordIdentity()
+        .then(({ user: discordUser }) => {
+          if (active) setIdentity(discordUser);
+        })
+        .catch(() => {
+          if (active) setIdentity(null);
+        })
+        .finally(() => {
+          if (active) setChecking(false);
+        });
+    };
+    refresh();
+    window.addEventListener("howling:discord-auth-changed", refresh);
     return () => {
       active = false;
+      window.removeEventListener("howling:discord-auth-changed", refresh);
     };
   }, []);
 
@@ -847,6 +853,7 @@ function AccountPanel({
       await archive.discordLogout();
       setIdentity(null);
       setUser(null);
+      window.dispatchEvent(new Event("howling:discord-auth-changed"));
       onOk("ok", "Signed out.");
     } catch (err) {
       onError("err", (err as Error).message);
