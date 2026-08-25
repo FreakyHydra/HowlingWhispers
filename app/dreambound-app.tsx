@@ -2027,6 +2027,72 @@ export default function DreamboundApp() {
   const [serverBackupsError, setServerBackupsError] = useState("");
   const [serverBackupBusy, setServerBackupBusy] = useState(false);
 
+  const refreshDiscordIdentity = useCallback(async () => {
+    setCuratorAuthLoading(true);
+    try {
+      const response = await fetch("/api/curator/auth/identity", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Discord identity lookup failed");
+      const payload = await response.json() as { user?: DiscordIdentity | null };
+      setDiscordIdentity(payload.user ?? null);
+    } catch {
+      setDiscordIdentity(null);
+    } finally {
+      setCuratorAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshDiscordIdentity();
+  }, [refreshDiscordIdentity]);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/curator/curated-characters", { cache: "no-store" })
+      .then(async response => {
+        if (!response.ok) throw new Error("Curated characters could not be loaded");
+        return response.json() as Promise<{ characters?: CuratedCharacterRecord[] }>;
+      })
+      .then(payload => {
+        if (!active) return;
+        const records = (payload.characters ?? []).filter(record =>
+          record?.character && record.id === record.character.id
+        );
+        records.forEach(record => curatedCharacterIds.add(record.id));
+        setCharacters(current => {
+          const next = [...current];
+          for (const record of records) {
+            const index = next.findIndex(character => character.id === record.id);
+            if (index >= 0) {
+              const previous = next[index];
+              next[index] = {
+                ...previous,
+                ...record.character,
+                id: record.id,
+                bond: previous.bond,
+                relationship: previous.relationship ?? record.character.relationship,
+              };
+            } else {
+              next.push(record.character);
+            }
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        // Built-in curated characters remain available when the bridge is offline.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const canManageCuratedCharacters = Boolean(
+    discordIdentity?.canManageCuratedCharacters
+  );
+
   const refreshServerBackups = useCallback(() => {
     if (!archiveUser) {
       setServerBackups(null);
