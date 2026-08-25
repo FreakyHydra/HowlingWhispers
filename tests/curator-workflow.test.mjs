@@ -69,3 +69,13 @@ test("Discord bridge preserves cookies, encoded IDs, and shared logout state", a
   assert.match(app, /howling:discord-auth-changed/);
   assert.match(archiveView, /howling:discord-auth-changed/);
 });
+
+
+test("Admin entry is only shown for an authenticated admin capability", async () => {
+  const app = await read("app/dreambound-app.tsx");
+
+  assert.match(app, /archiveRole\?: "user" \| "moderator"/);
+  assert.match(app, /discordIdentity\.archiveRole === "moderator"/);
+  assert.match(app, /https:\/\/admin\.thehowlingwhispers\.com/);
+  assert.match(app, />\s*Open Admin\s*</);
+});
