@@ -303,6 +303,23 @@ export type Character = {
   authorNote?: string;
 };
 
+type DiscordIdentity = {
+  discord_user_id: string;
+  username: string;
+  avatar: string | null;
+  isGuildMember: boolean;
+  hasCuratorRole: boolean;
+  manualCurator: boolean;
+  canManageCuratedCharacters: boolean;
+};
+
+type CuratedCharacterRecord = {
+  id: string;
+  character: Character;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type LocationTarget = {
   id: string;
   name: string;
@@ -1739,6 +1756,11 @@ export default function DreamboundApp() {
     () => false,
   );
   const [currentUser, setCurrentUser] = useState<{ displayName: string } | null>(null);
+  const [discordIdentity, setDiscordIdentity] = useState<DiscordIdentity | null>(null);
+  const [curatorAuthLoading, setCuratorAuthLoading] = useState(true);
+  const [curatedSaveError, setCuratedSaveError] = useState("");
+  const [curatedSaving, setCuratedSaving] = useState(false);
+  const [curatedEditorIntent, setCuratedEditorIntent] = useState<"create" | "edit" | null>(null);
   const [archiveUser, setArchiveUser] = useState<ArchiveUser | null>(null);
   const [playerProfile, setPlayerProfile] = useState(() =>
     readSession<{ name: string; persona: string }>("player", { name: "", persona: "" }),
@@ -2005,6 +2027,75 @@ export default function DreamboundApp() {
   >(null);
   const [serverBackupsError, setServerBackupsError] = useState("");
   const [serverBackupBusy, setServerBackupBusy] = useState(false);
+
+  const refreshDiscordIdentity = useCallback(async () => {
+    setCuratorAuthLoading(true);
+    try {
+      const response = await fetch("/api/curator/auth/identity", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Discord identity lookup failed");
+      const payload = await response.json() as { user?: DiscordIdentity | null };
+      setDiscordIdentity(payload.user ?? null);
+    } catch {
+      setDiscordIdentity(null);
+    } finally {
+      setCuratorAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshDiscordIdentity();
+    const refresh = () => void refreshDiscordIdentity();
+    window.addEventListener("howling:discord-auth-changed", refresh);
+    return () => window.removeEventListener("howling:discord-auth-changed", refresh);
+  }, [refreshDiscordIdentity]);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/curator/curated-characters", { cache: "no-store" })
+      .then(async response => {
+        if (!response.ok) throw new Error("Curated characters could not be loaded");
+        return response.json() as Promise<{ characters?: CuratedCharacterRecord[] }>;
+      })
+      .then(payload => {
+        if (!active) return;
+        const records = (payload.characters ?? []).filter(record =>
+          record?.character && record.id === record.character.id
+        );
+        records.forEach(record => curatedCharacterIds.add(record.id));
+        setCharacters(current => {
+          const next = [...current];
+          for (const record of records) {
+            const index = next.findIndex(character => character.id === record.id);
+            if (index >= 0) {
+              const previous = next[index];
+              next[index] = {
+                ...previous,
+                ...record.character,
+                id: record.id,
+                bond: previous.bond,
+                relationship: previous.relationship ?? record.character.relationship,
+              };
+            } else {
+              next.push(record.character);
+            }
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        // Built-in curated characters remain available when the bridge is offline.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const canManageCuratedCharacters = Boolean(
+    discordIdentity?.canManageCuratedCharacters
+  );
 
   const refreshServerBackups = useCallback(() => {
     if (!archiveUser) {
@@ -2411,6 +2502,20 @@ export default function DreamboundApp() {
     setView("roleplay");
   }
 
+  async function handleDiscordLogout() {
+    try {
+      await fetch("/api/curator/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+    } finally {
+      setDiscordIdentity(null);
+      setArchiveUser(null);
+      setAccountMenuOpen(false);
+      window.dispatchEvent(new Event("howling:discord-auth-changed"));
+    }
+  }
+
   function updatePlayerProfile(patch: Partial<{ name: string; persona: string }>) {
     const next = { ...playerProfile, ...patch };
     setPlayerProfile(next);
@@ -2519,10 +2624,10 @@ export default function DreamboundApp() {
   const allCommonScenes = [...commonScenes, ...addonCommonScenes];
   const activeRelationshipPersonaId = useMemo(
     () => effectivePersonaId(
-      activeSession?.playerPersonaId ?? null,
       activePersona?.id ?? null,
+      activeSession?.playerPersonaId ?? null,
     ),
-    [activeSession?.playerPersonaId, activePersona?.id],
+    [activePersona?.id, activeSession?.playerPersonaId],
   );
   const relationshipKeyForSelected = selectedLocation
     ? ""
@@ -2589,7 +2694,7 @@ export default function DreamboundApp() {
               });
         })()
       : selectedScenes.find((scene) => scene.id === activeSession?.sceneId) ?? selectedScenes[0];
-  const activePlayerName = activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name.trim();
+  const activePlayerName = activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim();
   const sessionUsesDefaultPersona = Boolean(
     !activeSession?.playerName?.trim() && !activeSession?.playerPersona?.trim(),
   );
@@ -3334,14 +3439,14 @@ export default function DreamboundApp() {
     generationAbortRef.current?.abort();
     generationAbortRef.current = controller;
     const requestSignal = controller.signal;
-    const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
+    const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
     const compiledPlayerPersona = (activeSession?.playerPersona?.trim() || compiledActivePersona || playerProfile.persona).trim();
-    const effectivePlayerPersona = identityRetry
+    const effectivePlayerPersona = activePersona ?? (identityRetry
       ? [
           `IDENTITY CORRECTION: The player in this story is ${effectivePlayerName}. Do not use a different persona name.`,
           compiledPlayerPersona,
         ].filter(Boolean).join("\n")
-      : compiledPlayerPersona;
+      : compiledPlayerPersona);
     const conflictingPersonaNames = [activePersona?.name, playerProfile.name];
     const correctPersonaDrift = async (result: { reply: string; metadata: StoryMetadata | null }) => {
       const conflict = detectPersonaIdentityDrift(result.reply, effectivePlayerName, conflictingPersonaNames);
@@ -3558,7 +3663,7 @@ export default function DreamboundApp() {
           characterId: session?.characterId ?? selected.id,
           characterName: selected.name,
           livingCast: session?.livingCast ?? [],
-          playerName: session?.playerName?.trim() || activePersonaRef.current?.name.trim() || "",
+          playerName: activePersonaRef.current?.name.trim() || session?.playerName?.trim() || "",
         });
         setProviderState("connected");
       }
@@ -3679,7 +3784,7 @@ export default function DreamboundApp() {
     const effectiveCharacterId = characterId ?? selected.id;
     if (isLocationSession || selectedLocation || effectiveCharacterId.startsWith("location:")) return;
     const personaId = activeRelationshipPersonaId;
-    const playerName = activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name.trim();
+    const playerName = activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim();
     const previousScore = effectiveScore(
       relationshipsRef.current,
       effectiveCharacterId,
@@ -3732,7 +3837,7 @@ export default function DreamboundApp() {
     const result = (heuristicRelationshipScorer as RelationshipScorer).evaluate({
       characterId: selected.id,
       personaId,
-      playerName: activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name.trim(),
+      playerName: activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim(),
       characterName: selected.name,
       previousScore: effectiveScore(next, selected.id, personaId, selected.bond),
       playerMessage: lastPlayerMessageText(conversation),
@@ -3776,7 +3881,7 @@ export default function DreamboundApp() {
             : text,
     };
     const conversation = [...activeMessages, playerMessage];
-    const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
+    const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
     const baselineCast = activeSession?.livingCast?.length
       ? activeSession.livingCast
       : resetCast({ id: selected.id, name: selected.name }, effectivePlayerName);
@@ -3870,7 +3975,7 @@ export default function DreamboundApp() {
   }
 
 async function impersonateTurn(conversation: Message[], playerDirection: string): Promise<string> {
-    const effectivePlayerName = (activeSession?.playerName?.trim() || activePersona?.name.trim() || playerProfile.name).trim();
+    const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
     let suggestion = formatPlayerTurn(
       (await requestStoryReply(conversation, "impersonate", playerDirection)).reply,
       effectivePlayerName,
@@ -4152,7 +4257,85 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
     }
   }
 
+  async function publishableAsset(reference: string): Promise<string> {
+    if (!isStoredPortraitReference(reference)) return reference;
+    const bytes = await loadCharacterPortrait(reference);
+    if (!bytes) throw new Error("A selected curated image is no longer available in this browser.");
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("The curated image could not be prepared for publishing."));
+      const copy = new Uint8Array(bytes.byteLength);
+      copy.set(bytes);
+      reader.readAsDataURL(new Blob([copy.buffer], { type: "image/png" }));
+    });
+  }
+
+  async function saveCuratedCharacter(character: Character, intent: "create" | "edit") {
+    if (!canManageCuratedCharacters) {
+      setCuratedSaveError("Curator permission is required.");
+      return;
+    }
+    setCuratedSaving(true);
+    setCuratedSaveError("");
+    try {
+      const publishable: Character = {
+        ...character,
+        id: character.id,
+        image: await publishableAsset(character.image),
+        sceneImage: await publishableAsset(character.sceneImage),
+        hwccVersion: "1",
+      };
+      const endpoint = intent === "create"
+        ? "/api/curator/curated-characters"
+        : `/api/curator/curated-characters/${encodeURIComponent(character.id)}`;
+      const response = await fetch(endpoint, {
+        method: intent === "create" ? "POST" : "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ character: publishable }),
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        error?: string;
+        character?: CuratedCharacterRecord;
+      };
+      if (!response.ok) throw new Error(payload.error || "The curated character could not be saved.");
+
+      const saved = payload.character?.character ?? publishable;
+      curatedCharacterIds.add(saved.id);
+      setCharacters(current => {
+        const exists = current.some(candidate => candidate.id === saved.id);
+        return exists
+          ? current.map(candidate => candidate.id === saved.id ? { ...candidate, ...saved, id: saved.id } : candidate)
+          : [...current, saved];
+      });
+      setAdvancedCreatingCharacter(null);
+      setAdvancedEditingCharacter(null);
+      setCuratedEditorIntent(null);
+      setView("roleplay");
+    } catch (error) {
+      setCuratedSaveError(error instanceof Error ? error.message : "The curated character could not be saved.");
+    } finally {
+      setCuratedSaving(false);
+    }
+  }
+
+  function beginCuratedCreate() {
+    beginAdvancedCreate();
+    setCuratedEditorIntent("create");
+    setCuratedSaveError("");
+  }
+
+  function beginCuratedEdit(character: Character) {
+    setCuratedEditorIntent("edit");
+    setCuratedSaveError("");
+    setAdvancedEditingCharacter(character);
+    setEditingCharacter(null);
+  }
+
   function beginAdvancedCreate() {
+    setCuratedEditorIntent(null);
+    setCuratedSaveError("");
     const id = newCharacterId();
     setAdvancedCreatingCharacter({
       id,
@@ -4431,28 +4614,62 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
     setDownloadingCharacter(null);
   }
 
-  function exportV2Json(character: Character) {
-    const portable = portableExportSource(character);
-    const card = character.hwccVersion
-      ? characterToHWCCCard(portable)
-      : howlingCharacterToV2(portable);
-    downloadTextFile(
-      `${fileSlug(character.name)}.v2.json`,
-      JSON.stringify(card, null, 2),
+  async function authorizedExportSource(character: Character): Promise<Character> {
+    if (isUserOwnedCharacter(character)) return character;
+
+    const storedResponse = await fetch(
+      `/api/curator/curated-characters/${encodeURIComponent(character.id)}/export`,
+      { cache: "no-store", credentials: "same-origin" },
     );
-    setDownloadingCharacter(null);
+    if (storedResponse.ok) {
+      const payload = await storedResponse.json() as { character?: CuratedCharacterRecord };
+      return payload.character?.character ?? character;
+    }
+    if (storedResponse.status !== 404) {
+      const payload = await storedResponse.json().catch(() => ({})) as { error?: string };
+      throw new Error(payload.error || "Curator permission is required to download curated characters.");
+    }
+
+    const authorization = await fetch("/api/curator/curated-characters/authorize-export", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+    if (!authorization.ok) {
+      const payload = await authorization.json().catch(() => ({})) as { error?: string };
+      throw new Error(payload.error || "Curator permission is required to download curated characters.");
+    }
+    return character;
+  }
+
+  async function exportV2Json(character: Character) {
+    setCharacterDownloadError("");
+    try {
+      const exportable = await authorizedExportSource(character);
+      const portable = portableExportSource(exportable);
+      const card = exportable.hwccVersion
+        ? characterToHWCCCard(portable)
+        : howlingCharacterToV2(portable);
+      downloadTextFile(
+        `${fileSlug(exportable.name)}.v2.json`,
+        JSON.stringify(card, null, 2),
+      );
+      setDownloadingCharacter(null);
+    } catch (error) {
+      setCharacterDownloadError(error instanceof Error ? error.message : "The V2 JSON could not be created.");
+    }
   }
 
   async function exportV2Png(character: Character) {
     setCharacterDownloadError("");
     try {
-      const portrait = await portraitPngBytes(character);
-      const portable = portableExportSource(character);
-      const card = character.hwccVersion
+      const exportable = await authorizedExportSource(character);
+      const portrait = await portraitPngBytes(exportable);
+      const portable = portableExportSource(exportable);
+      const card = exportable.hwccVersion
         ? characterToHWCCCard(portable)
         : howlingCharacterToV2(portable);
       const png = embedCharacterCardV2InPng(portrait, card);
-      downloadBinaryFile(`${fileSlug(character.name)}.card.png`, png, "image/png");
+      downloadBinaryFile(`${fileSlug(exportable.name)}.card.png`, png, "image/png");
       setDownloadingCharacter(null);
     } catch (error) {
       setCharacterDownloadError(error instanceof Error ? error.message : "The V2 card could not be created.");
@@ -5872,6 +6089,27 @@ Roleplay
                   What&apos;s new
                 </button>
                 <div className="account-menu-divider" />
+                {curatorAuthLoading ? (
+                  <div className="account-menu-identity"><small>Checking Discord…</small></div>
+                ) : discordIdentity ? (
+                  <>
+                    <div className="account-menu-identity">
+                      <small>Discord identity</small>
+                      <strong>@{discordIdentity.username}</strong>
+                      {discordIdentity.canManageCuratedCharacters && (
+                        <span className="account-curator-badge">Curator access</span>
+                      )}
+                    </div>
+                    <button onClick={() => void handleDiscordLogout()} role="menuitem">
+                      Logout of Discord
+                    </button>
+                  </>
+                ) : (
+                  <a className="account-menu-login" href="/api/curator/auth/login" role="menuitem">
+                    Login with Discord
+                  </a>
+                )}
+                <div className="account-menu-divider" />
                 <button onClick={() => { setAccountMenuOpen(false); handleSignOut(); }} role="menuitem">
                   Return to entrance
                 </button>
@@ -5923,6 +6161,9 @@ Roleplay
         <RoleplayArea
           view={view}
           currentUser={currentUser}
+          canManageCuratedCharacters={canManageCuratedCharacters}
+          onCuratedCreate={beginCuratedCreate}
+          onCuratedEdit={beginCuratedEdit}
           setView={setView}
           connected={connected}
           providerState={providerState}
@@ -6042,11 +6283,22 @@ Roleplay
         <AdvancedCharacterEditor
           character={advancedEditingCharacter}
           mode="edit"
+          contextLabel={curatedEditorIntent === "edit" ? "Curated Character" : undefined}
+          saving={curatedEditorIntent === "edit" && curatedSaving}
+          saveError={curatedEditorIntent === "edit" ? curatedSaveError : ""}
           onSave={(updated) => {
+            if (curatedEditorIntent === "edit") {
+              void saveCuratedCharacter({ ...updated, id: advancedEditingCharacter.id }, "edit");
+              return;
+            }
             updateCharacter(updated.id, { ...updated, hwccVersion: "1" });
             setAdvancedEditingCharacter(null);
           }}
-          onCancel={() => setAdvancedEditingCharacter(null)}
+          onCancel={() => {
+            setAdvancedEditingCharacter(null);
+            setCuratedEditorIntent(null);
+            setCuratedSaveError("");
+          }}
           onUploadPortrait={(bytes) => uploadPortrait(advancedEditingCharacter.id, bytes)}
           onUploadScene={(bytes) => uploadScene(advancedEditingCharacter.id, bytes)}
           onRemovePortrait={removePortrait}
@@ -6058,8 +6310,21 @@ Roleplay
         <AdvancedCharacterEditor
           character={advancedCreatingCharacter}
           mode="create"
-          onSave={(updated) => createCharacterFromDraft({ ...updated, hwccVersion: "1" })}
-          onCancel={() => setAdvancedCreatingCharacter(null)}
+          contextLabel={curatedEditorIntent === "create" ? "Create Curated Character" : undefined}
+          saving={curatedEditorIntent === "create" && curatedSaving}
+          saveError={curatedEditorIntent === "create" ? curatedSaveError : ""}
+          onSave={(updated) => {
+            if (curatedEditorIntent === "create") {
+              void saveCuratedCharacter({ ...updated, id: advancedCreatingCharacter.id }, "create");
+              return;
+            }
+            createCharacterFromDraft({ ...updated, hwccVersion: "1" });
+          }}
+          onCancel={() => {
+            setAdvancedCreatingCharacter(null);
+            setCuratedEditorIntent(null);
+            setCuratedSaveError("");
+          }}
           onUploadPortrait={(bytes) => uploadPortrait(advancedCreatingCharacter.id, bytes)}
           onUploadScene={(bytes) => uploadScene(advancedCreatingCharacter.id, bytes)}
           onRemovePortrait={removePortrait}

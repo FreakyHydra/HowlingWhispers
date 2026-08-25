@@ -20,6 +20,9 @@ import { ScenarioFactory } from "../scenarios/scenario-factory";
 export interface RoleplayAreaProps {
   view: string;
   currentUser: { displayName: string } | null;
+  canManageCuratedCharacters: boolean;
+  onCuratedCreate: () => void;
+  onCuratedEdit: (character: Character) => void;
   setView: (view: string) => void;
   connected: boolean;
   providerState: string;
@@ -566,6 +569,7 @@ export function RoleplayArea(props: RoleplayAreaProps) {
                           Open their stories <span aria-hidden="true">→</span>
                         </button>
                         <span className="home-character-actions">
+                        {(props.isUserOwnedCharacter(character) || props.canManageCuratedCharacters) && (
                             <button
                               className="home-character-edit"
                               aria-label={`Download ${character.name}`}
@@ -578,6 +582,20 @@ export function RoleplayArea(props: RoleplayAreaProps) {
                             >
                               Download
                             </button>
+                        )}
+                        {characterTab === "curated" && props.canManageCuratedCharacters && (
+                            <button
+                              className="home-character-edit"
+                              aria-label={`Edit curated character ${character.name}`}
+                              title="Edit curated character"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                props.onCuratedEdit(character);
+                              }}
+                            >
+                              ✎ Edit
+                            </button>
+                        )}
                         {props.isUserOwnedCharacter(character) && !isVersionManagedCharacter(character) && (<>
                             <button
                               className="home-character-edit"
@@ -607,11 +625,20 @@ export function RoleplayArea(props: RoleplayAreaProps) {
                     </article>
                   );
                 })}
-                <button className="new-character-card" onClick={() => props.setIsCreating(true)}>
-                  <span aria-hidden="true">＋</span>
-                  <strong>Awaken someone new</strong>
-                  <small>Create a character or import a V2 PNG/JSON card.</small>
-                </button>
+                {characterTab === "custom" && (
+                  <button className="new-character-card" onClick={() => props.setIsCreating(true)}>
+                    <span aria-hidden="true">＋</span>
+                    <strong>Awaken someone new</strong>
+                    <small>Create a character or import a V2 PNG/JSON card.</small>
+                  </button>
+                )}
+                {characterTab === "curated" && props.canManageCuratedCharacters && (
+                  <button className="new-character-card" onClick={props.onCuratedCreate}>
+                    <span aria-hidden="true">＋</span>
+                    <strong>Create Curated Character</strong>
+                    <small>Open the existing full HWCC editor and publish to curated storage.</small>
+                  </button>
+                )}
               </div>
             </>
           )}

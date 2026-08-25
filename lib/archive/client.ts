@@ -6,6 +6,14 @@ export type ArchiveUser = {
   role: string;
 };
 
+export type ArchiveDiscordIdentity = {
+  discord_user_id: string;
+  username: string;
+  avatar?: string | null;
+  humanVerified: boolean;
+  canUseArchive: boolean;
+};
+
 export type ArchivePublication = {
   id: string;
   name: string;
@@ -104,18 +112,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const archive = {
   me: () =>
-    request<{ user: ArchiveUser | null }>("/auth/me"),
-  register: (username: string, password: string) =>
-    request<{ user: ArchiveUser }>("/auth/register", {
+    request<{
+      user: ArchiveUser | null;
+      discordUser: { id: string; username: string; avatar?: string | null } | null;
+      humanVerified: boolean;
+    }>("/auth/me"),
+  discordIdentity: async () => {
+    const response = await fetch("/api/curator/auth/identity", {
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    if (!response.ok) throw new ArchiveApiError(response.status, "Discord identity check failed.");
+    return response.json() as Promise<{ user: ArchiveDiscordIdentity | null }>;
+  },
+  discordLoginUrl: (returnTo: string) =>
+    `/api/curator/auth/login?return_to=${encodeURIComponent(returnTo)}`,
+  discordLogout: async () => {
+    const response = await fetch("/api/curator/auth/logout", {
       method: "POST",
-      body: JSON.stringify({ username, password }),
-    }),
-  login: (username: string, password: string) =>
-    request<{ user: ArchiveUser }>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    }),
-  logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+      credentials: "same-origin",
+    });
+    if (!response.ok) throw new ArchiveApiError(response.status, "Discord sign out failed.");
+    return response.json() as Promise<{ ok: boolean }>;
+  },
 
   backups: {
     list: () => request<{ backups: ServerBackupSummary[] }>("/backup"),

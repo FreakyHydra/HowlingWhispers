@@ -668,6 +668,41 @@ a:focus-visible {
   margin: 6px 0;
 }
 
+.account-menu-login {
+  border-radius: 8px;
+  color: var(--cream);
+  display: block;
+  font-size: calc(14px * var(--ui-font-scale, 1));
+  padding: 10px 12px;
+  text-decoration: none;
+}
+
+.account-menu-login:hover {
+  background: rgba(88, 101, 242, 0.18);
+}
+
+.account-menu-identity {
+  display: grid;
+  gap: 3px;
+  padding: 9px 12px;
+}
+
+.account-menu-identity small {
+  color: var(--muted);
+}
+
+.account-menu-identity strong {
+  color: var(--cream);
+}
+
+.account-curator-badge {
+  color: #9be2b5;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .character-home,
 .settings-page {
   height: calc(100dvh - calc(var(--topbar-height) * var(--ui-scale, 1)));

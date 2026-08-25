@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   archive,
   archiveMediaUrl,
+  ArchiveDiscordIdentity,
   ArchivePublication,
   ArchiveUser,
   PublishInput,
@@ -476,8 +477,8 @@ function MinePanel({
   if (!user) {
     return (
       <div className="archive-empty">
-        <p>You need an account to share characters into the archive.</p>
-        <p>Switch to the Account tab to sign in or create one.</p>
+        <p>You need a Human Verified Discord account to share characters.</p>
+        <p>Switch to the Account tab to sign in or check your approval.</p>
       </div>
     );
   }
@@ -814,21 +815,46 @@ function AccountPanel({
   onError: (kind: "ok" | "err", text: string) => void;
   onOk: (kind: "ok" | "err", text: string) => void;
 }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [identity, setIdentity] = useState<ArchiveDiscordIdentity | null>(null);
+  const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  const submit = async (mode: "login" | "register", e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      setChecking(true);
+      archive
+        .discordIdentity()
+        .then(({ user: discordUser }) => {
+          if (active) setIdentity(discordUser);
+        })
+        .catch(() => {
+          if (active) setIdentity(null);
+        })
+        .finally(() => {
+          if (active) setChecking(false);
+        });
+    };
+    refresh();
+    window.addEventListener("howling:discord-auth-changed", refresh);
+    return () => {
+      active = false;
+      window.removeEventListener("howling:discord-auth-changed", refresh);
+    };
+  }, []);
+
+  const signIn = () => {
+    window.location.assign(archive.discordLoginUrl(window.location.href));
+  };
+
+  const signOut = async () => {
     setBusy(true);
     try {
-      const res =
-        mode === "login"
-          ? await archive.login(username.trim(), password)
-          : await archive.register(username.trim(), password);
-      setUser(res.user);
-      setPassword("");
-      onOk("ok", mode === "login" ? "Welcome back." : "Your archive account is ready.");
+      await archive.discordLogout();
+      setIdentity(null);
+      setUser(null);
+      window.dispatchEvent(new Event("howling:discord-auth-changed"));
+      onOk("ok", "Signed out.");
     } catch (err) {
       onError("err", (err as Error).message);
     } finally {
@@ -836,30 +862,43 @@ function AccountPanel({
     }
   };
 
-  const signOut = async () => {
-    try {
-      await archive.logout();
-      setUser(null);
-      onOk("ok", "Signed out of the archive.");
-    } catch (err) {
-      onError("err", (err as Error).message);
-    }
-  };
+  if (checking) {
+    return <p className="archive-empty">Checking Discord login…</p>;
+  }
 
   if (user) {
     return (
       <div className="archive-account">
         <section className="archive-account-card">
-          <p className="eyebrow">Signed in</p>
+          <p className="eyebrow">Discord verified</p>
           <h2>{user.username}</h2>
           <p className="archive-intro">
-            Your archive account is only used to publish, manage, and report characters.
-            It never touches your stories, personas, or conversations — those stay on this
-            device.
+            You are Human Verified and can share your own custom characters.
+            Curator rank is not required.
           </p>
           <div className="archive-modal-actions">
-            <button className="outline-button" onClick={signOut}>
-              Sign out
+            <button className="outline-button" onClick={signOut} disabled={busy}>
+              {busy ? "Signing out…" : "Sign out"}
+            </button>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  if (identity) {
+    return (
+      <div className="archive-account">
+        <section className="archive-account-card">
+          <p className="eyebrow">Discord connected</p>
+          <h2>{identity.username}</h2>
+          <p className="archive-intro">
+            An administrator must enable <strong>Human Verified</strong> beside your
+            Discord account in Admin → Members before you can share characters.
+          </p>
+          <div className="archive-modal-actions">
+            <button className="outline-button" onClick={signOut} disabled={busy}>
+              {busy ? "Signing out…" : "Sign out"}
             </button>
           </div>
         </section>
@@ -869,66 +908,17 @@ function AccountPanel({
 
   return (
     <div className="archive-account">
-      <div className="archive-account-grid">
-        <section className="archive-account-card">
-          <p className="eyebrow">Sign in</p>
-          <h2>Already a keeper?</h2>
-          <form
-            className="archive-auth-form"
-            onSubmit={(e) => {
-              void submit("login", e);
-            }}
-          >
-            <label>
-              Username
-              <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
-            </label>
-            <label>
-              Password
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-              />
-            </label>
-            <button className="primary-button" type="submit" disabled={busy}>
-              {busy ? "Signing in…" : "Sign in"}
-            </button>
-          </form>
-        </section>
-        <section className="archive-account-card">
-          <p className="eyebrow">Create an account</p>
-          <h2>Become a keeper</h2>
-          <p className="archive-intro">
-            Accounts are local to this archive. Pick a username (3-32 characters) and a
-            password of at least 8 characters.
-          </p>
-          <form
-            className="archive-auth-form"
-            onSubmit={(e) => {
-              void submit("register", e);
-            }}
-          >
-            <label>
-              Username
-              <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
-            </label>
-            <label>
-              Password
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="new-password"
-              />
-            </label>
-            <button className="primary-button" type="submit" disabled={busy}>
-              {busy ? "Creating…" : "Create account"}
-            </button>
-          </form>
-        </section>
-      </div>
+      <section className="archive-account-card">
+        <p className="eyebrow">Discord login</p>
+        <h2>Enter the Archive</h2>
+        <p className="archive-intro">
+          Sign in with Discord. Any server member may apply. Curator rank is not required,
+          but an administrator must mark you as Human Verified before you can share.
+        </p>
+        <button className="primary-button" onClick={signIn}>
+          Continue with Discord
+        </button>
+      </section>
     </div>
   );
 }
