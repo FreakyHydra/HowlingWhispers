@@ -105,6 +105,26 @@
   font-size: 0.8rem;
 }
 
+.diagnostics-technical-preview {
+  margin: 0 0 18px;
+}
+
+.diagnostics-technical-preview summary {
+  cursor: pointer;
+  color: var(--accent, #df8b55);
+}
+
+.diagnostics-technical-preview pre {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 28%);
+  padding: 12px;
+  font-size: 0.78rem;
+}
+
 .diagnostics-result {
   margin: 16px 0 0;
   color: var(--accent, #df8b55);
