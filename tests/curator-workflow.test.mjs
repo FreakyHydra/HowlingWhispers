@@ -40,10 +40,12 @@ test("curated identity remains stable when display data changes", async () => {
 });
 
 
-test("Archive uses Discord auth and Human Verified approval", () => {
-  const archiveView = read("components/archive/archive-view.tsx");
-  const archiveAuth = read("server/archive/auth.ts");
-  const adminBridge = read("app/api/curator/lib.ts");
+test("Archive uses Discord auth and Human Verified approval", async () => {
+  const [archiveView, archiveAuth, adminBridge] = await Promise.all([
+    read("components/archive/archive-view.tsx"),
+    read("server/archive/auth.ts"),
+    read("app/api/curator/lib.ts"),
+  ]);
 
   assert.match(archiveView, /Continue with Discord/);
   assert.doesNotMatch(archiveView, /type="password"/);
@@ -54,10 +56,12 @@ test("Archive uses Discord auth and Human Verified approval", () => {
 });
 
 
-test("Discord bridge preserves cookies, encoded IDs, and shared logout state", () => {
-  const bridge = read("app/api/curator/lib.ts");
-  const app = read("app/dreambound-app.tsx");
-  const archiveView = read("components/archive/archive-view.tsx");
+test("Discord bridge preserves cookies, encoded IDs, and shared logout state", async () => {
+  const [bridge, app, archiveView] = await Promise.all([
+    read("app/api/curator/lib.ts"),
+    read("app/dreambound-app.tsx"),
+    read("components/archive/archive-view.tsx"),
+  ]);
 
   assert.match(bridge, /getSetCookie/);
   assert.match(bridge, /%\[0-9A-Fa-f\]/);
