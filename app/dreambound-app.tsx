@@ -6463,7 +6463,7 @@ Roleplay
         />
       )}
       {view === "personas" && (
-        <section className="settings-page">
+        <section className="settings-page persona-page">
           <PersonaLibrary
             personas={personas}
             activePersonaId={resolvedActivePersonaId}
