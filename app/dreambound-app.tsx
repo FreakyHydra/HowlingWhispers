@@ -311,6 +311,7 @@ type DiscordIdentity = {
   hasCuratorRole: boolean;
   manualCurator: boolean;
   canManageCuratedCharacters: boolean;
+  archiveRole?: "user" | "moderator";
 };
 
 type CuratedCharacterRecord = {
@@ -2503,6 +2504,11 @@ export default function DreamboundApp() {
     setView("roleplay");
   }
 
+  function handleDiscordLogin() {
+    const welcomeMat = new URL("/", window.location.origin).toString();
+    window.location.assign(`/api/curator/auth/login?return_to=${encodeURIComponent(welcomeMat)}`);
+  }
+
   async function handleDiscordLogout() {
     try {
       await fetch("/api/curator/auth/logout", {
@@ -2963,7 +2969,7 @@ export default function DreamboundApp() {
     const description = character.profile && !character.credit
       ? compileCharacterProfile(character)
       : "";
-    const { session, initialMessages } = buildSessionInitialState(character, scene, {
+    const { session, initialMessages } = buildSessionInitialState(character, scene, null, {
       description,
       characterMessage: character.reply,
       persona,
@@ -2985,7 +2991,7 @@ export default function DreamboundApp() {
     }
     const character = characters.find((candidate) => candidate.id === selected.id) ?? characters[0];
     const scene = commonSceneToSceneDefinition(commonScene);
-    const { session, initialMessages } = buildSessionInitialState(character, scene, {
+    const { session, initialMessages } = buildSessionInitialState(character, scene, null, {
       persona,
     });
     setMessages((current) => ({
@@ -3039,7 +3045,7 @@ export default function DreamboundApp() {
       ? codaWorldGuide.roles.find((candidate) => candidate.name === selectedCodaRole)
       : null;
     const customRole = customCodaRole.trim().slice(0, 800);
-    const { session, initialMessages } = buildSessionInitialState(character, scene, {
+    const { session, initialMessages } = buildSessionInitialState(character, scene, null, {
       playerRole: role?.name,
       playerRoleContext: role?.name === "Custom Role"
         ? customRole || "No external player-role facts are established."
@@ -3094,7 +3100,7 @@ export default function DreamboundApp() {
     const character =
       characters.find((candidate) => candidate.id === characterId) ?? characters[0];
     const scene = sandboxSceneFor(character);
-    const { session, initialMessages } = buildSessionInitialState(character, scene, {
+    const { session, initialMessages } = buildSessionInitialState(character, scene, null, {
       sandbox: true,
       persona,
     });
@@ -3125,7 +3131,7 @@ export default function DreamboundApp() {
       : selected;
     const scene = sandboxSceneFor(target);
     const seed = autopilotSeed.trim();
-    const { session, initialMessages } = buildSessionInitialState(target, scene, {
+    const { session, initialMessages } = buildSessionInitialState(target, scene, null, {
       sandbox: true,
       autopilot: true,
       autopilotPaused: false,
@@ -5820,6 +5826,28 @@ function updateCharacter(id: string, updates: Partial<Character>) {
             <button className="primary-button" type="button" onClick={handleEnter} autoFocus>
               Enter The Howling Whispers
             </button>
+            {curatorAuthLoading ? (
+              <span className="login-hint">Checking Discord…</span>
+            ) : discordIdentity ? (
+              <div className="login-discord-status">
+                <span className="login-hint">Signed in with Discord as @{discordIdentity.username}</span>
+                {discordIdentity.archiveRole === "moderator" && (
+                  <a
+                    className="login-community-button"
+                    href="https://admin.thehowlingwhispers.com"
+                  >
+                    Open Admin
+                  </a>
+                )}
+                <button className="text-button" type="button" onClick={() => void handleDiscordLogout()}>
+                  Logout of Discord
+                </button>
+              </div>
+            ) : (
+              <button className="login-community-button" type="button" onClick={handleDiscordLogin}>
+                Login with Discord
+              </button>
+            )}
             <a
               href={COMMUNITY_DISCORD_URL}
               className="login-community-button"
@@ -6101,12 +6129,21 @@ Roleplay
                         <span className="account-curator-badge">Curator access</span>
                       )}
                     </div>
+                    {discordIdentity.archiveRole === "moderator" && (
+                      <a
+                        className="account-menu-login"
+                        href="https://admin.thehowlingwhispers.com"
+                        role="menuitem"
+                      >
+                        Open Admin
+                      </a>
+                    )}
                     <button onClick={() => void handleDiscordLogout()} role="menuitem">
                       Logout of Discord
                     </button>
                   </>
                 ) : (
-                  <button className="account-menu-login" onClick={() => { window.location.assign("/api/curator/auth/login"); }} role="menuitem">
+                  <button className="account-menu-login" onClick={handleDiscordLogin} role="menuitem">
                     Login with Discord
                   </button>
                 )}
@@ -6426,7 +6463,7 @@ Roleplay
         />
       )}
       {view === "personas" && (
-        <section className="settings-page">
+        <section className="settings-page persona-page">
           <PersonaLibrary
             personas={personas}
             activePersonaId={resolvedActivePersonaId}

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.10.3.0 — The Signal Lantern
+
+### ✨ Added
+
+- **Optional Discord sign-in** — sign in from the welcoming mat and return there after authentication
+- **Role-aware Admin entry** — verified administrators see an Admin button while regular users stay in the roleplay experience
+- **Privacy-safe problem reports** — testers can review and manually send redacted runtime signals to the Admin diagnostics inbox
+
+### 🔄 Changed
+
+- **Archive identity** — public browsing stays open while sharing uses Discord login and Human Verified status
+- **Persona library** — the redesigned command deck is isolated from Settings layout rules and stays centered at full width
+
+### 🛠 Fixed
+
+- **Persona precedence** — the selected persona now overrides the older session name during roleplay
+- **Open Sandbox isolation** — sandbox sessions no longer inherit Riley's Player Two scene, preset memories, or other scene metadata
+- **Authentication return** — users and admins return to the welcoming mat instead of being redirected into Admin
+
+---
+
 ## 0.10.2.0 — Riley Picks the Battlefield
 
 ### ✨ Added

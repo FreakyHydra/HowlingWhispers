@@ -1,6 +1,8 @@
 import type { Location } from "./types.ts";
 import type { StorySession } from "../../app/dreambound-app.ts";
 
+const OPEN_SANDBOX_SCENE_ID = "open-sandbox";
+
 export function migrateLegacySessions(
   sessions: StorySession[],
   validLocationIds: Set<string>,
@@ -15,12 +17,14 @@ export function migrateLegacySessions(
       return true;
     })
     .map((session) => {
+      let migrated = session.sceneId === OPEN_SANDBOX_SCENE_ID && session.sandbox !== true
+        ? { ...session, sandbox: true }
+        : session;
       if (session.locationId && session.characterId) {
-        const migrated = { ...session };
+        migrated = { ...migrated };
         delete migrated.characterId;
-        return migrated;
       }
-      return session;
+      return migrated;
     });
 }
 

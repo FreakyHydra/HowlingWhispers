@@ -17,6 +17,32 @@ export function ChangelogView(props: ChangelogViewProps) {
 
            <div className="changelog-list">
              <article className="changelog-entry featured latest">
+               <span className="changelog-mark">🏮</span>
+               <div>
+                 <span className="changelog-version">Version 0.10.3.0 · The Signal Lantern</span>
+                 <h2>The Signal Lantern</h2>
+                 <p>Discord identity, persona continuity, and opt-in diagnostics now work together without taking over the welcoming mat.</p>
+                 <h3>✨ Added</h3>
+                 <ul>
+                   <li><strong>Optional Discord sign-in</strong> — sign in from the welcoming mat and return there after authentication</li>
+                   <li><strong>Role-aware Admin entry</strong> — verified administrators see an Admin button while regular users stay in the roleplay experience</li>
+                   <li><strong>Privacy-safe problem reports</strong> — testers can review and manually send redacted runtime errors, failed request paths, version, browser, viewport, and loaded asset paths</li>
+                 </ul>
+                 <h3>🔄 Changed</h3>
+                 <ul>
+                   <li><strong>Archive identity</strong> — public browsing stays open while sharing uses Discord login and Human Verified status</li>
+                   <li><strong>Persona library</strong> — the redesigned command deck is isolated from Settings layout rules and stays centered at full width</li>
+                 </ul>
+                 <h3>🛠 Fixed</h3>
+                 <ul>
+                   <li><strong>Persona precedence</strong> — the selected persona now overrides the older session name during roleplay</li>
+                   <li><strong>Open Sandbox isolation</strong> — sandbox sessions no longer inherit Riley&apos;s Player Two scene, preset memories, or other scene metadata</li>
+                   <li><strong>Authentication return</strong> — users and admins return to the welcoming mat instead of being redirected into Admin</li>
+                 </ul>
+               </div>
+             </article>
+
+             <article className="changelog-entry featured">
                <span className="changelog-mark">🕹️</span>
                <div>
                  <span className="changelog-version">Version 0.10.2.0 · Riley Picks the Battlefield</span>
