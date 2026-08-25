@@ -25,7 +25,11 @@ test("a story session persona overrides the global default persona", () => {
 test("the generated prompt receives the session persona snapshot as text", () => {
   assert.match(
     source,
-    /const effectivePlayerPersona = \(activeSession\?\.playerPersona\?\.trim\(\) \|\| compiledActivePersona \|\| playerProfile\.persona\)\.trim\(\);/,
+    /const compiledPlayerPersona = \(activeSession\?\.playerPersona\?\.trim\(\) \|\| compiledActivePersona \|\| playerProfile\.persona\)\.trim\(\);/,
+  );
+  assert.match(
+    source,
+    /const effectivePlayerPersona = identityRetry/,
   );
   assert.doesNotMatch(
     source,
