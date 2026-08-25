@@ -6260,11 +6260,22 @@ Roleplay
         <AdvancedCharacterEditor
           character={advancedEditingCharacter}
           mode="edit"
+          contextLabel={curatedEditorIntent === "edit" ? "Curated Character" : undefined}
+          saving={curatedEditorIntent === "edit" && curatedSaving}
+          saveError={curatedEditorIntent === "edit" ? curatedSaveError : ""}
           onSave={(updated) => {
+            if (curatedEditorIntent === "edit") {
+              void saveCuratedCharacter({ ...updated, id: advancedEditingCharacter.id }, "edit");
+              return;
+            }
             updateCharacter(updated.id, { ...updated, hwccVersion: "1" });
             setAdvancedEditingCharacter(null);
           }}
-          onCancel={() => setAdvancedEditingCharacter(null)}
+          onCancel={() => {
+            setAdvancedEditingCharacter(null);
+            setCuratedEditorIntent(null);
+            setCuratedSaveError("");
+          }}
           onUploadPortrait={(bytes) => uploadPortrait(advancedEditingCharacter.id, bytes)}
           onUploadScene={(bytes) => uploadScene(advancedEditingCharacter.id, bytes)}
           onRemovePortrait={removePortrait}
@@ -6276,8 +6287,21 @@ Roleplay
         <AdvancedCharacterEditor
           character={advancedCreatingCharacter}
           mode="create"
-          onSave={(updated) => createCharacterFromDraft({ ...updated, hwccVersion: "1" })}
-          onCancel={() => setAdvancedCreatingCharacter(null)}
+          contextLabel={curatedEditorIntent === "create" ? "Create Curated Character" : undefined}
+          saving={curatedEditorIntent === "create" && curatedSaving}
+          saveError={curatedEditorIntent === "create" ? curatedSaveError : ""}
+          onSave={(updated) => {
+            if (curatedEditorIntent === "create") {
+              void saveCuratedCharacter({ ...updated, id: advancedCreatingCharacter.id }, "create");
+              return;
+            }
+            createCharacterFromDraft({ ...updated, hwccVersion: "1" });
+          }}
+          onCancel={() => {
+            setAdvancedCreatingCharacter(null);
+            setCuratedEditorIntent(null);
+            setCuratedSaveError("");
+          }}
           onUploadPortrait={(bytes) => uploadPortrait(advancedCreatingCharacter.id, bytes)}
           onUploadScene={(bytes) => uploadScene(advancedCreatingCharacter.id, bytes)}
           onRemovePortrait={removePortrait}
