@@ -302,6 +302,23 @@ export type Character = {
   authorNote?: string;
 };
 
+type DiscordIdentity = {
+  discord_user_id: string;
+  username: string;
+  avatar: string | null;
+  isGuildMember: boolean;
+  hasCuratorRole: boolean;
+  manualCurator: boolean;
+  canManageCuratedCharacters: boolean;
+};
+
+type CuratedCharacterRecord = {
+  id: string;
+  character: Character;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type LocationTarget = {
   id: string;
   name: string;
@@ -1738,6 +1755,11 @@ export default function DreamboundApp() {
     () => false,
   );
   const [currentUser, setCurrentUser] = useState<{ displayName: string } | null>(null);
+  const [discordIdentity, setDiscordIdentity] = useState<DiscordIdentity | null>(null);
+  const [curatorAuthLoading, setCuratorAuthLoading] = useState(true);
+  const [curatedSaveError, setCuratedSaveError] = useState("");
+  const [curatedSaving, setCuratedSaving] = useState(false);
+  const [curatedEditorIntent, setCuratedEditorIntent] = useState<"create" | "edit" | null>(null);
   const [archiveUser, setArchiveUser] = useState<ArchiveUser | null>(null);
   const [playerProfile, setPlayerProfile] = useState(() =>
     readSession<{ name: string; persona: string }>("player", { name: "", persona: "" }),
