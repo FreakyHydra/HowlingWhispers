@@ -6138,6 +6138,9 @@ Roleplay
         <RoleplayArea
           view={view}
           currentUser={currentUser}
+          canManageCuratedCharacters={canManageCuratedCharacters}
+          onCuratedCreate={beginCuratedCreate}
+          onCuratedEdit={beginCuratedEdit}
           setView={setView}
           connected={connected}
           providerState={providerState}
