@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 const APP_VERSION = "0.10.3.0";
 const MAX_SIGNALS = 30;
@@ -129,10 +129,7 @@ export default function DiagnosticsReporter() {
 
   useEffect(() => installCapture(), []);
 
-  const report = useMemo(
-    () => (typeof window === "undefined" ? null : buildReport(notes)),
-    [notes, reviewing, open],
-  );
+  const report = typeof window === "undefined" ? null : buildReport(notes);
 
   function close() {
     setOpen(false);
