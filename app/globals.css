@@ -6216,6 +6216,12 @@ a:focus-visible {
 }
 
 /* Persona library */
+.settings-page > .persona-library {
+  margin-inline: auto;
+  max-width: 1180px;
+  width: 100%;
+}
+
 .persona-library p {
   color: var(--muted);
   font-size: calc(13px * var(--ui-font-scale, 1));
