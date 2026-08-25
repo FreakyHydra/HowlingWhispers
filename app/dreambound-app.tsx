@@ -4236,7 +4236,83 @@ async function impersonateTurn(conversation: Message[], playerDirection: string)
     }
   }
 
+  async function publishableAsset(reference: string): Promise<string> {
+    if (!isStoredPortraitReference(reference)) return reference;
+    const bytes = await loadCharacterPortrait(reference);
+    if (!bytes) throw new Error("A selected curated image is no longer available in this browser.");
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("The curated image could not be prepared for publishing."));
+      reader.readAsDataURL(new Blob([bytes], { type: "image/png" }));
+    });
+  }
+
+  async function saveCuratedCharacter(character: Character, intent: "create" | "edit") {
+    if (!canManageCuratedCharacters) {
+      setCuratedSaveError("Curator permission is required.");
+      return;
+    }
+    setCuratedSaving(true);
+    setCuratedSaveError("");
+    try {
+      const publishable: Character = {
+        ...character,
+        id: character.id,
+        image: await publishableAsset(character.image),
+        sceneImage: await publishableAsset(character.sceneImage),
+        hwccVersion: "1",
+      };
+      const endpoint = intent === "create"
+        ? "/api/curator/curated-characters"
+        : `/api/curator/curated-characters/${encodeURIComponent(character.id)}`;
+      const response = await fetch(endpoint, {
+        method: intent === "create" ? "POST" : "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ character: publishable }),
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        error?: string;
+        character?: CuratedCharacterRecord;
+      };
+      if (!response.ok) throw new Error(payload.error || "The curated character could not be saved.");
+
+      const saved = payload.character?.character ?? publishable;
+      curatedCharacterIds.add(saved.id);
+      setCharacters(current => {
+        const exists = current.some(candidate => candidate.id === saved.id);
+        return exists
+          ? current.map(candidate => candidate.id === saved.id ? { ...candidate, ...saved, id: saved.id } : candidate)
+          : [...current, saved];
+      });
+      setAdvancedCreatingCharacter(null);
+      setAdvancedEditingCharacter(null);
+      setCuratedEditorIntent(null);
+      setView("roleplay");
+    } catch (error) {
+      setCuratedSaveError(error instanceof Error ? error.message : "The curated character could not be saved.");
+    } finally {
+      setCuratedSaving(false);
+    }
+  }
+
+  function beginCuratedCreate() {
+    beginAdvancedCreate();
+    setCuratedEditorIntent("create");
+    setCuratedSaveError("");
+  }
+
+  function beginCuratedEdit(character: Character) {
+    setCuratedEditorIntent("edit");
+    setCuratedSaveError("");
+    setAdvancedEditingCharacter(character);
+    setEditingCharacter(null);
+  }
+
   function beginAdvancedCreate() {
+    setCuratedEditorIntent(null);
+    setCuratedSaveError("");
     const id = newCharacterId();
     setAdvancedCreatingCharacter({
       id,
