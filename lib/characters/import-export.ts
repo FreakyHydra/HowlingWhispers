@@ -7,11 +7,32 @@ const MAX_TEXT_LENGTH = 12000;
 const MAX_MEMORIES = 40;
 const MAX_MEMORY_LENGTH = 600;
 const MAX_LIBRARY_CHARACTERS = 60;
+const MAX_SCENES = 24;
 
 const CURATED_BUILTIN_IDS = new Set(["coda", "heather", "peony", "riley", "senako-steel"]);
 const AGE_CATEGORIES = new Set(["adult", "minor", "unknown"]);
 
 import { sanitizeTraits } from "./traits.ts";
+
+export type CharacterPhotoAssets = {
+  portraitUrl?: string;
+  sceneUrl?: string;
+  galleryUrls?: string[];
+};
+
+export type CharacterScene = {
+  id: string;
+  title: string;
+  description?: string;
+  scene?: string;
+  weather?: string;
+  opening?: string;
+  backgroundImageUrl?: string;
+  characterImageUrl?: string;
+  backgroundFocalPoint?: string;
+  characterFocalPoint?: string;
+  tags?: string[];
+};
 
 export type BackupCharacter = {
   id: string;
@@ -32,6 +53,8 @@ export type BackupCharacter = {
   relationship?: string;
   portraitFocalPoint?: string;
   backgroundFocalPoint?: string;
+  assets?: CharacterPhotoAssets;
+  scenes?: CharacterScene[];
   ageCategory?: "adult" | "minor" | "unknown";
   isMinor?: boolean | null;
   allowedRelationshipTypes?: string[];
@@ -174,6 +197,46 @@ function clampString(value: unknown, fallback = ""): string {
   return clamp(value, fallback);
 }
 
+function sanitizePhotoAssets(value: unknown): CharacterPhotoAssets | undefined {
+  if (!isRecord(value)) return undefined;
+  const portraitUrl = clampString(value.portraitUrl).trim();
+  const sceneUrl = clampString(value.sceneUrl).trim();
+  const galleryUrls = sanitizeStringList(value.galleryUrls, 24, 2000);
+  if (!portraitUrl && !sceneUrl && !galleryUrls?.length) return undefined;
+  return {
+    portraitUrl: portraitUrl || undefined,
+    sceneUrl: sceneUrl || undefined,
+    galleryUrls,
+  };
+}
+
+function sanitizeScenes(value: unknown): CharacterScene[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const scenes = value
+    .slice(0, MAX_SCENES)
+    .map((entry, index): CharacterScene | null => {
+      if (!isRecord(entry)) return null;
+      const title = clampString(entry.title).trim();
+      if (!title) return null;
+      const id = clampString(entry.id).trim() || `scene-${index + 1}`;
+      return {
+        id,
+        title,
+        description: clampString(entry.description).trim() || undefined,
+        scene: clampString(entry.scene).trim() || undefined,
+        weather: clampString(entry.weather).trim() || undefined,
+        opening: clampString(entry.opening).trim() || undefined,
+        backgroundImageUrl: clampString(entry.backgroundImageUrl).trim() || undefined,
+        characterImageUrl: clampString(entry.characterImageUrl).trim() || undefined,
+        backgroundFocalPoint: clampString(entry.backgroundFocalPoint).trim() || undefined,
+        characterFocalPoint: clampString(entry.characterFocalPoint).trim() || undefined,
+        tags: sanitizeStringList(entry.tags, 16, 120),
+      };
+    })
+    .filter((scene): scene is CharacterScene => scene !== null);
+  return scenes.length ? scenes : undefined;
+}
+
 function sanitizeCharacter(value: unknown): BackupCharacter | null {
   if (!value || typeof value !== "object") return null;
   const src = value as Record<string, unknown>;
@@ -223,6 +286,8 @@ function sanitizeCharacter(value: unknown): BackupCharacter | null {
     relationship: clamp(src.relationship, "").trim() || undefined,
     portraitFocalPoint: clamp(src.portraitFocalPoint, "center").trim(),
     backgroundFocalPoint: clamp(src.backgroundFocalPoint, "center").trim(),
+    assets: sanitizePhotoAssets(src.assets),
+    scenes: sanitizeScenes(src.scenes),
     ageCategory,
     isMinor: typeof src.isMinor === "boolean" ? src.isMinor : src.isMinor === null ? null : undefined,
     allowedRelationshipTypes: sanitizeStringList(src.allowedRelationshipTypes, 24, 160),
