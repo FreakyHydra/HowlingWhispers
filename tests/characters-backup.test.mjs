@@ -25,6 +25,26 @@ const sample = {
   accent: "#d78a5e",
   relationship: "Rival",
   ageCategory: "adult",
+  assets: {
+    portraitUrl: "https://example.com/mira-portrait.webp",
+    sceneUrl: "https://example.com/mira-default-scene.webp",
+    galleryUrls: ["https://example.com/mira-extra.webp"],
+  },
+  scenes: [
+    {
+      id: "rooftop-run",
+      title: "Rooftop Run",
+      description: "A courier handoff above the city.",
+      scene: "Old rooftops",
+      weather: "Cold rain",
+      opening: "Mira lands on the next roof and glances back.",
+      backgroundImageUrl: "https://example.com/rooftop.webp",
+      characterImageUrl: "https://example.com/mira-rooftop.webp",
+      backgroundFocalPoint: "center 40%",
+      characterFocalPoint: "center",
+      tags: ["chase", "night"],
+    },
+  ],
 };
 
 test("character export format is versioned and readable", () => {
@@ -43,6 +63,35 @@ test("character round-trips through import", () => {
   assert.equal(result.characters[0].name, "Mira");
   assert.equal(result.characters[0].ageCategory, "adult");
   assert.equal(result.characters[0].memories[0], "First night on the rooftops");
+});
+
+test("photo asset URLs and curated scenes round-trip", () => {
+  const result = parseCharacterImport(serializeCharacter(sample));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const character = result.characters[0];
+  assert.equal(character.assets?.portraitUrl, "https://example.com/mira-portrait.webp");
+  assert.equal(character.assets?.sceneUrl, "https://example.com/mira-default-scene.webp");
+  assert.deepEqual(character.assets?.galleryUrls, ["https://example.com/mira-extra.webp"]);
+  assert.equal(character.scenes?.length, 1);
+  assert.equal(character.scenes?.[0].id, "rooftop-run");
+  assert.equal(character.scenes?.[0].backgroundImageUrl, "https://example.com/rooftop.webp");
+  assert.equal(character.scenes?.[0].characterImageUrl, "https://example.com/mira-rooftop.webp");
+  assert.deepEqual(character.scenes?.[0].tags, ["chase", "night"]);
+});
+
+test("invalid scene entries are discarded without rejecting the card", () => {
+  const json = JSON.parse(serializeCharacter(sample));
+  json.character.scenes = [
+    { id: "valid", title: "Valid scene", backgroundImageUrl: "/valid.webp" },
+    { id: "missing-title", backgroundImageUrl: "/bad.webp" },
+    "not-a-scene",
+  ];
+  const result = parseCharacterImport(JSON.stringify(json));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.characters[0].scenes?.length, 1);
+  assert.equal(result.characters[0].scenes?.[0].id, "valid");
 });
 
 test("character library round-trips", () => {
