@@ -92,6 +92,13 @@ const ROLEPLAY_FORMAT_GUIDANCE = [
   "Keep actual narration distinct: *From the back room, metal scrapes against a whetstone.* remains narration, not dialogue.",
 ];
 
+const TURN_BOUNDARY_GUIDANCE = [
+  "The turn boundary is strict. The latest player message is already complete historical input; it is never part of the character's output.",
+  "Never repeat, quote, restate, paraphrase, continue, reenact, or rewrite any part of the player's latest turn before responding.",
+  "Never generate a player line, player action, player thought, player reaction, or player speaker label inside a character reply. Begin immediately with the portrayed character's new action, narration, thought, or dialogue.",
+  "If the player's last words were \"Good to know your mother is no longer mad at me\" followed by *smile* and \"Pip\", the next reply must begin with Pip's response. Do not reproduce those player words or actions first.",
+];
+
 const POSITIVE_PREFERRED =
   "Prefer concrete detail, natural progression, individual voices, controlled description, meaningful dialogue, and implication over explanation.";
 
@@ -105,6 +112,7 @@ export function renderProseQualityPolicy(profile = DEFAULT_PROSE_PROFILE): strin
     "<prose-quality-policy>",
     ...POSITIVE_GUIDANCE,
     ...ROLEPLAY_FORMAT_GUIDANCE,
+    ...TURN_BOUNDARY_GUIDANCE,
     `Avoid ${negatives}, stock AI phrasing, and thematic closing summaries.`,
     POSITIVE_PREFERRED,
     "</prose-quality-policy>",
