@@ -863,7 +863,7 @@ function formatLocalRoleplayReply(
       }
       if (kind === "action") return [`*${text}*`];
       if (kind === "narration") return [`[${text}]`];
-      if (kind === "dialogue") return [text];
+      if (kind === "dialogue") return [outputKind === "character" ? `"${text}"` : text];
       return [];
     }).slice(0, 40);
 
@@ -1154,7 +1154,7 @@ function cleanReply(
 
   if (proseFormat === "roleplay") {
     reply = reply
-      .replace(/[“”"]/g, "")
+      .replace(/[“”]/g, '"')
       .replace(/^\s*(?:\*\s*)+$/gm, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
@@ -1227,7 +1227,6 @@ function providerError(status: number): string {
   if (status >= 500) return "NovelAI is temporarily unavailable.";
   return "NovelAI could not generate this reply.";
 }
-
 
 function limitedString(v: unknown, max: number): string {
   return typeof v === "string" ? v.trim().slice(0, max) : "";
