@@ -510,6 +510,46 @@ test("an autonomous cast renders NPC subtext and observable residue near the liv
   assert.doesNotMatch(result.prompt, /\[NPC SUBTEXT: Peony\]/);
 });
 
+test("Sensory POV injects persona perception and excludes non-speaker NPC subtext", () => {
+  const result = compile(adultCharacter(), {
+    provider: "novelai",
+    model: "glm-4-6",
+    povStyle: "sensory",
+    preferences: { ...preferences, viewpoint: "roving" },
+    cast: [
+      { id: "peony", name: "Peony", origin: "permanent", presence: "active", primary: true, addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+      { id: "melody", name: "Melody", origin: "temporary", presence: "active", addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+    ],
+    autonomy: [{
+      id: "rc:melody",
+      name: "Melody",
+      drive: {
+        goal: "leave without being followed",
+        intent: "hide the map",
+        wants: [], fears: [], concerns: [],
+        needs: { hunger: 0, fatigue: 0, comfort: 0, social: 0, curiosity: 0 },
+      },
+      revisions: [{ internal: ["Melody plans to hide the map"], observable: ["keeps one hand close to her coat"] }],
+      updatedAt: 2,
+    }],
+  });
+
+  assert.match(result.prompt, /<persona-perception>/);
+  assert.match(result.prompt, /Use player-persona-limited narration/);
+  assert.match(result.prompt, /Melody keeps one hand close to her coat/);
+  assert.doesNotMatch(result.prompt, /Goal: leave without being followed|Intent: hide the map|Melody plans to hide the map/);
+  assert.doesNotMatch(result.prompt, /Use roving limited narration/);
+  assert.equal(result.manifest.perception?.style, "sensory");
+});
+
+test("Standard POV keeps the existing prompt free of sensory context", () => {
+  const implicit = compile(adultCharacter());
+  const explicit = compile(adultCharacter(), { povStyle: "standard" });
+  assert.equal(explicit.prompt, implicit.prompt);
+  assert.doesNotMatch(explicit.prompt, /<persona-perception>/);
+  assert.equal(explicit.manifest.perception, undefined);
+});
+
 test("a side speaker gets the autonomous independence instruction", () => {
   const result = compile(adultCharacter(), {
     provider: "novelai",

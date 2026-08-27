@@ -83,6 +83,7 @@ function sampleSource(overrides = {}) {
        model: "xialong-v1",
        creativity: 8,
        replyLength: "immersive",
+       povStyle: "sensory",
      },
      relationships: {
        "coda::persona-1": {
@@ -141,6 +142,7 @@ test("conversations, sessions, personas and preferences survive the round trip",
   const payload = build();
   assert.equal(payload.data.personas[0].name, "Rinn");
   assert.equal(payload.data.preferences.storyProvider, "novelai");
+  assert.equal(payload.data.preferences.povStyle, "sensory");
   assert.equal(payload.data.sessions[0].characterId, "coda");
   assert.ok(payload.data.messages.coda[0].text.includes("came back"));
 
@@ -148,6 +150,7 @@ test("conversations, sessions, personas and preferences survive the round trip",
   assert.ok(reparsed.ok);
   if (reparsed.ok) {
     assert.equal(reparsed.payload.data.personas[0].name, "Rinn");
+    assert.equal(reparsed.payload.data.preferences.povStyle, "sensory");
     assert.deepEqual(
       reparsed.payload.data.curatedState.find((entry) => entry.id === "coda")?.memories,
       ["User added a memory about Coda"],

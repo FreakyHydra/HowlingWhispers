@@ -21,6 +21,7 @@ import { getXiaolongCompatibilityInstructions } from "./xiaolong-compatibility.t
 import type { ContextInput } from "../context/types.ts";
 import { selectHWLorebooks, renderMemoryBlock, renderAuthorNoteBlock, renderHWLorebookBlock, type HWLoreSelection } from "../context/compile.ts";
 import { buildPlayerIdentityAnchor } from "../personas/identity.ts";
+import { buildSensoryContext, type PovStyle } from "./perception.ts";
 
 export type ContextMode = "character" | "balanced" | "story";
 export type GenerationProvider = "local" | "novelai";
@@ -59,6 +60,7 @@ export type CompileContextInput = {
   playerName: string;
   playerPersona?: import("../personas/schema").PlayerPersona | string;
   preferences: StoryPreferences;
+  povStyle?: PovStyle;
   autopilotPov?: "first" | "third" | "narrator";
   lengthInstruction: string;
   playerDirection?: string;
@@ -93,6 +95,12 @@ export type ContextManifest = {
   includedAuthorNotes: number;
   includedHWLore: Array<{ id: string; title: string; reason: string }>;
   omittedHWLore: Array<{ id: string; title: string; reason: string }>;
+  perception?: {
+    style: "sensory";
+    includedFacts: number;
+    filteredFacts: number;
+    channels: string[];
+  };
 };
 
 export type CompiledContext = { prompt: string; manifest: ContextManifest };
@@ -215,8 +223,19 @@ export function compileContext(input: CompileContextInput): CompiledContext {
     })
     : "";
   const autonomyBlock = input.autonomy && input.autonomy.length > 0
-    ? renderAutonomousBlock(input.autonomy, { primaryDisplayName: input.character.identity.name })
+    ? renderAutonomousBlock(input.autonomy, {
+      primaryDisplayName: input.character.identity.name,
+      includeInternal: input.povStyle !== "sensory",
+    })
     : "";
+  const perception = buildSensoryContext({
+    config: { style: input.povStyle ?? "standard" },
+    location: input.location,
+    weather: input.weather,
+    cast: input.cast,
+    autonomy: input.autonomy,
+  });
+  const sensoryBlock = perception.block;
   const speakerInstruction = speakerEntry
     ? renderSpeakerInstruction(speakerEntry, input.character.identity.name)
     : "";
@@ -246,6 +265,7 @@ export function compileContext(input: CompileContextInput): CompiledContext {
     worldClockBlock,
     castBlock,
     autonomyBlock,
+    sensoryBlock,
     prosePolicyBlock,
     "Conversation history:",
   ].join("\n"));
@@ -268,6 +288,7 @@ export function compileContext(input: CompileContextInput): CompiledContext {
     worldClockBlock,
     castBlock,
     autonomyBlock,
+    sensoryBlock,
     history,
     characterName,
     speakerName,
@@ -301,6 +322,14 @@ export function compileContext(input: CompileContextInput): CompiledContext {
       includedAuthorNotes: filteredAuthorNotes.length,
       includedHWLore: hwLoreSelection.entries.map((e) => ({ id: String(e.entry.id ?? ""), title: e.entry.displayName ?? "Untitled", reason: e.reason })),
       omittedHWLore: hwLoreSelection.omitted,
+      ...(perception.enabled ? {
+        perception: {
+          style: "sensory" as const,
+          includedFacts: perception.observations.length,
+          filteredFacts: perception.filtered.length,
+          channels: [...new Set(perception.observations.map((fact) => fact.channel))],
+        },
+      } : {}),
     },
   };
 }
@@ -372,6 +401,7 @@ type PromptParts = {
   worldClockBlock: string;
   castBlock: string;
   autonomyBlock: string;
+  sensoryBlock: string;
   history: {
     messages: RoleplayMessage[];
     count: number;
@@ -419,6 +449,7 @@ function buildLegacyPrompt(parts: PromptParts): string {
     "",
     parts.worldClockBlock,
     "",
+    ...(parts.sensoryBlock ? [parts.sensoryBlock, ""] : []),
     parts.prosePolicyBlock,
     "",
     "Conversation history:",
@@ -448,6 +479,7 @@ function buildNovelAiPrompt(parts: PromptParts): string {
       ...(parts.autonomyBlock ? ["", parts.autonomyBlock] : []),
       parts.stateBlock,
       parts.worldClockBlock,
+      ...(parts.sensoryBlock ? [parts.sensoryBlock] : []),
       parts.prosePolicyBlock,
     ].join("\n"),
   ];
@@ -485,7 +517,9 @@ function roleplayInstructions(input: CompileContextInput, safetyBlock: string): 
     "Treat player actions as attempts whose consequences follow established abilities and circumstances. End naturally where the player's response matters.",
     safetyBlock,
     INITIATIVE_INSTRUCTIONS[input.preferences.initiative],
-    VIEWPOINT_INSTRUCTIONS[input.preferences.viewpoint],
+    input.povStyle === "sensory"
+      ? "Use player-persona-limited narration. Describe only what the player persona can directly sense or cautiously infer from observable evidence."
+      : VIEWPOINT_INSTRUCTIONS[input.preferences.viewpoint],
     `Write in ${input.preferences.tense} tense.`,
     input.lengthInstruction,
     ...(input.reroll

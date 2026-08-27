@@ -76,6 +76,7 @@ import { compilePlayerPersona } from "../lib/personas/compile";
 import { detectPersonaIdentityDrift } from "../lib/personas/identity";
 import type { PlayerPersona } from "../lib/personas/schema";
 import type { ContextManifest } from "../lib/generation/compile-context.ts";
+import type { PovStyle } from "../lib/generation/perception.ts";
 import { readContextLibrary, writeContextLibrary, type ContextLibrary } from "../lib/context/storage.ts";
 import type { ContextInput } from "../lib/context/types.ts";
 import type { MemoryEntry, AuthorNoteEntry } from "../lib/context/types.ts";
@@ -1929,6 +1930,9 @@ export default function DreamboundApp() {
   const [viewpoint, setViewpoint] = useState<Viewpoint>(
     () => readSession<Viewpoint>("viewpoint", "character"),
   );
+  const [povStyle, setPovStyle] = useState<PovStyle>(
+    () => readSession<PovStyle>("povStyle", "standard"),
+  );
   const [storyTense, setStoryTense] = useState<StoryTense>(
     () => readSession<StoryTense>("storyTense", "present"),
   );
@@ -2392,10 +2396,11 @@ export default function DreamboundApp() {
     writeSession("replyLength", replyLength);
     writeSession("initiative", initiative);
     writeSession("viewpoint", viewpoint);
+    writeSession("povStyle", povStyle);
     writeSession("storyTense", storyTense);
   }, [
     view, selectedId, apiToken, selectedModel, selectedLocalModel, deviceModel, storyProvider, creativity, replyLength,
-    initiative, viewpoint, storyTense,
+    initiative, viewpoint, povStyle, storyTense,
   ]);
 
   useEffect(() => {
@@ -3521,7 +3526,8 @@ export default function DreamboundApp() {
         replyLength,
 
         initiative,
-        viewpoint,
+        viewpoint: povStyle === "sensory" ? "user" : viewpoint,
+        povStyle,
         tense: storyTense,
         proseFormat: "roleplay",
         autopilotPov: activeSession?.autopilot ? (activeSession.autopilotPov ?? "third") : undefined,
@@ -5029,6 +5035,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
           replyLength,
           initiative,
           viewpoint,
+          povStyle,
           storyTense,
           textStyle,
           shareCount,
@@ -5158,6 +5165,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
     if (typeof preferences.replyLength === "string") setReplyLength(preferences.replyLength as ReplyLength);
     if (typeof preferences.initiative === "string") setInitiative(preferences.initiative as Initiative);
     if (typeof preferences.viewpoint === "string") setViewpoint(preferences.viewpoint as Viewpoint);
+    if (preferences.povStyle === "standard" || preferences.povStyle === "sensory") setPovStyle(preferences.povStyle);
     if (typeof preferences.storyTense === "string") setStoryTense(preferences.storyTense as StoryTense);
     if (preferences.textStyle) {
       setTextStyle((current) => ({
@@ -6399,6 +6407,7 @@ Roleplay
           replyLength={replyLength}
           initiative={initiative}
           viewpoint={viewpoint}
+          povStyle={povStyle}
           storyTense={storyTense}
           savedAt={savedAt}
           hasNovelAiToken={hasNovelAiToken}
@@ -6443,6 +6452,7 @@ Roleplay
           setReplyLength={setReplyLength}
           setInitiative={setInitiative}
           setViewpoint={setViewpoint}
+          setPovStyle={setPovStyle}
           setStoryTense={setStoryTense}
           setSavedAt={setSavedAt}
           setTextStyle={setTextStyle}

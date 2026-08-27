@@ -465,27 +465,28 @@ export function renderPulseView(
  */
 export function renderAutonomousBlock(
   agents: AutonomousAgent[],
-  options: { primaryDisplayName?: string } = {},
+  options: { primaryDisplayName?: string; includeInternal?: boolean } = {},
 ): string {
   if (agents.length === 0) return "";
   const lines: string[] = ["<autonomy>"];
   let renderedAny = false;
   for (const agent of agents) {
     if (options.primaryDisplayName && agent.name === options.primaryDisplayName) continue;
+    const residue = recentResidue(agent, 2);
+    if (options.includeInternal === false && residue.observable.length === 0) continue;
     renderedAny = true;
-    lines.push(`[NPC SUBTEXT: ${agent.name}]`);
+    if (options.includeInternal !== false) lines.push(`[NPC SUBTEXT: ${agent.name}]`);
     const drive = agent.drive;
-    if (drive.goal) lines.push(`Goal: ${drive.goal}`);
-    if (drive.intent) lines.push(`Intent: ${drive.intent}`);
-    if (drive.wants.length > 0) lines.push(`Wants: ${drive.wants.join("; ")}`);
-    if (drive.fears.length > 0) lines.push(`Fears: ${drive.fears.join("; ")}`);
-    if (drive.concerns.length > 0) lines.push(`Unresolved: ${drive.concerns.join("; ")}`);
+    if (options.includeInternal !== false && drive.goal) lines.push(`Goal: ${drive.goal}`);
+    if (options.includeInternal !== false && drive.intent) lines.push(`Intent: ${drive.intent}`);
+    if (options.includeInternal !== false && drive.wants.length > 0) lines.push(`Wants: ${drive.wants.join("; ")}`);
+    if (options.includeInternal !== false && drive.fears.length > 0) lines.push(`Fears: ${drive.fears.join("; ")}`);
+    if (options.includeInternal !== false && drive.concerns.length > 0) lines.push(`Unresolved: ${drive.concerns.join("; ")}`);
     const pressed = (Object.keys(drive.needs) as AutonomyNeed[])
       .filter((need) => drive.needs[need] >= 0.6)
       .map((need) => need);
-    if (pressed.length > 0) lines.push(`Pressed needs: ${pressed.join(", ")}`);
-    const residue = recentResidue(agent, 2);
-    if (residue.internal.length > 0) {
+    if (options.includeInternal !== false && pressed.length > 0) lines.push(`Pressed needs: ${pressed.join(", ")}`);
+    if (options.includeInternal !== false && residue.internal.length > 0) {
       for (const line of residue.internal) lines.push(`- internal: ${line}`);
     }
     if (residue.observable.length > 0) {

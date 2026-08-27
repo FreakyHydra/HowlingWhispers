@@ -269,6 +269,7 @@ export type BackupPreferences = {
   replyLength?: string;
   initiative?: string;
   viewpoint?: string;
+  povStyle?: "standard" | "sensory";
   storyTense?: string;
   textStyle?: { dialogue: string; action: string; narration: string; fontSize: number; uiFontSize?: number; uiScale?: number; fontFamily?: "default" | "opendyslexic" | "system" };
   shareCount?: number;
@@ -814,6 +815,7 @@ function sanitizePreferences(value: unknown): BackupPreferences {
   if (typeof p.replyLength === "string") out.replyLength = p.replyLength;
   if (typeof p.initiative === "string") out.initiative = p.initiative;
   if (typeof p.viewpoint === "string") out.viewpoint = p.viewpoint;
+  if (p.povStyle === "standard" || p.povStyle === "sensory") out.povStyle = p.povStyle;
   if (typeof p.storyTense === "string") out.storyTense = p.storyTense;
   if (typeof p.selectedModel === "string") out.model = p.selectedModel;
   if (typeof p.localModel === "string") out.localModel = p.localModel;

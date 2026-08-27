@@ -516,6 +516,29 @@ function makeNovelAIRequest(overrides = {}) {
   });
 }
 
+test("NovelAI receives the provider-independent Sensory POV context", async (context) => {
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes("text.novelai.net")) {
+      calls.push(JSON.parse(String(init?.body)));
+      return Response.json({ choices: [{ text: "*Coda's ears turn toward the rain.*" }] });
+    }
+    return Response.json({});
+  };
+
+  const response = await generateStory(makeNovelAIRequest({
+    povStyle: "sensory",
+    viewpoint: "roving",
+  }));
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].prompt, /<persona-perception>/);
+  assert.match(calls[0].prompt, /Use player-persona-limited narration/);
+  assert.doesNotMatch(calls[0].prompt, /Use roving limited narration/);
+});
+
 test("Immersive NovelAI character output over 400 words is capped", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });

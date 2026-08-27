@@ -5,6 +5,7 @@ import type { ArchiveUser } from "../../lib/archive/client";
 import type { OllamaModelInfo } from "../../lib/ollama";
 import type { TextStyle } from "../dreambound-app";
 import { InfoTip } from "../../components/info-tip";
+import type { PovStyle } from "../../../lib/generation/perception";
 
 type ModelId = "xialong-v1" | "glm-4-6";
 type StoryProvider = "novelai" | "local" | "device";
@@ -59,6 +60,7 @@ export interface SettingsPageProps {
   replyLength: ReplyLength;
   initiative: Initiative;
   viewpoint: Viewpoint;
+  povStyle: PovStyle;
   storyTense: StoryTense;
   savedAt: string;
   hasNovelAiToken: boolean;
@@ -113,6 +115,7 @@ export interface SettingsPageProps {
   setReplyLength: (value: ReplyLength) => void;
   setInitiative: (value: Initiative) => void;
   setViewpoint: (value: Viewpoint) => void;
+  setPovStyle: (value: PovStyle) => void;
   setStoryTense: (value: StoryTense) => void;
   setSavedAt: (value: string) => void;
   setTextStyle: (updater: (style: TextStyle) => TextStyle) => void;
@@ -161,6 +164,7 @@ export function SettingsPage(props: SettingsPageProps) {
     replyLength,
     initiative,
     viewpoint,
+    povStyle,
     storyTense,
     savedAt,
     hasNovelAiToken,
@@ -205,6 +209,7 @@ export function SettingsPage(props: SettingsPageProps) {
     setReplyLength,
     setInitiative,
     setViewpoint,
+    setPovStyle,
     setStoryTense,
     setSavedAt,
     setTextStyle,
@@ -672,6 +677,28 @@ export function SettingsPage(props: SettingsPageProps) {
                     </label>
                     <label>
                       <span className="setting-name-row">
+                        POV Style
+                        <InfoTip label="POV Style">
+                          <p className="help-popover__intro">
+                            Choose normal narration or limit the scene to what your persona can physically perceive.
+                          </p>
+                        </InfoTip>
+                      </span>
+                      <select
+                        value={povStyle}
+                        onChange={(event) => setPovStyle(event.target.value as PovStyle)}
+                      >
+                        <option value="standard">Standard</option>
+                        <option value="sensory">Sensory POV</option>
+                      </select>
+                      <small>
+                        {povStyle === "sensory"
+                          ? "Player-limited narration through available senses and observable body language."
+                          : "Uses the selected viewpoint without sensory filtering."}
+                      </small>
+                    </label>
+                    <label>
+                      <span className="setting-name-row">
                         Viewpoint
                         <InfoTip label="Viewpoint">
                           <p className="help-popover__intro">
@@ -700,14 +727,19 @@ export function SettingsPage(props: SettingsPageProps) {
                         </InfoTip>
                       </span>
                       <select
-                        value={viewpoint}
+                        value={povStyle === "sensory" ? "user" : viewpoint}
                         onChange={(event) => setViewpoint(event.target.value as Viewpoint)}
+                        disabled={povStyle === "sensory"}
                       >
                         <option value="user">Player limited</option>
                         <option value="character">Character limited</option>
                         <option value="roving">Roving limited</option>
                       </select>
-                      <small>Controls whose observable experience frames narration.</small>
+                      <small>
+                        {povStyle === "sensory"
+                          ? "Sensory POV always uses the selected player persona."
+                          : "Controls whose observable experience frames narration."}
+                      </small>
                     </label>
                     <label>
                       <span className="setting-name-row">

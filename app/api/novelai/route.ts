@@ -432,6 +432,7 @@ export async function POST(request: Request) {
       playerName,
       playerPersona,
       preferences,
+      povStyle: body.povStyle === "sensory" ? "sensory" : "standard",
       autopilotPov,
       lengthInstruction: isImpersonation
         ? IMPERSONATION_LENGTHS[replyLength]
