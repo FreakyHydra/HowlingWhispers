@@ -15,6 +15,7 @@ import {
 import { parseContextInput } from "../../../lib/context/import-export.ts";
 import { parseStoryMetadata, type StoryMetadata } from "../../../lib/generation/story-metadata.ts";
 import { formatPlayerTurn } from "../../../lib/generation/player-turn.ts";
+import { stripEchoedPlayerTurn } from "../../../lib/generation/character-turn-boundary.ts";
 import { normalizeWorldTimestamp } from "../../../lib/generation/world-clock.ts";
 import {
   findCastEntryByName,
@@ -225,9 +226,7 @@ function localContractPrompt(
   const boundary = outputKind === "player"
     ? "The turn must contain only the player's own actions and spoken words. Never continue, finish, extend, or reword the character's last message; never write the character's dialogue, actions, voice, reactions, inner voice, or a second speaker."
     : "Never assign the player an action, feeling, perception, or decision. In an open sandbox, do not invent a location, earlier meeting, or shared history that the player did not establish.";
-  return `${prompt}
-
-Local output contract: Return a JSON object with a segments array containing ${segmentRule} ${lengthRule} Each segment has kind dialogue, action, or narration and plain text without asterisks, brackets, or speaker labels. A dialogue segment contains only words spoken aloud. Put gestures, dialogue tags, sensory description, and internal or external narration in separate action or narration segments. Preserve the intended reading order. ${boundary}`;
+  return `${prompt}\n\nLocal output contract: Return a JSON object with a segments array containing ${segmentRule} ${lengthRule} Each segment has kind dialogue, action, or narration and plain text without asterisks, brackets, or speaker labels. A dialogue segment contains only words spoken aloud. Put gestures, dialogue tags, sensory description, and internal or external narration in separate action or narration segments. Preserve the intended reading order. ${boundary}`;
 }
 
 function getDisplayName(requestedName: string): string {
@@ -301,7 +300,7 @@ export async function POST(request: Request) {
     const metadataOut: { metadata?: StoryMetadata | null } = {};
     const reply = cleanReply(
       preparedReply, outputName, limitedString(body.playerName, 100), proseFormat, outputKind,
-      body.autopilot === true, metadataOut,
+      body.autopilot === true, metadataOut, limitedString(body.latestPlayerTurn, 4000),
     );
     return reply
       ? Response.json({ reply, metadata: metadataOut.metadata ?? null })
@@ -344,6 +343,7 @@ export async function POST(request: Request) {
   const doStream = body.stream === true;
   const character = isConnectionTest ? null : parseCharacter(body.character);
   const messages = isConnectionTest ? [] : parseMessages(body.messages);
+  const latestPlayerTurn = [...messages].reverse().find((message) => message.sender === "player")?.text ?? "";
   const livingCast = isConnectionTest ? [] : sanitizeCast(body.livingCast, character ? { id: character.id, name: character.name } : undefined);
   const autonomousCast = isConnectionTest ? new Map() : sanitizeAutonomousCast(body.autonomousCast);
   const requestedSpeaker = limitedString(body.respondAs, 120);
@@ -500,6 +500,7 @@ export async function POST(request: Request) {
           playerName,
           proseFormat: preferences.proseFormat,
           autopilot: isAutonomousBeat,
+          latestPlayerTurn,
         },
       context: compiled?.manifest,
       autonomy: autonomyPersisted,
@@ -539,7 +540,7 @@ export async function POST(request: Request) {
           model, prompt, isConnectionTest, temperature, generationLength,
           outputName, playerName, preferences.proseFormat,
           outputKind, stopSequences, compiled?.manifest, controller, timeout, maxTokens, isAutonomousBeat,
-          rerollSeed, autonomyPersisted,
+          rerollSeed, autonomyPersisted, latestPlayerTurn,
         );
       } finally {
         releaseGenerationSlot(slotId);
@@ -558,7 +559,7 @@ export async function POST(request: Request) {
       outputName, playerName, preferences.proseFormat,
       outputKind, stopSequences, compiled?.manifest, controller, timeout, maxTokens,
       isAutonomousBeat, rerollSeed, isImpersonation ? impersonationPrompt : "",
-      autonomyPersisted,
+      autonomyPersisted, latestPlayerTurn,
     );
   } catch (error) {
     clearTimeout(timeout);
@@ -579,7 +580,7 @@ async function localReply(
   proseFormat: ProseFormat, outputKind: "player" | "character", stopSequences: string[],
   contextManifest: ContextManifest | undefined, controller: AbortController, timeout: NodeJS.Timeout,
   maxTokens: number, autopilot: boolean, rerollSeed?: number,
-  autonomy?: AutonomousAgent[],
+  autonomy?: AutonomousAgent[], latestPlayerTurn = "",
 ) {
   if (isTest) {
     const upstream = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
@@ -736,21 +737,8 @@ async function localReply(
     if (currentWords >= maxWords) break;
     const remainingWords = Math.min(minimumWords - currentWords, maxWords - currentWords);
     const continuationPrompt = outputKind === "player"
-      ? `${prompt}
-
-<player-continuation-control>
-Continue after the existing player-turn prefix with at least ${remainingWords} new words. Return only a JSON object containing additional player-only segments. Never reproduce the prefix or this instruction, and never write the AI character or another speaker.
-</player-continuation-control>
-
-<existing-player-prefix>
-${preparedReply}
-</existing-player-prefix>`
-      : `${prompt}
-
-Continuation task: The response draft below is incomplete and still needs at least ${remainingWords} additional words. Continue directly after its final beat with new, developed action, dialogue, and sensory or emotional detail. Do not repeat, restart, summarize, conclude early, or contradict the draft. Return only a JSON object containing the additional segments, using the same dialogue/action/narration schema and no markup characters.
-
-Incomplete response draft:
-${preparedReply}`;
+      ? `${prompt}\n\n<player-continuation-control>\nContinue after the existing player-turn prefix with at least ${remainingWords} new words. Return only a JSON object containing additional player-only segments. Never reproduce the prefix or this instruction, and never write the AI character or another speaker.\n</player-continuation-control>\n\n<existing-player-prefix>\n${preparedReply}\n</existing-player-prefix>`
+      : `${prompt}\n\nContinuation task: The response draft below is incomplete and still needs at least ${remainingWords} additional words. Continue directly after its final beat with new, developed action, dialogue, and sensory or emotional detail. Do not repeat, restart, summarize, conclude early, or contradict the draft. Return only a JSON object containing the additional segments, using the same dialogue/action/narration schema and no markup characters.\n\nIncomplete response draft:\n${preparedReply}`;
     upstream = await generate(continuationPrompt);
     if (!upstream.ok) {
       clearTimeout(timeout);
@@ -777,7 +765,7 @@ ${preparedReply}`;
     ? rawReply.trim().slice(0, 200)
       : cleanReply(
        preparedReply,
-       outputName, playerName, proseFormat, outputKind, autopilot, metadataOut,
+       outputName, playerName, proseFormat, outputKind, autopilot, metadataOut, latestPlayerTurn,
      );
   const reply = !isTest && !autopilot ? truncateReplyToLength(cleaned, replyLength) : cleaned;
 
@@ -947,7 +935,7 @@ async function nonStreamReply(
   contextManifest: ContextManifest | undefined, controller: AbortController, timeout: NodeJS.Timeout,
   maxTokens: number, autopilot: boolean, rerollSeed?: number,
   playerDirection = "",
-  autonomy?: AutonomousAgent[],
+  autonomy?: AutonomousAgent[], latestPlayerTurn = "",
 ) {
   const generate = (generationPrompt: string) => fetch(`${NOVELAI_BASE}/completions`, {
       method: "POST",
@@ -999,7 +987,7 @@ async function nonStreamReply(
   let rawReply = extractReply(result);
   const metadataOut: { metadata?: StoryMetadata | null } = {};
   let prepared = isTest ? rawReply.trim().slice(0, 200)
-    : cleanReply(rawReply, outputName, playerName, proseFormat, outputKind, autopilot, metadataOut);
+    : cleanReply(rawReply, outputName, playerName, proseFormat, outputKind, autopilot, metadataOut, latestPlayerTurn);
   if (outputKind === "player") {
     console.log("[impersonation-debug] raw reply:", rawReply.slice(0, 500));
     console.log("[impersonation-debug] cleaned reply:", prepared.slice(0, 500));
@@ -1126,8 +1114,11 @@ function extractReply(v: unknown): string {
 function cleanReply(
   v: string, name: string, playerName: string, proseFormat: ProseFormat,
   outputKind: "player" | "character", autopilot = false,
-  out?: { metadata?: StoryMetadata | null },
+  out?: { metadata?: StoryMetadata | null }, latestPlayerTurn = "",
 ): string {
+  if (outputKind === "character" && latestPlayerTurn) {
+    v = stripEchoedPlayerTurn(v, latestPlayerTurn);
+  }
   const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const structuralEnd = v.search(/\n\s*<\|(?:user|assistant)\|>|\n\s*\/nothink/i);
   const preStructured = structuralEnd >= 0 ? v.slice(0, structuralEnd).trim() : v;
@@ -1158,7 +1149,7 @@ function cleanReply(
       "\n\n$1\n\n",
     )
     .replace(/\n[ \t]+/g, "\n")
-.replace(/\n{3,}/g, "\n\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 
   if (proseFormat === "roleplay") {
