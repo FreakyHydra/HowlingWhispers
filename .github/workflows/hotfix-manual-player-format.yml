@@ -1,0 +1,123 @@
+name: Hotfix manual player formatting
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/hotfix-manual-player-format.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Patch manual player message handling
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/dreambound-app.tsx')
+          text = path.read_text()
+
+          old = '''    const playerMessage: Message = {
+      id: Date.now(),
+      sender: "player",
+      text:
+        mode === "Action"
+          ? `*${text.replace(/^\\*|\\*$/g, "")}*`
+          : mode === "Narration"
+            ? `[${text}]`
+            : text,
+    };'''
+
+          new = '''    // Manual player text is authoritative. If the user already supplied
+    // roleplay markup, preserve it exactly instead of reinterpreting it through
+    // the Action/Narration mode wrapper. Plain text may still use the selected
+    // one-shot mode, and the mode resets to Dialogue after the message is sent.
+    const hasExplicitRoleplayMarkup = /(?:\\*[^*\\n]+\\*|["“][^"”\\n]+["”]|\\[[^\\]\\n]+\\])/.test(text);
+    const submittedText = hasExplicitRoleplayMarkup
+      ? text
+      : mode === "Action"
+        ? `*${text}*`
+        : mode === "Narration"
+          ? `[${text}]`
+          : text;
+
+    const playerMessage: Message = {
+      id: Date.now(),
+      sender: "player",
+      text: submittedText,
+    };'''
+
+          if old not in text:
+              raise SystemExit('Expected sendMessage formatting block was not found; refusing to patch.')
+
+          text = text.replace(old, new, 1)
+
+          old_reset = '''    setDraft("");
+    setRelationshipDelta(null);'''
+          new_reset = '''    setDraft("");
+    setMode("Dialogue");
+    setRelationshipDelta(null);'''
+          if old_reset not in text:
+              raise SystemExit('Expected composer reset block was not found; refusing to patch.')
+          text = text.replace(old_reset, new_reset, 1)
+
+          path.write_text(text)
+          PY
+
+      - name: Add regression assertions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tests/manual-player-format-preservation.test.mjs')
+          text = path.read_text()
+          addition = r'''
+
+test("manual send preserves explicit mixed action and dialogue markup", () => {
+  const start = source.indexOf("async function sendMessage()");
+  const end = source.indexOf("\n  async function", start + 1);
+  const body = source.slice(start, end === -1 ? start + 14000 : end);
+
+  assert.match(body, /hasExplicitRoleplayMarkup/);
+  assert.match(body, /const submittedText = hasExplicitRoleplayMarkup/);
+  assert.match(body, /text: submittedText/);
+  assert.doesNotMatch(body, /text\.replace\(\/\^\\\*\|\\\*\$\/g/);
+});
+
+test("manual message mode resets to Dialogue after send", () => {
+  const start = source.indexOf("async function sendMessage()");
+  const end = source.indexOf("\n  async function", start + 1);
+  const body = source.slice(start, end === -1 ? start + 14000 : end);
+  assert.match(body, /setDraft\(""\);\s*setMode\("Dialogue"\);/);
+});
+'''
+          if 'manual send preserves explicit mixed action and dialogue markup' not in text:
+              path.write_text(text + addition)
+          PY
+
+      - name: Install
+        run: npm ci
+
+      - name: Verify focused regression
+        run: node --test tests/manual-player-format-preservation.test.mjs
+
+      - name: Build
+        run: npm run build
+
+      - name: Commit hotfix
+        run: |
+          git config user.name "Howling Whispers CI"
+          git config user.email "actions@thehowlingwhispers.com"
+          git add app/dreambound-app.tsx tests/manual-player-format-preservation.test.mjs
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: preserve manual player formatting"
+          git push origin dev
