@@ -531,12 +531,15 @@ test("NovelAI receives the provider-independent Sensory POV context", async (con
   const response = await generateStory(makeNovelAIRequest({
     povStyle: "sensory",
     viewpoint: "roving",
+    perceptionDebug: true,
   }));
   assert.equal(response.status, 200);
+  const payload = await response.json();
   assert.equal(calls.length, 1);
   assert.match(calls[0].prompt, /<persona-perception>/);
   assert.match(calls[0].prompt, /Use player-persona-limited narration/);
   assert.doesNotMatch(calls[0].prompt, /Use roving limited narration/);
+  assert.equal(payload.context.perception.debug, undefined);
 });
 
 test("Immersive NovelAI character output over 400 words is capped", async (context) => {

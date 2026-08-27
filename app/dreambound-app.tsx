@@ -3528,6 +3528,7 @@ export default function DreamboundApp() {
         initiative,
         viewpoint: povStyle === "sensory" ? "user" : viewpoint,
         povStyle,
+        perceptionDebug: isDevelopmentDeployment && povStyle === "sensory",
         tense: storyTense,
         proseFormat: "roleplay",
         autopilotPov: activeSession?.autopilot ? (activeSession.autopilotPov ?? "third") : undefined,
@@ -6716,6 +6717,7 @@ Roleplay
           }}
           onConfigureLivingCast={() => setShowLivingCastConfig(true)}
           activeContextManifest={activeContextManifest}
+          isDevelopmentDeployment={isDevelopmentDeployment}
           connected={connected}
           providerState={providerState}
           providerLabel={providerLabel}

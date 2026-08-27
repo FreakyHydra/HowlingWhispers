@@ -3,7 +3,8 @@
 import React, { useRef, useState } from "react";
 import type { ContextLibrary, MemoryEntry, AuthorNoteEntry, LorebookRecord, LorebookParsedEntry } from "../../lib/context/types.ts";
 import { selectHWLorebooks, renderMemoryBlock, renderAuthorNoteBlock, renderHWLorebookBlock } from "../../lib/context/compile.ts";
-import { estimateTokens } from "../../lib/generation/compile-context.ts";
+import { estimateTokens, type ContextManifest } from "../../lib/generation/compile-context.ts";
+import { PerceptionDebug } from "./perception-debug.tsx";
 
 export interface ContextWorkspaceProps {
   contextLibrary: ContextLibrary;
@@ -19,22 +20,8 @@ export interface ContextWorkspaceProps {
   activeCharacterId?: string;
   activeSceneId?: string;
   characters?: Array<{ id: string; name: string }>;
-  activeContextManifest?: {
-    estimatedInputTokens: number;
-    includedLore: Array<{ id: string; title: string; reason: string }>;
-    contextWindow: number;
-    inputBudget: number;
-    includedMessages: number;
-    omittedMessages: number;
-    characterRevision: string;
-    worldRevision: string | null;
-    includedSections: string[];
-    omittedLore: Array<{ id: string; title: string; reason: string }>;
-    includedMemories?: number;
-    includedAuthorNotes?: number;
-    includedHWLore?: Array<{ id: string; title: string; reason: string }>;
-    omittedHWLore?: Array<{ id: string; title: string; reason: string }>;
-  } | undefined;
+  activeContextManifest?: ContextManifest;
+  isDevelopmentDeployment: boolean;
 }
 
 type Tab = "memory" | "author-note" | "lorebooks" | "active" | "debug";
@@ -55,6 +42,7 @@ export function ContextWorkspace(props: ContextWorkspaceProps) {
     activeSceneId,
     characters,
     activeContextManifest,
+    isDevelopmentDeployment,
   } = props;
 
   const [tab, setTab] = useState<Tab>("memory");
@@ -457,6 +445,9 @@ export function ContextWorkspace(props: ContextWorkspaceProps) {
                     {activeContextManifest.omittedLore.filter((e) => e.reason === "inactive").length} inactive, {activeContextManifest.omittedLore.filter((e) => e.reason === "budget").length} budget-limited lore entries stayed out.
                     {activeContextManifest.omittedHWLore != null && ` ${activeContextManifest.omittedHWLore.filter((e) => e.reason === "inactive").length} inactive, ${activeContextManifest.omittedHWLore.filter((e) => e.reason === "budget").length} budget-limited HW lore entries stayed out.`}
                   </p>
+                  {isDevelopmentDeployment && activeContextManifest.perception?.debug && (
+                    <PerceptionDebug perception={activeContextManifest.perception} />
+                  )}
                 </div>
               ) : (
                 <p className="context-inspector-empty">Generate a reply to see the compiled context.</p>

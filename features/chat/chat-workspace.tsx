@@ -9,7 +9,9 @@ import type { LivingCastConfig } from "../../lib/living-cast/config.ts";
 import { createCast, detectPendingInteraction } from "../../lib/generation/living-cast";
 import { relationshipMeterPercent } from "../../lib/relationships/index.ts";
 import { ContextWorkspace } from "../context/context-workspace.tsx";
+import { PerceptionDebug } from "../context/perception-debug.tsx";
 import type { ContextLibrary } from "../../lib/context/types.ts";
+import type { ContextManifest } from "../../lib/generation/compile-context.ts";
 
 export interface ChatWorkspaceProps {
   showCharacterRail: boolean;
@@ -67,18 +69,8 @@ export interface ChatWorkspaceProps {
   stopGeneration: () => void;
   isImpersonating: boolean;
   activePlayerName: string;
-  activeContextManifest: {
-    estimatedInputTokens: number;
-    includedLore: Array<{ id: string; title: string; reason: string }>;
-    contextWindow: number;
-    inputBudget: number;
-    includedMessages: number;
-    omittedMessages: number;
-    characterRevision: string;
-    worldRevision: string | null;
-    includedSections: string[];
-    omittedLore: Array<{ id: string; title: string; reason: string }>;
-  } | undefined;
+  activeContextManifest: ContextManifest | undefined;
+  isDevelopmentDeployment: boolean;
   livingCastEnabled: boolean;
   livingCastConfig: LivingCastConfig;
   panelOrder: string[];
@@ -195,6 +187,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
     isImpersonating,
     activePlayerName,
     activeContextManifest,
+    isDevelopmentDeployment,
     connected,
     providerState,
     providerLabel,
@@ -1086,6 +1079,9 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
                         <p className="context-omission-note">
                           {activeContextManifest.omittedLore.filter((entry) => entry.reason === "inactive").length} inactive lore entries and {activeContextManifest.omittedLore.filter((entry) => entry.reason === "budget").length} budget-limited entries stayed out.
                         </p>
+                        {isDevelopmentDeployment && activeContextManifest.perception?.debug && (
+                          <PerceptionDebug perception={activeContextManifest.perception} />
+                        )}
                       </div>
                     </details>
                   ) : (
@@ -1512,6 +1508,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
             activeSceneId={activeSession?.sceneId}
             characters={characters}
             activeContextManifest={activeContextManifest}
+            isDevelopmentDeployment={isDevelopmentDeployment}
           />
         )}
       {props.showPersonaModal && props.activeSession && (

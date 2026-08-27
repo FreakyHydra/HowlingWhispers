@@ -61,6 +61,7 @@ export type CompileContextInput = {
   playerPersona?: import("../personas/schema").PlayerPersona | string;
   preferences: StoryPreferences;
   povStyle?: PovStyle;
+  includePerceptionDebug?: boolean;
   autopilotPov?: "first" | "third" | "narrator";
   lengthInstruction: string;
   playerDirection?: string;
@@ -100,6 +101,30 @@ export type ContextManifest = {
     includedFacts: number;
     filteredFacts: number;
     channels: string[];
+    debug?: {
+      worldTruth: Array<{
+        id: string;
+        channel: string;
+        text: string;
+        relation: string;
+        status: "included" | "filtered";
+      }>;
+      personaPerception: Array<{
+        id: string;
+        channel: string;
+        text: string;
+        relation: string;
+        certainty: "direct";
+      }>;
+      filteredFacts: Array<{
+        id: string;
+        channel: string;
+        text: string;
+        relation: string;
+        reason: string;
+        certainty: "unavailable";
+      }>;
+    };
   };
 };
 
@@ -236,6 +261,9 @@ export function compileContext(input: CompileContextInput): CompiledContext {
     autonomy: input.autonomy,
   });
   const sensoryBlock = perception.block;
+  const perceptionFilteredReasons = new Map(
+    perception.filtered.map((entry) => [entry.id, entry.reason]),
+  );
   const speakerInstruction = speakerEntry
     ? renderSpeakerInstruction(speakerEntry, input.character.identity.name)
     : "";
@@ -328,6 +356,34 @@ export function compileContext(input: CompileContextInput): CompiledContext {
           includedFacts: perception.observations.length,
           filteredFacts: perception.filtered.length,
           channels: [...new Set(perception.observations.map((fact) => fact.channel))],
+          ...(input.includePerceptionDebug ? {
+            debug: {
+              worldTruth: perception.worldFacts.map((fact) => ({
+                id: fact.id,
+                channel: fact.channel,
+                text: fact.text,
+                relation: fact.relation ?? "same-place",
+                status: perceptionFilteredReasons.has(fact.id) ? "filtered" as const : "included" as const,
+              })),
+              personaPerception: perception.observations.map((fact) => ({
+                id: fact.id,
+                channel: fact.channel,
+                text: fact.text,
+                relation: fact.relation ?? "same-place",
+                certainty: "direct" as const,
+              })),
+              filteredFacts: perception.worldFacts
+                .filter((fact) => perceptionFilteredReasons.has(fact.id))
+                .map((fact) => ({
+                  id: fact.id,
+                  channel: fact.channel,
+                  text: fact.text,
+                  relation: fact.relation ?? "same-place",
+                  reason: perceptionFilteredReasons.get(fact.id)!,
+                  certainty: "unavailable" as const,
+                })),
+            },
+          } : {}),
         },
       } : {}),
     },

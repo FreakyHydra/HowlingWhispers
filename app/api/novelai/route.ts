@@ -44,6 +44,8 @@ const NOVELAI_BASE = "https://text.novelai.net/oa/v1";
 const CONNECTION_TEST_RESPONSE = "The Howling Whispers connected";
 const ALLOWED_MODELS = new Set(["xialong-v1", "glm-4-6"]);
 const ALLOWED_SENDERS = new Set(["character", "player", "narrator"]);
+const IS_DEVELOPMENT_DEPLOYMENT = process.env.VITE_DEPLOYMENT_ENV === "development"
+  || process.env.HOWLING_DEPLOYMENT_ENV === "development";
 const MAX_SERVER_GENERATIONS = parseMaxConcurrentGenerations(
   process.env.OLLAMA_MAX_CONCURRENT_GENERATIONS,
 );
@@ -433,6 +435,7 @@ export async function POST(request: Request) {
       playerPersona,
       preferences,
       povStyle: body.povStyle === "sensory" ? "sensory" : "standard",
+      includePerceptionDebug: body.perceptionDebug === true && IS_DEVELOPMENT_DEPLOYMENT,
       autopilotPov,
       lengthInstruction: isImpersonation
         ? IMPERSONATION_LENGTHS[replyLength]

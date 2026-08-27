@@ -4520,6 +4520,111 @@ a:focus-visible {
   padding-top: 9px;
 }
 
+.perception-debug {
+  background: rgba(3, 8, 9, 0.56);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px;
+}
+
+.perception-debug__heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.perception-debug__heading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.perception-debug__heading strong,
+.perception-debug h4 {
+  color: var(--theme-accent);
+  font-size: calc(9px * var(--ui-font-scale, 1));
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.perception-debug__heading small,
+.perception-debug__heading > span,
+.perception-debug li small,
+.perception-debug p {
+  color: var(--muted);
+  font-size: calc(9px * var(--ui-font-scale, 1));
+  line-height: 1.4;
+}
+
+.perception-debug__heading > span {
+  text-align: right;
+}
+
+.perception-debug__channels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.perception-debug__channels span {
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 24%, transparent);
+  color: var(--body);
+  font-size: calc(8px * var(--ui-font-scale, 1));
+  padding: 3px 5px;
+}
+
+.perception-debug__columns {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.perception-debug__columns > div,
+.perception-debug__filtered {
+  display: grid;
+  gap: 7px;
+}
+
+.perception-debug ul {
+  display: grid;
+  gap: 5px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.perception-debug li {
+  border-left: 2px solid color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  display: grid;
+  gap: 2px;
+  padding: 5px 6px;
+}
+
+.perception-debug li[data-status="filtered"],
+.perception-debug__filtered li {
+  border-left-color: rgba(226, 130, 105, 0.7);
+}
+
+.perception-debug li > span {
+  color: var(--body);
+  font-family: var(--serif);
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  line-height: 1.3;
+}
+
+.perception-debug p {
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .perception-debug__columns {
+    grid-template-columns: 1fr;
+  }
+}
+
 .provider-status {
   align-items: flex-start;
   background: rgba(6, 7, 9, 0.48);

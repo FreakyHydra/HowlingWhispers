@@ -44,6 +44,7 @@ export type PerceptionFact = {
 
 export type PerceptionResult = {
   enabled: boolean;
+  worldFacts: PerceptionFact[];
   observations: PerceptionFact[];
   filtered: Array<{ id: string; reason: string }>;
   block: string;
@@ -111,7 +112,7 @@ export function resolvePerception(
   config: SensoryPovConfig,
 ): PerceptionResult {
   if (config.style !== "sensory") {
-    return { enabled: false, observations: [], filtered: [], block: "" };
+    return { enabled: false, worldFacts: [], observations: [], filtered: [], block: "" };
   }
 
   const observations: PerceptionFact[] = [];
@@ -143,7 +144,7 @@ export function resolvePerception(
     "</persona-perception>",
   );
 
-  return { enabled: true, observations, filtered, block: lines.join("\n") };
+  return { enabled: true, worldFacts: facts, observations, filtered, block: lines.join("\n") };
 }
 
 export function buildSensoryContext(input: {
@@ -201,12 +202,22 @@ export function buildSensoryContext(input: {
 
   for (const agent of input.autonomy ?? []) {
     if (!activeCast.has(agent.id) && !activeCastNames.has(agent.name.trim().toLocaleLowerCase("en-US"))) continue;
-    for (const signal of recentResidue(agent, 2).observable) {
+    const residue = recentResidue(agent, 2);
+    for (const signal of residue.observable) {
       facts.push({
         id: `autonomy:${agent.id}:observable:${facts.length}`,
         channel: "bodyLanguage",
         text: signal.startsWith(agent.name) ? signal : `${agent.name} ${signal}`,
         relation: "same-place",
+      });
+    }
+    for (const signal of residue.internal) {
+      facts.push({
+        id: `autonomy:${agent.id}:internal:${facts.length}`,
+        channel: "spatialAwareness",
+        text: signal,
+        relation: "same-place",
+        private: true,
       });
     }
   }

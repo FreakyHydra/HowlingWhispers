@@ -70,6 +70,7 @@ test("Standard POV produces no perception context", () => {
 
   assert.equal(result.enabled, false);
   assert.equal(result.block, "");
+  assert.deepEqual(result.worldFacts, []);
   assert.deepEqual(result.observations, []);
 });
 
@@ -93,4 +94,6 @@ test("the HW adapter exposes active cast residue but never autonomous internal s
   assert.match(result.block, /Melody keeps glancing toward the key hook/);
   assert.doesNotMatch(result.block, /intends to steal|Goal: steal/);
   assert.doesNotMatch(result.block, /Gone is present/);
+  assert.ok(result.worldFacts.some((fact) => fact.text === "Melody intends to steal the key"));
+  assert.ok(result.filtered.some((fact) => fact.reason === "private-world-truth"));
 });

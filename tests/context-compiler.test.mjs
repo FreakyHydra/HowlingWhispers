@@ -540,6 +540,36 @@ test("Sensory POV injects persona perception and excludes non-speaker NPC subtex
   assert.doesNotMatch(result.prompt, /Goal: leave without being followed|Intent: hide the map|Melody plans to hide the map/);
   assert.doesNotMatch(result.prompt, /Use roving limited narration/);
   assert.equal(result.manifest.perception?.style, "sensory");
+  assert.equal(result.manifest.perception?.debug, undefined);
+});
+
+test("Sensory POV debug receipts expose filtering only when explicitly requested", () => {
+  const result = compile(adultCharacter(), {
+    povStyle: "sensory",
+    includePerceptionDebug: true,
+    cast: [
+      { id: "melody", name: "Melody", origin: "temporary", presence: "active", addedAt: 1, updatedAt: 1, notes: [], relationships: [] },
+    ],
+    autonomy: [{
+      id: "rc:melody",
+      name: "Melody",
+      drive: {
+        goal: "take the key",
+        intent: "hide it",
+        wants: [], fears: [], concerns: [],
+        needs: { hunger: 0, fatigue: 0, comfort: 0, social: 0, curiosity: 0 },
+      },
+      revisions: [{ internal: ["Melody intends to take the key"], observable: ["keeps watching the key hook"] }],
+      updatedAt: 2,
+    }],
+  });
+
+  const debug = result.manifest.perception?.debug;
+  assert.ok(debug);
+  assert.ok(debug.worldTruth.some((fact) => fact.text === "Melody intends to take the key" && fact.status === "filtered"));
+  assert.ok(debug.personaPerception.some((fact) => fact.text.includes("keeps watching the key hook")));
+  assert.ok(debug.filteredFacts.some((fact) => fact.reason === "private-world-truth" && fact.certainty === "unavailable"));
+  assert.doesNotMatch(result.prompt, /Melody intends to take the key/);
 });
 
 test("Standard POV keeps the existing prompt free of sensory context", () => {

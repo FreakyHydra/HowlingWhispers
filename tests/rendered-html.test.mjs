@@ -54,6 +54,7 @@ test("renders development preview metadata", async () => {
   assert.match(clientBundle, /Mistral Nemo 12B/);
   assert.match(clientBundle, /Generation through server-local Ollama/);
   assert.match(clientBundle, /Sensory POV/);
+  assert.match(clientBundle, /Development-only world truth and perception receipts/);
   assert.match(clientBundle, /fully canine anatomy/);
   assert.match(clientBundle, /never wears glasses/);
   assert.match(clientBundle, /assets\/Coda\/coda-moonlit-study\.png/);
@@ -116,6 +117,7 @@ test("renders development preview metadata", async () => {
   assert.match(stylesheet, /\.selected-role-note/);
   assert.match(stylesheet, /\.context-inspector-card/);
   assert.match(stylesheet, /\.context-receipts/);
+  assert.match(stylesheet, /\.perception-debug/);
   assert.match(stylesheet, /@keyframes entrance-reveal/);
 
   const workerSource = await readFile(workerUrl, "utf8");
