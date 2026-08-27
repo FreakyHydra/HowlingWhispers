@@ -84,6 +84,14 @@ const POSITIVE_GUIDANCE = [
   "Do not reduce characters to verbal stereotypes based on role, species, occupation, traits, or archetype. Traits influence behavior; they are not recurring catchphrases or gimmicks.",
 ];
 
+const ROLEPLAY_FORMAT_GUIDANCE = [
+  "Roleplay markup is mandatory, not decorative: actions, gestures, description, dialogue tags, and narration belong in single asterisks; spoken words belong in double quotes; private thoughts belong in square brackets.",
+  "Classify by meaning, not grammar. If a character is saying a sentence aloud, it MUST be in double quotes even when the sentence talks about another person, sounds explanatory, or could be mistaken for narration.",
+  "Never put spoken dialogue inside single asterisks. For example, write \"She won't carry them on patrol until she's trained.\" rather than *She won't carry them on patrol until she's trained.*",
+  "Do not leave spoken dialogue as bare unmarked prose. For example, write \"Twelve is old enough to learn proper care of tools.\" rather than Twelve is old enough to learn proper care of tools.",
+  "Keep actual narration distinct: *From the back room, metal scrapes against a whetstone.* remains narration, not dialogue.",
+];
+
 const POSITIVE_PREFERRED =
   "Prefer concrete detail, natural progression, individual voices, controlled description, meaningful dialogue, and implication over explanation.";
 
@@ -96,6 +104,7 @@ export function renderProseQualityPolicy(profile = DEFAULT_PROSE_PROFILE): strin
   return [
     "<prose-quality-policy>",
     ...POSITIVE_GUIDANCE,
+    ...ROLEPLAY_FORMAT_GUIDANCE,
     `Avoid ${negatives}, stock AI phrasing, and thematic closing summaries.`,
     POSITIVE_PREFERRED,
     "</prose-quality-policy>",
