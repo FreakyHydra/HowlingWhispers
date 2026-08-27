@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-const APP_VERSION = "0.10.3.0";
+const APP_VERSION = "0.11.0.0";
 const MAX_SIGNALS = 30;
 
 type RuntimeSignal = {

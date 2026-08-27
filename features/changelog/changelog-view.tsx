@@ -16,7 +16,55 @@ export function ChangelogView(props: ChangelogViewProps) {
       </header>
 
            <div className="changelog-list">
-             <article className="changelog-entry featured latest">
+             <article className="changelog-entry milestone latest">
+               <span className="changelog-mark">👁️</span>
+               <div>
+                 <span className="changelog-version">Version 0.11.0.0 · Sensory Persona POV — Part One of Two</span>
+                 <div className="milestone-badge">🏆 MAJOR FEATURE RELEASE</div>
+                 <h2>Sensory Persona POV — Part One of Two</h2>
+                 <blockquote className="milestone-quote">The World Engine may know everything. The player persona should not.</blockquote>
+                 <p>Part One establishes a provider-independent boundary between world truth, persona perception, and the prose shown to the player.</p>
+                 <h3>✨ Sensory Persona POV</h3>
+                 <ul>
+                   <li><strong>New POV Style</strong> — choose Standard or Sensory POV under Roleplay Direction</li>
+                   <li><strong>Player-limited perspective</strong> — Sensory POV narrates through what the selected player persona can physically perceive</li>
+                   <li><strong>Seven perception channels</strong> — sight, hearing, smell, touch, taste, body language, and spatial awareness</li>
+                   <li><strong>Contextual sensory detail</strong> — senses are used when relevant instead of being forced into every reply</li>
+                   <li><strong>Basic spatial filtering</strong> — supports same place, near, far, behind, in front, beside, touching, barriers, and out-of-sight relationships</li>
+                   <li><strong>Physical limits</strong> — line of sight, barriers, volume, and direct contact decide which structured facts reach narration</li>
+                 </ul>
+                 <h3>🎭 Show, Don&apos;t Tell</h3>
+                 <ul>
+                   <li><strong>Observable body language</strong> — tense shoulders, flattened ears, pale knuckles, footsteps, and other clues can be described directly</li>
+                   <li><strong>Cautious interpretation</strong> — physical evidence may suggest emotion but cannot confirm hidden motives or thoughts</li>
+                   <li><strong>Anti-omniscience rules</strong> — unseen expressions, private thoughts, undiscovered objects, off-screen actions, and unsupported intentions stay hidden</li>
+                   <li><strong>Character disclosure remains possible</strong> — characters can still reveal feelings and intentions through speech or deliberate action</li>
+                 </ul>
+                 <h3>🐾 Living and Autonomous Cast</h3>
+                 <ul>
+                   <li><strong>Observable residue</strong> — active cast members can contribute visible or audible behaviour to sensory context</li>
+                   <li><strong>Private state protection</strong> — goals, intents, wants, fears, concerns, needs, and internal autonomous residue are removed from the shared Sensory POV prompt</li>
+                   <li><strong>World truth survives</strong> — hidden autonomous developments can remain in world state for later discovery without appearing immediately in narration</li>
+                 </ul>
+                 <h3>⌁ Development Perception Inspector</h3>
+                 <ul>
+                   <li><strong>World Truth versus Persona Perception</strong> — compare every considered fact with what actually reached generation</li>
+                   <li><strong>Filtering receipts</strong> — inspect sensory channel, spatial relationship, certainty, inclusion status, and filtering reason</li>
+                   <li><strong>Development-only security</strong> — detailed hidden facts are never returned by the production API, even when manually requested</li>
+                 </ul>
+                 <h3>🔄 Generation and Portability</h3>
+                 <ul>
+                   <li><strong>Provider independent</strong> — NovelAI, server Ollama, device/local Ollama, and future providers receive context from the same perception layer</li>
+                   <li><strong>Persistent preference</strong> — POV Style survives browser sessions and private-data backup/restore</li>
+                   <li><strong>Standard compatibility</strong> — Standard POV preserves the previous prompt exactly and restores the user&apos;s earlier viewpoint choice</li>
+                   <li><strong>Budget aware</strong> — sensory context participates in the normal generation token budget</li>
+                 </ul>
+                 <h3>🧭 Part One Boundaries</h3>
+                 <p>Part One builds the foundation from state Howling Whispers already tracks. It does not yet simulate coordinates, physics, smell propagation, acoustic ray tracing, complex vision cones, or species-specific biology. Future parts can add rooms, orientation, distance, barriers, contact, objects, discoveries, and persistent off-screen actions without replacing this perception system.</p>
+               </div>
+             </article>
+
+             <article className="changelog-entry featured">
                <span className="changelog-mark">🏮</span>
                <div>
                  <span className="changelog-version">Version 0.10.3.0 · The Signal Lantern</span>

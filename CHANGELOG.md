@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.11.0.0 — Sensory Persona POV, Part One of Two
+
+🏆 MAJOR FEATURE RELEASE
+
+> The World Engine may know everything. The player persona should not. Part One establishes the boundary between world truth, persona perception, and the prose shown to the player.
+
+### ✨ Added
+
+#### Sensory Persona POV
+
+- **New POV Style setting** — Roleplay Direction now offers **Standard** and **Sensory POV** without adding several unfinished narration modes
+- **Player-persona-limited narration** — Sensory POV locks narration to the selected player persona’s physical perspective instead of allowing roving or character-limited knowledge
+- **Dedicated perception layer** — structured world facts are resolved into a separate `<persona-perception>` context before the common generation compiler builds a provider prompt
+- **Sensory channels** — the perception model supports sight, hearing, smell, touch, taste, body language, and spatial awareness
+- **Contextual sensory guidance** — the model is told to use only senses relevant to the current story beat rather than forcing all five senses into every reply
+- **Basic spatial relationships** — the resolver understands same place, near, far, behind, in front, beside, touching, separated by a barrier, and out of sight
+- **Line-of-sight filtering** — facial expressions, visible movement, and body language are withheld when a character is behind the persona, beyond sight, or separated by an opaque barrier
+- **Barrier-aware hearing** — quiet sounds can be muted by a barrier while explicitly loud sounds may remain audible
+- **Contact-aware touch and taste** — direct touch and taste require physical contact; distant warmth, texture, pressure, and flavor are not presented as sensations the persona directly feels
+- **Body-language evidence** — visible physical signals can support cautious interpretation without turning inferred emotion or motivation into confirmed fact
+
+#### World Truth and Autonomous Characters
+
+- **World-truth separation** — the World Engine can retain facts that are not passed into persona perception or narration
+- **Private autonomous residue** — autonomous character intentions and internal developments can remain in world truth while observable actions remain available to Sensory POV
+- **Off-screen protection** — absent characters and actions outside the persona’s perception are not automatically exposed in the sensory context
+- **Living Cast integration** — active cast members can contribute observable residue without leaking their private goals, wants, fears, concerns, needs, or internal reasoning
+- **Perception receipts** — the context manifest records safe totals for included facts, filtered facts, and active sensory channels
+
+#### Development Perception Inspector
+
+- **World Truth view** — the development Context Inspector can show every structured fact considered by the perception resolver
+- **Persona Perception view** — developers can compare world truth with the facts actually delivered to the player-limited generation context
+- **Filtering explanations** — rejected facts display their sensory channel, spatial relationship, certainty, and reason such as no line of sight, no contact, barrier muted, or private world truth
+- **Two inspector locations** — receipts appear in the Roleplay context rail and the full Context workspace after a Sensory POV reply is generated
+- **Development-only protection** — detailed hidden facts are returned only by a development deployment; production API responses retain safe summary counts and reject manually requested debug details
+
+### 🔄 Changed
+
+#### Generation Pipeline
+
+- **Provider-independent compilation** — Sensory POV is owned by the common Howling Whispers generation layer and reaches NovelAI, server Ollama, device/local Ollama, and future providers through already-compiled context
+- **Observable autonomy mode** — non-speaking autonomous cast entries contribute observable residue in Sensory POV while their private subtext is removed from the shared prompt
+- **Anti-omniscience instructions** — generation is explicitly forbidden from revealing private thoughts, unseen expressions, undiscovered objects, unsupported motives, or actions outside the persona’s perception
+- **Show, don’t tell preference** — emotions, pain, fear, attraction, deception, hostility, and intentions are represented through observable evidence unless a character deliberately reveals them
+- **Safe context budgeting** — the sensory context is included in the existing fixed-context token accounting rather than bypassing the compiler budget
+
+#### Settings and Portability
+
+- **Persistent POV preference** — the selected POV Style survives browser sessions
+- **Portable backups** — Standard or Sensory POV is preserved through private-data backup and restore
+- **Viewpoint preservation** — switching to Sensory POV temporarily locks Player limited narration without deleting the user’s previous Standard viewpoint selection
+
+### 🛡 Compatibility and Safety
+
+- **Standard POV remains unchanged** — explicitly choosing Standard produces the same compiled prompt as the previous implicit default
+- **No provider-specific sensory fork** — NovelAI and Ollama use the same perception decisions instead of developing incompatible sensory behavior
+- **No species assumptions yet** — Part One does not automatically assign enhanced smell, night vision, hearing ranges, blindness, or other biological traits without structured persona support
+- **No hidden debug leak** — world-truth text is absent from ordinary production manifests and never added to visible roleplay output
+- **No reduction of World Engine knowledge** — unavailable information is filtered at generation time rather than deleted from the world model
+
+### 🧪 Verification
+
+- Added coverage for characters behind the persona, audible speech without visible expressions, closed barriers, quiet and loud sounds, direct-contact touch and taste, body-language evidence, private world truth, hidden autonomous actions, provider-independent compilation, backup round-tripping, development diagnostics, and Standard POV regression
+- The complete automated suite, lint pass, and production artifact build were run before the feature was committed to `dev`
+
+### 🧭 Part One Boundaries
+
+Part One establishes the architecture and reliable rules using the state Howling Whispers already has. It deliberately does not attempt full coordinates, physics, acoustic ray tracing, smell propagation, complex vision cones, or automatic biological modelling.
+
+Future parts can expand structured Scene State with rooms, barriers, orientation, distance, contact, held objects, discovered information, and persistent off-screen actions without rebuilding the perception system introduced here.
+
+---
+
 ## 0.10.3.0 — The Signal Lantern
 
 ### ✨ Added
