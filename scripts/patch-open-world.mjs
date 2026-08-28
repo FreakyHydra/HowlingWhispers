@@ -25,7 +25,7 @@ patchFile("app/dreambound-app.tsx", (source) => {
     next = next.replace(marker, launcher + marker);
   }
 
-  if (!next.includes(">Start Open World<")) {
+  if (!next.includes("startOpenWorld();")) {
     const menuMarker = `                <button onClick={() => { setAccountMenuOpen(false); setView(\"changelog\"); }} role=\"menuitem\">\n                  What&apos;s new\n                </button>\n                <div className=\"account-menu-divider\" />`;
     if (!next.includes(menuMarker)) {
       throw new Error("Could not find the player menu marker in dreambound-app.tsx");
