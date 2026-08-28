@@ -3884,15 +3884,23 @@ export default function DreamboundApp() {
       return;
     }
 
+    // Manual player text is authoritative. If the user supplied roleplay
+    // markup, preserve it exactly instead of reinterpreting it through the
+    // Action/Narration wrapper. Plain text may still use the selected one-shot
+    // mode, which resets to Dialogue after the message is submitted.
+    const hasExplicitRoleplayMarkup = /(?:\*[^*\n]+\*|["“][^"”\n]+["”]|\[[^\]\n]+\])/.test(text);
+    const submittedText = hasExplicitRoleplayMarkup
+      ? text
+      : mode === "Action"
+        ? `*${text}*`
+        : mode === "Narration"
+          ? `[${text}]`
+          : text;
+
     const playerMessage: Message = {
       id: Date.now(),
       sender: "player",
-      text:
-        mode === "Action"
-          ? `*${text.replace(/^\*|\*$/g, "")}*`
-          : mode === "Narration"
-            ? `[${text}]`
-            : text,
+      text: submittedText,
     };
     const conversation = [...activeMessages, playerMessage];
     const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
@@ -3928,6 +3936,7 @@ export default function DreamboundApp() {
       playerName: effectivePlayerName,
     });
     setDraft("");
+    setMode("Dialogue");
     setRelationshipDelta(null);
     setIsReplying(true);
     setChatError("");
