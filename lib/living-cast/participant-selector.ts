@@ -1,6 +1,7 @@
 import type { LivingCastEntry } from "../generation/living-cast.ts";
 import type { ParticipationMode } from "./config.ts";
 import { matchesName } from "../generation/living-cast.ts";
+
 export interface Message {
   sender: string;
   text: string;
@@ -20,6 +21,14 @@ function textMentionsName(text: string, name: string): boolean {
     return true;
   }
   return false;
+}
+
+function isCollectiveAddress(text: string): boolean {
+  return /\b(?:everyone|everybody|all of you|you all|you two|you three|both of you|the two of you|the three of you|guys|folks|crew)\b/i.test(text);
+}
+
+function activeNonPlayerEntries(entries: LivingCastEntry[]): LivingCastEntry[] {
+  return entries.filter((entry) => entry.origin !== "player" && entry.presence === "active");
 }
 
 export class RoundRobinSelector {
@@ -65,61 +74,79 @@ export class SmartSelector {
     return candidates[0] ?? null;
   }
 
-  select(conversation: Message[], playerMessage: Message[]): LivingCastEntry[] {
+  select(conversation: Message[], playerMessages: Message[]): LivingCastEntry[] {
     if (conversation.length === 0) return [];
 
-    const lastFew = conversation.slice(-10);
-    const candidates = new Set<LivingCastEntry>();
+    const activeEntries = activeNonPlayerEntries(this.entries);
+    if (activeEntries.length === 0) return [];
 
-    // Heuristic 2: direct name mentions in recent messages
-    for (const message of lastFew) {
-      const text = message.text ?? "";
-      for (const entry of this.entries) {
-        if (entry.origin === "player") continue;
-        if (textMentionsName(text, entry.name)) {
-          candidates.add(entry);
-        }
+    const latestPlayerMessage = [...playerMessages].reverse().find((msg) => msg.sender === "player")
+      ?? [...conversation].reverse().find((msg) => msg.sender === "player");
+
+    // Direct player address is authoritative for this turn. If the player names
+    // Riley, Riley gets the conversational focus while the rest of the cast stays
+    // present but silent. Naming two or more characters focuses exactly those
+    // characters. This prevents old mentions and the previous speaker from
+    // dragging extra cast members into every reply.
+    if (latestPlayerMessage) {
+      const explicitMentions = activeEntries.filter((entry) =>
+        textMentionsName(latestPlayerMessage.text ?? "", entry.name),
+      );
+      if (explicitMentions.length > 0) {
+        return explicitMentions;
+      }
+
+      // Collective wording is the explicit opt-in for a group response.
+      if (isCollectiveAddress(latestPlayerMessage.text ?? "")) {
+        return activeEntries;
       }
     }
 
-    // Heuristic 3: unanswered direct questions to specific cast members
-    for (const message of playerMessage) {
-      const text = message.text ?? "";
+    const candidates = new Set<LivingCastEntry>();
+
+    // If the newest player turn asks a direct question without naming anyone,
+    // prefer the current conversational speaker rather than waking the full cast.
+    if (latestPlayerMessage) {
+      const text = latestPlayerMessage.text ?? "";
       const hasQuestion =
         /[?？]/.test(text) ||
         /\b(?:ask|question|tell|what|why|how|who|when|where|do|does|did|is|are|can|could|would|will|should)\b/i.test(text);
 
-      if (!hasQuestion) continue;
-
-      for (const entry of this.entries) {
-        if (entry.origin === "player") continue;
-        const mentionsName = textMentionsName(text, entry.name);
-        const askPattern = new RegExp(`\\bask\\s+${escapeRegex(entry.name)}\\b`, "i").test(text);
-        if (mentionsName || askPattern) {
-          candidates.add(entry);
+      if (hasQuestion) {
+        const lastCharacterMessage = [...conversation].reverse().find(
+          (msg) => msg.sender === "character" && msg.speaker,
+        );
+        if (lastCharacterMessage?.speaker) {
+          const currentSpeaker = activeEntries.find((entry) =>
+            matchesName(entry.name, lastCharacterMessage.speaker!),
+          );
+          if (currentSpeaker) candidates.add(currentSpeaker);
         }
       }
     }
 
-    // Heuristic 4: last speaker was a cast member and scene is still active
-    const lastCharacterMessage = [...conversation].reverse().find(
-      (msg) => msg.sender === "character" && msg.speaker,
-    );
-    if (lastCharacterMessage?.speaker) {
-      for (const entry of this.entries) {
-        if (entry.origin === "player") continue;
-        if (matchesName(entry.name, lastCharacterMessage.speaker!) && entry.presence === "active") {
-          candidates.add(entry);
-        }
+    // Otherwise let the last active speaker keep the floor. This preserves a
+    // natural one-on-one exchange while other cast members remain scene-aware.
+    if (candidates.size === 0) {
+      const lastCharacterMessage = [...conversation].reverse().find(
+        (msg) => msg.sender === "character" && msg.speaker,
+      );
+      if (lastCharacterMessage?.speaker) {
+        const currentSpeaker = activeEntries.find((entry) =>
+          matchesName(entry.name, lastCharacterMessage.speaker!),
+        );
+        if (currentSpeaker) candidates.add(currentSpeaker);
       }
     }
 
-    // Final filter: active non-player characters only
-    const result = [...candidates].filter(
-      (entry) => entry.presence === "active" && entry.origin !== "player",
-    );
+    // If there has not been a cast speaker yet, use the configured primary only
+    // when it is actually part of the active cast.
+    if (candidates.size === 0 && this.primaryName.trim()) {
+      const primary = activeEntries.find((entry) => matchesName(entry.name, this.primaryName));
+      if (primary) candidates.add(primary);
+    }
 
-    return result;
+    return [...candidates];
   }
 }
 
