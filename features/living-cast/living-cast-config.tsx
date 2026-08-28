@@ -18,7 +18,7 @@ export function LivingCastConfig(props: LivingCastConfigProps) {
         <div>
           <p className="eyebrow">Add-on</p>
           <h1>Living Cast</h1>
-          <p>Multi-character roleplay and cast management.</p>
+          <p>Multi-character roleplay with scene presence and conversational focus.</p>
         </div>
         <div>
           <button className="outline-button" type="button" onClick={props.onBack}>
@@ -32,7 +32,7 @@ export function LivingCastConfig(props: LivingCastConfigProps) {
         <label className="toggle-row">
           <span>
             <span className="setting-name-row">Enabled</span>
-            <small>Allow explicitly invited characters to participate in the current roleplay.</small>
+            <small>Keep invited characters present in the current roleplay without forcing all of them to speak.</small>
           </span>
           <span className="switch">
             <input
@@ -53,24 +53,10 @@ export function LivingCastConfig(props: LivingCastConfigProps) {
         <legend>Participation Mode</legend>
         <label className="toggle-row">
           <span>
-            <span className="setting-name-row">Round Robin</span>
-            <small>Characters take turns in a stable order.</small>
-          </span>
-          <span className="switch">
-            <input
-              type="radio"
-              name="participation-mode"
-              checked={props.config.participationMode === "round-robin"}
-              onChange={() =>
-                props.onConfigChange({ ...props.config, participationMode: "round-robin" })
-              }
-            />
-          </span>
-        </label>
-        <label className="toggle-row">
-          <span>
-            <span className="setting-name-row">Smart</span>
-            <small>Characters step in only when directly addressed or relevant.</small>
+            <span className="setting-name-row">Smart Focus</span>
+            <small>
+              Mention a character by name to focus that character for the turn. Mention several names for a group reply. Other cast members stay present and scene-aware.
+            </small>
           </span>
           <span className="switch">
             <input
@@ -83,10 +69,29 @@ export function LivingCastConfig(props: LivingCastConfigProps) {
             />
           </span>
         </label>
+        <label className="toggle-row">
+          <span>
+            <span className="setting-name-row">Round Robin</span>
+            <small>Characters take turns in a stable order. Useful for controlled multi-character tests.</small>
+          </span>
+          <span className="switch">
+            <input
+              type="radio"
+              name="participation-mode"
+              checked={props.config.participationMode === "round-robin"}
+              onChange={() =>
+                props.onConfigChange({ ...props.config, participationMode: "round-robin" })
+              }
+            />
+          </span>
+        </label>
       </fieldset>
 
       <fieldset className="story-control-fieldset">
         <legend>Current Cast</legend>
+        <p className="settings-field-help">
+          Cast members can remain in the scene even when another character has the conversational focus.
+        </p>
         <div className="living-cast-config-list">
           {props.cast.map((member) => (
             <div key={member.id} className="living-cast-config-entry">
