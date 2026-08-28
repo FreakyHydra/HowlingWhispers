@@ -1,0 +1,48 @@
+name: Apply visible Free RP entry
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - scripts/patch-free-rp-entry.mjs
+      - .github/workflows/apply-free-rp-entry.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply patch
+        run: node scripts/patch-free-rp-entry.mjs
+
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit source changes and remove temporary patch files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm scripts/patch-free-rp-entry.mjs .github/workflows/apply-free-rp-entry.yml
+          git add app/dreambound-app.tsx app/features/roleplay/roleplay-area.tsx
+          if git diff --cached --quiet; then
+            echo "Nothing to commit"
+            exit 0
+          fi
+          git commit -m "feat: expose Free RP on roleplay home"
+          git push origin dev
