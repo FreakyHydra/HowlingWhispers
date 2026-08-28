@@ -52,14 +52,15 @@ jobs:
           PORT="${SSH_PORT:-22}"
           ssh-keyscan -p "$PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts
 
-      - name: Deploy tested dev commit
+      - name: Deploy exact CI-approved dev commit
         env:
           SSH_HOST: ${{ secrets.HW_DEV_SSH_HOST }}
           SSH_USER: ${{ secrets.HW_DEV_SSH_USER }}
           SSH_PORT: ${{ secrets.HW_DEV_SSH_PORT }}
           APP_DIR: ${{ secrets.HW_DEV_APP_DIR }}
           SERVICE: ${{ secrets.HW_DEV_SERVICE }}
+          APPROVED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           PORT="${SSH_PORT:-22}"
-          printf -v REMOTE 'export HW_APP_DIR=%q HW_SERVICE=%q HW_BRANCH=dev; cd %q; git fetch origin dev; git checkout dev; git pull --ff-only origin dev; chmod +x scripts/deploy-dev-server.sh; exec scripts/deploy-dev-server.sh' "$APP_DIR" "$SERVICE" "$APP_DIR"
+          printf -v REMOTE 'set -Eeuo pipefail; cd %q; OLD_SHA=$(git rev-parse HEAD); git fetch origin dev; git checkout dev; git reset --hard %q; chmod +x scripts/deploy-dev-server.sh; export HW_APP_DIR=%q HW_SERVICE=%q HW_BRANCH=dev HW_EXPECTED_SHA=%q HW_PREVIOUS_SHA="$OLD_SHA"; exec scripts/deploy-dev-server.sh' "$APP_DIR" "$APPROVED_SHA" "$APP_DIR" "$SERVICE" "$APPROVED_SHA"
           ssh -p "$PORT" "$SSH_USER@$SSH_HOST" "$REMOTE"
