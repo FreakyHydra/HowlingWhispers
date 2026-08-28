@@ -6001,6 +6001,63 @@ function updateCharacter(id: string, updates: Partial<Character>) {
     }));
   }
 
+  function startOpenWorld() {
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+    const openWorldLocation = sanitizeLocation({
+      id: "open-world",
+      name: "Open World",
+      type: "Open world",
+      shortDescription: "No predefined cast. Begin with only your persona and let the world develop around you.",
+      description: "An open-ended roleplay starting point. The player enters without a predefined companion, primary Contact, or mandatory story. Characters may be encountered, mentioned, invited, or emerge naturally as the world develops.",
+      atmosphere: ["open-ended", "player-led", "persistent social world"],
+      occupants: [],
+      tags: ["open-world", "player-start"],
+      source: "custom",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    if (!openWorldLocation) {
+      setChatError("Open World could not be created.");
+      return;
+    }
+
+    const scene = createLocationScene(openWorldLocation);
+    const { session, initialMessages } = buildSessionInitialState(
+      null,
+      scene,
+      openWorldLocation,
+      { persona: activePersona ?? null },
+    );
+
+    session.livingCast = [];
+    session.autonomousCast = [];
+
+    setLocations((current) => {
+      const existing = current.some((location) => location.id === openWorldLocation.id);
+      return existing
+        ? current.map((location) => location.id === openWorldLocation.id ? openWorldLocation : location)
+        : [openWorldLocation, ...current];
+    });
+    setMessages((current) => ({ ...current, [session.messageKey]: initialMessages }));
+    setSessions((current) => [session, ...current]);
+    setCurrentSessionId(session.id);
+    setSelectedId(locationSelectionKey(openWorldLocation.id));
+
+    const nextLivingCastConfig: LivingCastConfig = {
+      ...livingCastConfig,
+      enabled: true,
+      participationMode: "smart",
+    };
+    setLivingCastConfig(nextLivingCastConfig);
+    writeLivingCastConfig(nextLivingCastConfig);
+
+    setAutopilotError("");
+    setChatError("");
+    setView("chat");
+  }
+
   function importContextFile(file: File, kind: "memory" | "author-note" | "lorebook") {
     const reader = new FileReader();
     reader.onload = () => {
@@ -6125,6 +6182,9 @@ Roleplay
                 </button>
                 <button onClick={() => { setAccountMenuOpen(false); setView("changelog"); }} role="menuitem">
                   What&apos;s new
+                </button>
+                <button onClick={() => { setAccountMenuOpen(false); startOpenWorld(); }} role="menuitem">
+                  Start Open World
                 </button>
                 <div className="account-menu-divider" />
                 {curatorAuthLoading ? (

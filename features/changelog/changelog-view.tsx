@@ -17,6 +17,45 @@ export function ChangelogView(props: ChangelogViewProps) {
 
            <div className="changelog-list">
              <article className="changelog-entry milestone latest">
+               <span className="changelog-mark">🌍</span>
+               <div>
+                 <span className="changelog-version">Version 0.11.1.0 · Open World Begins</span>
+                 <div className="milestone-badge">✨ MINOR FEATURE RELEASE</div>
+                 <h2>Open World Begins</h2>
+                 <blockquote className="milestone-quote">Start with nobody. Meet whoever the world puts in your path.</blockquote>
+                 <p>A new player-level start mode removes the mandatory primary Contact and lets a roleplay begin with only the active persona.</p>
+                 <h3>✨ Added</h3>
+                 <ul>
+                   <li><strong>Start Open World</strong> — available directly from the player menu under What&apos;s new</li>
+                   <li><strong>Persona-only opening</strong> — a fresh session begins with the active persona and no predefined NPC cast</li>
+                   <li><strong>Living Cast ready</strong> — Smart Focus is enabled so characters can join naturally as they are encountered or invited</li>
+                   <li><strong>Persistent open-world session</strong> — Open World uses the existing Location, session, generation, persona, and World Engine paths instead of a second chat system</li>
+                 </ul>
+                 <h3>🎭 Living Cast</h3>
+                 <ul>
+                   <li><strong>Direct focus</strong> — mentioning one present character focuses only that character for the turn</li>
+                   <li><strong>Group address</strong> — naming several characters, or using group wording such as everyone or you two, allows multiple participants</li>
+                   <li><strong>Quiet presence</strong> — characters can remain present and scene-aware without being forced to answer every turn</li>
+                 </ul>
+               </div>
+             </article>
+
+             <article className="changelog-entry featured">
+               <span className="changelog-mark">🎭</span>
+               <div>
+                 <span className="changelog-version">Version 0.11.0.1 · Living Cast Focus Fix</span>
+                 <h2>Living Cast Focus Fix</h2>
+                 <p>Smart participation now follows the player&apos;s current address instead of dragging old name mentions back into later turns.</p>
+                 <h3>🛠 Fixed</h3>
+                 <ul>
+                   <li><strong>Latest-turn focus</strong> — a direct name mention takes priority over older conversation history</li>
+                   <li><strong>No unwanted chorus</strong> — unrelated cast members stay present without automatically speaking</li>
+                   <li><strong>Clearer controls</strong> — the Living Cast page now explains Smart Focus behavior more directly</li>
+                 </ul>
+               </div>
+             </article>
+
+             <article className="changelog-entry milestone">
                <span className="changelog-mark">👁️</span>
                <div>
                  <span className="changelog-version">Version 0.11.0.0 · Sensory Persona POV — Part One of Two</span>

@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.11.1.0 — Open World Begins
+
+✨ MINOR FEATURE RELEASE
+
+### Added
+
+- **Start Open World** in the player menu starts a fresh roleplay with only the active persona and no predefined primary Contact.
+- **Persona-only opening** uses the existing Location/session generation path so the new mode does not fork the roleplay runtime.
+- **Living Cast ready by default** in Open World with Smart Focus enabled for characters that enter later.
+
+### Changed
+
+- **Living Cast Smart Focus** now prioritizes characters named in the latest player turn instead of keeping older mentions active indefinitely.
+- **Quiet cast presence** lets characters remain in-scene and aware without forcing every present character to reply.
+- **Group address support** allows several explicitly named characters, or collective wording such as "everyone" and "you two", to participate together.
+
+---
+
+## 0.11.0.1 — Living Cast Focus Fix
+
+### Fixed
+
+- Directly addressing one cast member now focuses that character for the current turn.
+- Old name mentions no longer keep unrelated cast members eligible forever.
+- Living Cast settings copy now describes Smart Focus behavior more clearly.
+
+---
+
 ## 0.11.0.0 — Sensory Persona POV, Part One of Two
 
 🏆 MAJOR FEATURE RELEASE
