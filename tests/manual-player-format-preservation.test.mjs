@@ -7,8 +7,9 @@ const source = fs.readFileSync(new URL("../app/dreambound-app.tsx", import.meta.
 test("manual send path stores typed player text without formatPlayerTurn", () => {
   const start = source.indexOf("async function sendMessage()");
   assert.notEqual(start, -1, "sendMessage() not found");
-  const end = source.indexOf("\n  async function", start + 1);
-  const body = source.slice(start, end === -1 ? start + 12000 : end);
+  const end = source.indexOf("async function impersonateTurn", start + 1);
+  assert.notEqual(end, -1, "impersonateTurn() not found after sendMessage()");
+  const body = source.slice(start, end);
 
   assert.match(body, /const text = draft\.trim\(\)/);
   assert.doesNotMatch(body, /formatPlayerTurn\s*\(/);
