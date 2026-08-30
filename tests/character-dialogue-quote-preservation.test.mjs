@@ -12,7 +12,7 @@ const baseBody = {
   apiToken: "test-token",
   model: "xialong-v1",
   temperature: 0.8,
-  replyLength: "quick",
+  replyLength: "immersive",
   initiative: "balanced",
   viewpoint: "character",
   tense: "present",
