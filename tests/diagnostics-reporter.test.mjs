@@ -22,6 +22,6 @@ test("diagnostics are opt-in, previewed, and privacy bounded", () => {
 
 test("diagnostic transport is allowlisted and release is documented", () => {
   assert.match(bridge, /\|diagnostics\|/);
-  assert.equal(packageInfo.version, "0.11.0.0");
+  assert.equal(packageInfo.version, "0.11.1.0");
   assert.match(changelog, /Version 0\.10\.3\.0 · The Signal Lantern/);
 });
