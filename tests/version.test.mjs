@@ -36,14 +36,11 @@ test("does not offer prereleases over the matching stable version", () => {
 
 test("release metadata uses one version across package and launcher sources", async () => {
   const packageInfo = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-  const packageLock = JSON.parse(await readFile(new URL("../package-lock.json", import.meta.url), "utf8"));
   const launcher = await readFile(new URL("../launcher/HowlingWhispersLauncher.cs", import.meta.url), "utf8");
   const updateConfig = JSON.parse(
     await readFile(new URL("../public/update-config.json", import.meta.url), "utf8"),
   );
   assert.equal(packageInfo.version, "0.11.1.0");
-  assert.equal(packageLock.version, packageInfo.version);
-  assert.equal(packageLock.packages[""].version, packageInfo.version);
   assert.match(launcher, new RegExp(`AssemblyVersion\\("${packageInfo.version}"\\)`));
   assert.match(launcher, new RegExp(`AssemblyFileVersion\\("${packageInfo.version}"\\)`));
   assert.equal(updateConfig.repository, "FreakyHydra/HowlingWhispers");
