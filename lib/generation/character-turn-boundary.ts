@@ -26,6 +26,13 @@ function normalizedWords(value: string): string {
   return wordSpans(value).map(({ word }) => word).join(" ");
 }
 
+function normalizeMarkupChar(value: string): string {
+  if (value === "“" || value === "”") return '"';
+  if (value === "‘" || value === "’") return "'";
+  if (value === "—" || value === "–") return "-";
+  return value;
+}
+
 /**
  * Strip the player's complete previous turn when a character generation begins
  * by echoing it. Matching is tolerant of roleplay markup, smart quotes,
@@ -53,11 +60,24 @@ export function stripEchoedPlayerTurn(rawCharacterReply: string, latestPlayerTur
   }
 
   let end = replyWords[playerWords.length - 1].end;
-  const trailingMarkup = rawCharacterReply.slice(end).match(/^[\s"'“”‘’*_[\]().,!?;:—–-]*/u)?.[0] ?? "";
-  end += trailingMarkup.length;
+  const playerLastWordEnd = playerWords[playerWords.length - 1].end;
+  const expectedClosingMarkup = [...latestPlayerTurn.slice(playerLastWordEnd).trim()]
+    .filter((char) => /["'“”‘’*_[\]().,!?;:—–-]/u.test(char));
 
-  const remainder = rawCharacterReply.slice(end).trimStart();
-  return remainder || rawCharacterReply;
+  // Consume only the closing markup that belonged to the echoed player turn.
+  // Do not use a broad markup character class here: after the echo there may be
+  // a new character action beginning with '*', and that opening marker must be
+  // preserved.
+  for (const expected of expectedClosingMarkup) {
+    const actual = rawCharacterReply[end];
+    if (!actual || normalizeMarkupChar(actual) !== normalizeMarkupChar(expected)) break;
+    end += 1;
+  }
+
+  while (/\s/u.test(rawCharacterReply[end] ?? "")) end += 1;
+
+  const remainder = rawCharacterReply.slice(end);
+  return remainder.trim() ? remainder : rawCharacterReply;
 }
 
 export const __characterTurnBoundaryTestUtils = {
