@@ -4,6 +4,16 @@ Status: Active
 
 Checkpoint 1 completed on 2026-08-31: two-way scoring, Free Roam session identity, automatic Smart Focus, empty-cast preservation, Free Roam cast discovery, per-speaker relationship scoring, backup persistence, and regression coverage.
 
+## Research presentation
+
+A standalone visual presentation for the expanded RS V2 / Character Simulation research is available at:
+
+- `docs/projects/relationship-engine-v2-presentation.html`
+
+It covers the proposed multidimensional relationship model, dual-perspective appraisal, momentum and inertia, ObserverseQuelle / S10 embodiment integration, causal memory, memory lanes, persistent body and spatial state, Expression Dynamics, interpretation confidence, misunderstandings, emotional aftereffects, Continuity Guard, advanced rerolls, multi-character attention, diagnostics, and the phased implementation plan.
+
+The presentation is a research and architecture document. It does not claim that all described features are already implemented.
+
 Owner zones:
 
 - Relationship logic: `lib/relationships/`
