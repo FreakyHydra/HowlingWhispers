@@ -15,7 +15,9 @@ permissions:
 
 concurrency:
   group: hw-ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Never interrupt a deployment halfway through an SSH session. New pushes
+  # wait for the running workflow, while failed validation never reaches deploy.
+  cancel-in-progress: false
 
 jobs:
   validate:
@@ -36,11 +38,57 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build production artifact
-        run: npm run build
-
-      - name: Run unit tests
-        run: npm run test:unit
+      - name: Build production artifact and run full test suite
+        run: npm test
 
       - name: Lint
         run: npm run lint
+
+  deploy-dev:
+    name: Refresh German dev server
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Validate deployment secrets
+        env:
+          SSH_HOST: ${{ secrets.HW_DEV_SSH_HOST }}
+          SSH_USER: ${{ secrets.HW_DEV_SSH_USER }}
+          SSH_KEY: ${{ secrets.HW_DEV_SSH_PRIVATE_KEY }}
+        run: |
+          test -n "$SSH_HOST" || { echo "Missing HW_DEV_SSH_HOST"; exit 1; }
+          test -n "$SSH_USER" || { echo "Missing HW_DEV_SSH_USER"; exit 1; }
+          test -n "$SSH_KEY" || { echo "Missing HW_DEV_SSH_PRIVATE_KEY"; exit 1; }
+
+      - name: Configure verified SSH host
+        env:
+          SSH_KEY: ${{ secrets.HW_DEV_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.HW_DEV_SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.HW_DEV_SSH_HOST }}
+          SSH_PORT: ${{ secrets.HW_DEV_SSH_PORT }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          if [ -n "$SSH_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "${SSH_PORT:-22}" -H "$SSH_HOST" > ~/.ssh/known_hosts
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy exact tested commit and refresh sandbox
+        env:
+          SSH_HOST: ${{ secrets.HW_DEV_SSH_HOST }}
+          SSH_USER: ${{ secrets.HW_DEV_SSH_USER }}
+          SSH_PORT: ${{ secrets.HW_DEV_SSH_PORT }}
+          APPROVED_SHA: ${{ github.sha }}
+          APP_DIR: /var/www/HowlingWhispers-dev
+          SERVICE: thehowlingwhispers-dev.service
+          HEALTH_URL: https://sandbox.thehowlingwhispers.com
+        run: |
+          PORT="${SSH_PORT:-22}"
+          printf -v REMOTE 'set -Eeuo pipefail; cd %q; OLD_SHA=$(git rev-parse HEAD); git fetch origin dev; git checkout dev; git reset --hard %q; chmod +x scripts/deploy-dev-server.sh; export HW_APP_DIR=%q HW_SERVICE=%q HW_BRANCH=dev HW_EXPECTED_SHA=%q HW_PREVIOUS_SHA="$OLD_SHA" HW_HEALTH_URL=%q; exec scripts/deploy-dev-server.sh' "$APP_DIR" "$APPROVED_SHA" "$APP_DIR" "$SERVICE" "$APPROVED_SHA" "$HEALTH_URL"
+          ssh -o BatchMode=yes -p "$PORT" "$SSH_USER@$SSH_HOST" "$REMOTE"

@@ -18,6 +18,7 @@ call" ad card linking to the owner's Discord: `https://discord.gg/jrJRrAXBRH`.
   `thehowlingwhispers-dev.service`, port 2027, `WorkingDirectory=/var/www/HowlingWhispers-dev`,
   `Environment=NODE_ENV=production PORT=2027`, `ExecStart=/usr/bin/npm start -- --hostname 127.0.0.1`.
 - **Dev checkout**: `/var/www/HowlingWhispers-dev` (branch `dev`).
+- **Automatic dev deploy**: a successful `dev` push runs the deploy job in `.github/workflows/ci.yml`, refreshes the German sandbox server, verifies the public page and bundle, and rolls back on failure. Setup is documented in `docs/deployment/dev-auto-deploy.md`.
 - **Main checkout**: `/var/www/HowlingWhispers` (branch `main`).
 - **Promote script**: `/usr/local/sbin/howlingwhispers-promote`.
 - **Releases**: `/var/www/HowlingWhispers-releases/<sha>` (fresh worktree per deploy),
@@ -89,6 +90,7 @@ Extraction sequence (oldest → newest):
    - `git pull` (fast-forward `dev` from origin) if not up to date.
    - Make changes, run `npm test`, `npm run lint`, `npm run build`.
    - `git add` the intended files, commit with a concise message, `git push origin dev`.
+   - GitHub CI automatically deploys the exact tested commit to the sandbox after all checks pass. Do not manually deploy a different SHA while that job is running.
 3. In `/var/www/HowlingWhispers` (main checkout):
    - `git fetch origin`
    - `git merge --ff-only origin/dev`
