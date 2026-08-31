@@ -55,6 +55,7 @@ export type BackupStorySession = {
   createdAt: number;
   updatedAt: number;
   sandbox?: boolean;
+  freeRoam?: boolean;
   autopilot?: boolean;
   autopilotPaused?: boolean;
   autopilotStopped?: boolean;
@@ -194,6 +195,8 @@ export type BackupRelationshipEvent = {
   personaId: string;
   turnId: string;
   delta: number;
+  playerDelta?: number;
+  characterDelta?: number;
   reason: string;
   createdAt: number;
 };
@@ -609,6 +612,7 @@ function sanitizeSessions(value: unknown): BackupStorySession[] {
       createdAt: typeof s.createdAt === "number" ? s.createdAt : 0,
       updatedAt: typeof s.updatedAt === "number" ? s.updatedAt : 0,
       sandbox: typeof s.sandbox === "boolean" ? s.sandbox : undefined,
+      freeRoam: typeof s.freeRoam === "boolean" ? s.freeRoam : undefined,
       autopilot: typeof s.autopilot === "boolean" ? s.autopilot : undefined,
       autopilotPaused: typeof s.autopilotPaused === "boolean" ? s.autopilotPaused : undefined,
       autopilotStopped: typeof s.autopilotStopped === "boolean" ? s.autopilotStopped : undefined,
@@ -676,6 +680,12 @@ function sanitizeRelationships(value: unknown): BackupRelationshipState {
             personaId: typeof event.personaId === "string" ? event.personaId : "",
             turnId: event.turnId,
             delta: Math.round(event.delta),
+            playerDelta: typeof event.playerDelta === "number" && Number.isFinite(event.playerDelta)
+              ? Math.round(event.playerDelta)
+              : undefined,
+            characterDelta: typeof event.characterDelta === "number" && Number.isFinite(event.characterDelta)
+              ? Math.round(event.characterDelta)
+              : undefined,
             reason: event.reason.slice(0, 500),
             createdAt: Math.round(event.createdAt),
           });

@@ -212,6 +212,10 @@ ship user-visible features with a stale version or changelog.
 - **Persistence**: `localStorage` ("dreambound_relationships"), restored on load, included in
   backup/export, and re-seeded from legacy `bond` when absent (backward compatible).
 
+## Active project
+
+- Relationship Engine V2 and Free Roam are tracked in `docs/projects/relationship-engine-v2-free-roam.md`. Treat its locked decisions and acceptance checks as the durable continuation point for future work.
+
 ## Known issues / constraints (do not silently "fix" without asking)
 
 - Model is slow (gemma-3-12b on CPU on the server). **Do not stress-test.**

@@ -246,8 +246,67 @@ test("heuristic scorer is provider-neutral and pure", () => {
   const zero = scorer.evaluate({ ...base, playerMessage: "The library is quiet tonight.", characterReply: "The fire crackles." });
   assert.equal(zero.delta, 0);
 
-  const negative = scorer.evaluate({ ...base, playerMessage: "I'm going to leave. You'll never see me again.", characterReply: "*looks away*" });
+  const negative = scorer.evaluate({ ...base, playerMessage: "I'm going to leave you behind. You'll never see me again.", characterReply: "*looks away*" });
   assert.ok(negative.delta < 0, "negative delta is < 0");
+});
+
+test("V2 scores the player turn and character reply independently", () => {
+  const result = heuristicRelationshipScorer.evaluate({
+    characterId: "coda",
+    personaId: "default",
+    playerName: "You",
+    characterName: "Coda",
+    previousScore: 0,
+    playerMessage: "I trust you, and I'm here for you.",
+    characterReply: "Coda softens. \"Thank you. I trust you too.\"",
+    conversation: [],
+  });
+  assert.ok(result);
+  assert.ok(result.playerDelta > 0);
+  assert.ok(result.characterDelta > 0);
+  assert.equal(result.delta, result.playerDelta + result.characterDelta);
+});
+
+test("fear and asking for safety do not damage the relationship", () => {
+  const result = heuristicRelationshipScorer.evaluate({
+    characterId: "coda",
+    personaId: "default",
+    playerName: "You",
+    characterName: "Coda",
+    previousScore: 0,
+    playerMessage: "*I shrink back, scared.* \"Please don't hurt me.\"",
+    characterReply: "*Coda softens and stays close.* \"You're safe. I won't hurt you.\"",
+    conversation: [],
+  });
+  assert.ok(result);
+  assert.equal(result.playerDelta, 0);
+  assert.ok(result.characterDelta > 0);
+  assert.ok(result.delta >= 0);
+});
+
+test("stating a personal boundary is neutral while violating one is negative", () => {
+  const base = {
+    characterId: "coda",
+    personaId: "default",
+    playerName: "You",
+    characterName: "Coda",
+    previousScore: 0,
+    characterReply: "*Coda waits.*",
+    conversation: [],
+  };
+  const boundary = heuristicRelationshipScorer.evaluate({
+    ...base,
+    playerMessage: "I'm not comfortable with that. I'm not ready.",
+  });
+  assert.equal(boundary.playerDelta, 0);
+  assert.equal(boundary.delta, 0);
+
+  const violation = heuristicRelationshipScorer.evaluate({
+    ...base,
+    playerMessage: "I don't care about your boundaries. You have no choice.",
+  });
+  assert.ok(violation.playerDelta < 0);
+  assert.ok(violation.delta < 0);
 });
 
 test("relationship state survives a save/load round trip", () => {
@@ -292,7 +351,7 @@ test("relationship scoring never leaks deltas into visible roleplay", () => {
     conversation: [],
   });
   assert.ok(result);
-  assert.deepEqual(Object.keys(result).sort(), ["delta", "reason"]);
+  assert.deepEqual(Object.keys(result).sort(), ["characterDelta", "delta", "playerDelta", "reason"]);
 
   const conversation = [
     { sender: "player", text: "I trust you completely." },
@@ -302,6 +361,8 @@ test("relationship scoring never leaks deltas into visible roleplay", () => {
   getOrCreateRecord(state, "coda", "default", 0);
   commit(state, { turnId: "c:9", delta: result.delta, reason: result.reason });
   assert.equal(conversation[1].delta, undefined);
+  assert.equal(conversation[1].playerDelta, undefined);
+  assert.equal(conversation[1].characterDelta, undefined);
   assert.equal(conversation[1].reason, undefined);
   assert.equal(conversation[1].score, undefined);
   assert.equal(state["coda::default"].events.length, 1);

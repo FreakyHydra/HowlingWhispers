@@ -7,7 +7,8 @@ let changed = false;
 // Keep the existing nextSpeaker scope repair idempotent. This script runs before
 // dev/build/start/test, so it must be safe against both patched and unpatched trees.
 const declarationBefore = `    let respondAs: string | undefined;\n    if (livingCastConfig.enabled && mode === "Speak" && activeSession) {`;
-const declarationAfter = `    let respondAs: string | undefined;\n    let nextSpeaker: LivingCastEntry | null = null;\n    if (livingCastConfig.enabled && mode === "Speak" && activeSession) {`;
+const legacyDeclarationAfter = `    let respondAs: string | undefined;\n    let nextSpeaker: LivingCastEntry | null = null;\n    if (livingCastConfig.enabled && mode === "Speak" && activeSession) {`;
+const declarationAfter = `    let respondAs: string | undefined;\n    let nextSpeaker: LivingCastEntry | null = null;\n    if (livingCastConfig.enabled && activeSession) {`;
 const assignmentBefore = `      const nextSpeaker = selector.next(conversation);`;
 const assignmentAfter = `      nextSpeaker = selector.next(conversation);`;
 
@@ -15,17 +16,24 @@ const nextSpeakerFixed = source.split(declarationAfter).length - 1;
 if (nextSpeakerFixed === 1) {
   console.log("nextSpeaker scope already fixed.");
 } else {
-  const declarationCount = source.split(declarationBefore).length - 1;
-  const assignmentCount = source.split(assignmentBefore).length - 1;
-  if (declarationCount !== 1 || assignmentCount !== 1) {
-    throw new Error(
-      `Refusing unsafe nextSpeaker patch: declarations=${declarationCount}, assignments=${assignmentCount}, fixed=${nextSpeakerFixed}`,
-    );
+  const legacyFixedCount = source.split(legacyDeclarationAfter).length - 1;
+  if (legacyFixedCount === 1) {
+    source = source.replace(legacyDeclarationAfter, declarationAfter);
+    changed = true;
+    console.log("Updated Living Cast focus to run for normal composer modes.");
+  } else {
+    const declarationCount = source.split(declarationBefore).length - 1;
+    const assignmentCount = source.split(assignmentBefore).length - 1;
+    if (declarationCount !== 1 || assignmentCount !== 1) {
+      throw new Error(
+        `Refusing unsafe nextSpeaker patch: declarations=${declarationCount}, assignments=${assignmentCount}, fixed=${nextSpeakerFixed}`,
+      );
+    }
+    source = source.replace(declarationBefore, declarationAfter);
+    source = source.replace(assignmentBefore, assignmentAfter);
+    changed = true;
+    console.log("Patched nextSpeaker scope site.");
   }
-  source = source.replace(declarationBefore, declarationAfter);
-  source = source.replace(assignmentBefore, assignmentAfter);
-  changed = true;
-  console.log("Patched nextSpeaker scope site.");
 }
 
 // Manual player input is authoritative. The old Action-mode code stripped a

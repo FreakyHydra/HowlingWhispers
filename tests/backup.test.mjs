@@ -92,7 +92,7 @@ function sampleSource(overrides = {}) {
          score: 82,
          updatedAt: 9,
          events: [
-           { id: "ev-1", characterId: "coda", personaId: "persona-1", turnId: "char-3", delta: 82, reason: "shared a secret", createdAt: 8 },
+           { id: "ev-1", characterId: "coda", personaId: "persona-1", turnId: "char-3", delta: 82, playerDelta: 80, characterDelta: 2, reason: "shared a secret", createdAt: 8 },
          ],
        },
      },
@@ -198,6 +198,8 @@ test("relationship state survives the round trip", () => {
   assert.equal(rel.score, 82);
   assert.equal(rel.personaId, "persona-1");
   assert.equal(rel.events[0].turnId, "char-3");
+  assert.equal(rel.events[0].playerDelta, 80);
+  assert.equal(rel.events[0].characterDelta, 2);
   assert.equal(rel.events[0].delta, 82);
   assert.equal(rel.events[0].reason, "shared a secret");
 });
@@ -248,6 +250,7 @@ test("location-only sessions survive backup round trip", () => {
         messageKey: "session-loc-1",
         createdAt: 100,
         updatedAt: 200,
+        freeRoam: true,
       },
     ],
     currentSessionId: "session-loc-1",
@@ -261,5 +264,6 @@ test("location-only sessions survive backup round trip", () => {
   assert.equal(session.locationId, "loc-test-1");
   assert.equal(session.sceneId, "location-scene-loc-test-1");
   assert.equal(session.title, "Willowbridge Children's Day Centre");
+  assert.equal(session.freeRoam, true);
   assert.equal(reparsed.payload.data.currentSessionId, "session-loc-1");
 });

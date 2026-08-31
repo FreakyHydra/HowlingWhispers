@@ -22,7 +22,12 @@ export type RelationshipScorerInput = {
   conversation: Array<{ sender: "player" | "character" | "narrator"; text: string }>;
 };
 
-export type RelationshipDelta = { delta: number; reason: string };
+export type RelationshipDelta = {
+  delta: number;
+  playerDelta: number;
+  characterDelta: number;
+  reason: string;
+};
 
 export interface RelationshipScorer {
   evaluate(input: RelationshipScorerInput): RelationshipDelta | null;
@@ -30,23 +35,35 @@ export interface RelationshipScorer {
 
 // Score boundaries for the heuristic. Most ordinary exchanges produce 0 or a
 // very small change; only clear relationship beats move the needle.
-const POSITIVE_CUES: Array<{ pattern: RegExp; weight: number; reason: string }> = [
-  { pattern: /\b(trust|trusts|trusted|trusting)\b/i, weight: 6, reason: "The player expresses trust." },
-  { pattern: /\b(care|cared|care for|caring|cared for you)\b/i, weight: 6, reason: "Care for the character is expressed." },
-  { pattern: /\b(forgive|forgave|forgiveness|apologise|apologize|i'm sorry|i am sorry)\b/i, weight: 8, reason: "A forgiveness or apology bridges something between them." },
-  { pattern: /\b(protect|protected|protecting|i've got you|i'm here for you)\b/i, weight: 5, reason: "The player protects or stands by the character." },
-  { pattern: /\b(confide|confided|sharing something|i need you to know)\b/i, weight: 7, reason: "The player opens up or confides." },
-  { pattern: /\b(grateful|thank|thanks|i appreciate)\b/i, weight: 3, reason: "Gratitude is expressed." },
-  { pattern: /\b(love|i love you|i care about you)\b/i, weight: 10, reason: "An explicit declaration of affection." },
+const PLAYER_POSITIVE_CUES: Array<{ pattern: RegExp; weight: number; reason: string }> = [
+  { pattern: /\b(?:i trust you|you can trust me|put my trust in you)\b/i, weight: 6, reason: "The player expresses trust." },
+  { pattern: /\b(?:i care (?:about|for) you|i cared for you)\b/i, weight: 6, reason: "Care for the character is expressed." },
+  { pattern: /\b(?:i(?:'m| am) sorry|i apolog(?:ise|ize)|please forgive me|i forgive you)\b/i, weight: 8, reason: "A forgiveness or apology bridges something between them." },
+  { pattern: /\b(?:protect(?:ed|ing)? you|i've got you|i'm here for you)\b/i, weight: 5, reason: "The player protects or stands by the character." },
+  { pattern: /\b(?:i confide in you|i confided in you|sharing something with you|i need you to know)\b/i, weight: 7, reason: "The player opens up or confides." },
+  { pattern: /\b(?:thank you|thanks|i appreciate you|grateful to you)\b/i, weight: 3, reason: "Gratitude is expressed." },
+  { pattern: /\b(?:i love you|i care about you)\b/i, weight: 10, reason: "An explicit declaration of affection." },
 ];
 
-const NEGATIVE_CUES: Array<{ pattern: RegExp; weight: number; reason: string }> = [
-  { pattern: /\b(leave|leaving|abandon|abandoned|walk away|walk out)\b/i, weight: -24, reason: "The player abandons or threatens to leave." },
-  { pattern: /\b(betray|betrayal|backstab|deceive|deceived|lie|lied|lying to)\b/i, weight: -30, reason: "The player betrays or deceives." },
-  { pattern: /\b(cruel|harsh|hurt|damaged|reject|rejected|rejecting|cold|callous|indifferent|ignore|ignored|ignoring you)\b/i, weight: -18, reason: "The player hurts or rejects the character." },
-  { pattern: /\b(threat|threaten|threatening|attack|attacked|violent|violence)\b/i, weight: -26, reason: "Threats or violence toward the character." },
-  { pattern: /\b(don't (care|trust|want)|do not (care|trust|want)|never (love|trust|care for)|you (don't|do not))\b/i, weight: -14, reason: "The player withdraws or rejects the character." },
-  { pattern: /\b(boundary|boundaries|respect|consent|not (comfortable|ready|okay|ok))\b/i, weight: -10, reason: "A boundary or consent concern is crossed or raised negatively." },
+const PLAYER_NEGATIVE_CUES: Array<{ pattern: RegExp; weight: number; reason: string }> = [
+  { pattern: /\b(?:i(?:'m| am| will|'ll) (?:going to )?(?:leave|abandon) you|walk out on you|leave you behind)\b/i, weight: -24, reason: "The player abandons or threatens to leave the character." },
+  { pattern: /\b(?:betray(?:ed|ing)? you|backstab(?:bed|bing)? you|deceiv(?:e|ed|ing) you|lied to you|lying to you)\b/i, weight: -30, reason: "The player betrays or deceives the character." },
+  { pattern: /\b(?:hurt|harm|reject|ignore|ignored|ignoring) you\b/i, weight: -18, reason: "The player hurts or rejects the character." },
+  { pattern: /\b(?:threaten(?:ed|ing)?|attack(?:ed|ing)?|kill(?:ed|ing)?) you\b/i, weight: -26, reason: "The player threatens or attacks the character." },
+  { pattern: /\b(?:i (?:don't|do not) (?:care about|trust|want) you|i never (?:loved|trusted|cared for) you)\b/i, weight: -14, reason: "The player withdraws or rejects the character." },
+  { pattern: /\b(?:your boundaries (?:do not|don't) matter|i (?:do not|don't) care about your boundaries|you have no choice|without your consent)\b/i, weight: -28, reason: "The player deliberately violates the character's boundaries." },
+];
+
+const CHARACTER_POSITIVE_CUES: Array<{ pattern: RegExp; weight: number; reason: string }> = [
+  { pattern: /\b(?:i trust you|trusts you|believes you)\b/i, weight: 4, reason: "The character reciprocates trust." },
+  { pattern: /\b(?:thank you|thanks|i appreciate|grateful)\b/i, weight: 2, reason: "The character responds with gratitude." },
+  { pattern: /\b(?:you're safe|you are safe|i've got you|i am here|i'm here|stays close|softens|smiles|relaxes|relief)\b/i, weight: 2, reason: "The character responds with warmth or reassurance." },
+  { pattern: /\b(?:i forgive you|forgives you|apology accepted)\b/i, weight: 4, reason: "The character accepts repair or forgiveness." },
+];
+
+const CHARACTER_NEGATIVE_CUES: Array<{ pattern: RegExp; weight: number; reason: string }> = [
+  { pattern: /\b(?:i (?:do not|don't) trust you|never trust you again|you betrayed me|you lied to me)\b/i, weight: -6, reason: "The character's response shows damaged trust." },
+  { pattern: /\b(?:get away from me|leave me alone|i (?:do not|don't) want you here|stay away from me)\b/i, weight: -5, reason: "The character directly rejects the player." },
 ];
 
 function textContains(text: string, pattern: RegExp): boolean {
@@ -59,43 +76,43 @@ export const heuristicRelationshipScorer: RelationshipScorer = {
     const replyText = (input.characterReply ?? "").trim();
     if (!playerText && !replyText) return null;
 
-    const combined = `${playerText}\n${replyText}`;
-    let delta = 0;
-    let reason = "No notable change this turn.";
+    let playerDelta = 0;
+    let characterDelta = 0;
+    const reasons: string[] = [];
 
-    for (const cue of POSITIVE_CUES) {
-      if (textContains(combined, cue.pattern)) {
-        delta += cue.weight;
-        reason = cue.reason;
+    for (const cue of PLAYER_POSITIVE_CUES) {
+      if (textContains(playerText, cue.pattern)) {
+        playerDelta += cue.weight;
+        reasons.push(cue.reason);
       }
     }
-    for (const cue of NEGATIVE_CUES) {
-      if (textContains(combined, cue.pattern)) {
-        delta += cue.weight;
-        reason = cue.reason;
-      }
-    }
-
-    // Reciprocity: a warm, accepting character reply amplifies a positive turn,
-    // while a cold/rejecting reply dampens it. Keeps progression slow and tied
-    // to genuine mutual exchange rather than the player's words alone.
-    if (delta > 0) {
-      if (textContains(replyText, /(happy|glad|glad you|smile|relief|thank you|glad that|glad to)/i)) {
-        delta += 2;
-        reason = `${reason} The character responds warmly.`;
-      }
-    } else if (delta < 0) {
-      if (textContains(replyText, /(hurt|betray|leave|reject|disappointed|disgust|disgusted|you (don't|do not) (care|trust|want))\b/i)) {
-        delta -= 2;
-        reason = `${reason} The character's reply deepens the rift.`;
+    for (const cue of PLAYER_NEGATIVE_CUES) {
+      if (textContains(playerText, cue.pattern)) {
+        playerDelta += cue.weight;
+        reasons.push(cue.reason);
       }
     }
 
-    // Bound ordinary single-turn swings and keep the pace deliberate.
-    const bounded = Math.max(-40, Math.min(40, delta));
+    for (const cue of CHARACTER_POSITIVE_CUES) {
+      if (textContains(replyText, cue.pattern)) {
+        characterDelta += cue.weight;
+        reasons.push(cue.reason);
+      }
+    }
+    for (const cue of CHARACTER_NEGATIVE_CUES) {
+      if (textContains(replyText, cue.pattern)) {
+        characterDelta += cue.weight;
+        reasons.push(cue.reason);
+      }
+    }
 
-    if (bounded === 0) return { delta: 0, reason };
+    playerDelta = Math.max(-40, Math.min(40, playerDelta));
+    characterDelta = Math.max(-10, Math.min(10, characterDelta));
+    const delta = Math.max(-40, Math.min(40, playerDelta + characterDelta));
+    const reason = reasons.length > 0
+      ? [...new Set(reasons)].join(" ")
+      : "No notable change this turn.";
 
-    return { delta: bounded, reason };
+    return { delta, playerDelta, characterDelta, reason };
   },
 };

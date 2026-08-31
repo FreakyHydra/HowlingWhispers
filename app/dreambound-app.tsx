@@ -23,6 +23,7 @@ import {
 } from "../lib/locations/import-export";
 import { sanitizeLocation } from "../lib/locations/types";
 import { locationSelectionKey, locationSessionFields, resolveLocationScenes } from "../lib/locations/session.ts";
+import { createFreeRoamLocation, hasExplicitCast } from "../lib/locations/free-roam.ts";
 import { migrateLegacySessions, migrateLegacySelectedId } from "../lib/locations/migration.ts";
 import type { Scenario } from "../lib/scenarios/types";
 import {
@@ -406,6 +407,7 @@ export type StorySession = {
   createdAt: number;
   updatedAt: number;
   sandbox?: boolean;
+  freeRoam?: boolean;
   autopilot?: boolean;
   autopilotPaused?: boolean;
   autopilotStopped?: boolean;
@@ -2587,11 +2589,26 @@ export default function DreamboundApp() {
       playerName: string;
     },
   ) {
-    setSessions((current) => current.map((session) =>
-      session.messageKey === messageKey
-        ? { ...session, updatedAt: Date.now() }
-        : session,
-    ));
+    setSessions((current) => current.map((session) => {
+      if (session.messageKey !== messageKey) return session;
+      if (!session.freeRoam) return { ...session, updatedAt: Date.now() };
+
+      const detection = detectLivingCast({
+        messages: conversation,
+        cast: overrides.livingCast ?? [],
+        primary: { id: overrides.characterId, name: overrides.characterName },
+        playerName: overrides.playerName,
+      });
+      return {
+        ...session,
+        updatedAt: Date.now(),
+        livingCast: detection.cast,
+        autonomousCast: autonomousAgentsToArray(seedAutonomyFromCast(
+          new Map((session.autonomousCast ?? []).map((agent) => [agent.id, agent])),
+          detection.cast,
+        )),
+      };
+    }));
   }
 
   const selected = useMemo(() => {
@@ -2877,6 +2894,7 @@ export default function DreamboundApp() {
     location: Location | null = null,
     overrides: {
       sandbox?: boolean;
+      freeRoam?: boolean;
       autopilot?: boolean;
       autopilotPaused?: boolean;
       autopilotPov?: "first" | "third" | "narrator";
@@ -2893,6 +2911,7 @@ export default function DreamboundApp() {
       ...(location ? locationSessionFields(location.id) : {}),
       ...personaSnapshot(overrides.persona),
       sandbox: overrides.sandbox,
+      freeRoam: overrides.freeRoam,
       autopilot: overrides.autopilot,
       autopilotPaused: overrides.autopilotPaused,
       autopilotPov: overrides.autopilotPov,
@@ -3468,7 +3487,7 @@ export default function DreamboundApp() {
       return result;
     };
     const sessionCast = livingCastConfig.enabled
-      ? (activeSession?.livingCast?.length ? activeSession.livingCast : resetCast({ id: selected.id, name: selected.name }, effectivePlayerName))
+      ? (hasExplicitCast(activeSession?.livingCast) ? activeSession.livingCast : resetCast({ id: selected.id, name: selected.name }, effectivePlayerName))
       : [];
     const resolvedSceneTitle = resolveStoryTemplate(activeScene.title, { charName: selected.name, userName: effectivePlayerName });
     const resolvedSceneWeather = resolveStoryTemplate(`${activeScene.weather}. ${activeScene.subtitle}`, { charName: selected.name, userName: effectivePlayerName });
@@ -3796,20 +3815,24 @@ export default function DreamboundApp() {
     characterId?: string,
   ): void {
     const effectiveCharacterId = characterId ?? selected.id;
-    if (isLocationSession || selectedLocation || effectiveCharacterId.startsWith("location:")) return;
+    const relationshipCharacter = characters.find((character) => character.id === effectiveCharacterId);
+    if ((isLocationSession || selectedLocation) && !relationshipCharacter) return;
+    if (effectiveCharacterId.startsWith("location:")) return;
+    const characterName = relationshipCharacter?.name ?? selected.name;
+    const seedBond = relationshipCharacter?.bond ?? selected.bond;
     const personaId = activeRelationshipPersonaId;
     const playerName = activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name.trim();
     const previousScore = effectiveScore(
       relationshipsRef.current,
       effectiveCharacterId,
       personaId,
-      selected.bond,
+      seedBond,
     );
     const result = (heuristicRelationshipScorer as RelationshipScorer).evaluate({
       characterId: effectiveCharacterId,
       personaId,
       playerName,
-      characterName: selected.name,
+      characterName,
       previousScore,
       playerMessage: lastPlayerMessageText(conversation),
       characterReply: replyText,
@@ -3825,6 +3848,8 @@ export default function DreamboundApp() {
       personaId,
       turnId: characterTurnId(messageId),
       delta: result.delta,
+      playerDelta: result.playerDelta,
+      characterDelta: result.characterDelta,
       reason: result.reason,
     });
     setRelationships(next);
@@ -3868,6 +3893,8 @@ export default function DreamboundApp() {
       personaId,
       turnId: characterTurnId(messageId),
       delta: result.delta,
+      playerDelta: result.playerDelta,
+      characterDelta: result.characterDelta,
       reason: result.reason,
     });
     setRelationships(next);
@@ -3904,13 +3931,13 @@ export default function DreamboundApp() {
     };
     const conversation = [...activeMessages, playerMessage];
     const effectivePlayerName = (activePersona?.name.trim() || activeSession?.playerName?.trim() || playerProfile.name).trim();
-    const baselineCast = activeSession?.livingCast?.length
+    const baselineCast = hasExplicitCast(activeSession?.livingCast)
       ? activeSession.livingCast
       : resetCast({ id: selected.id, name: selected.name }, effectivePlayerName);
 
     let respondAs: string | undefined;
     let nextSpeaker: LivingCastEntry | null = null;
-    if (livingCastConfig.enabled && mode === "Speak" && activeSession) {
+    if (livingCastConfig.enabled && activeSession) {
       const selector = createParticipantSelector(
         livingCastConfig.participationMode,
         baselineCast,
@@ -6010,25 +6037,11 @@ function updateCharacter(id: string, updates: Partial<Character>) {
     }));
   }
 
-  function startOpenWorld() {
-    const now = Date.now();
-    const nowIso = new Date(now).toISOString();
-    const openWorldLocation = sanitizeLocation({
-      id: "open-world",
-      name: "Open World",
-      type: "Open world",
-      shortDescription: "No predefined cast. Begin with only your persona and let the world develop around you.",
-      description: "An open-ended roleplay starting point. The player enters without a predefined companion, primary Contact, or mandatory story. Characters may be encountered, mentioned, invited, or emerge naturally as the world develops.",
-      atmosphere: ["open-ended", "player-led", "persistent social world"],
-      occupants: [],
-      tags: ["open-world", "player-start"],
-      source: "custom",
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    });
+  function startFreeRoam() {
+    const openWorldLocation = sanitizeLocation(createFreeRoamLocation());
 
     if (!openWorldLocation) {
-      setChatError("Open World could not be created.");
+      setChatError("Free Roam could not be created.");
       return;
     }
 
@@ -6037,7 +6050,7 @@ function updateCharacter(id: string, updates: Partial<Character>) {
       null,
       scene,
       openWorldLocation,
-      { persona: activePersona ?? null },
+      { persona: activePersona ?? null, freeRoam: true },
     );
 
     session.livingCast = [];
@@ -6192,8 +6205,8 @@ Roleplay
                 <button onClick={() => { setAccountMenuOpen(false); setView("changelog"); }} role="menuitem">
                   What&apos;s new
                 </button>
-                <button onClick={() => { setAccountMenuOpen(false); startOpenWorld(); }} role="menuitem">
-                  Start Open World
+                <button onClick={() => { setAccountMenuOpen(false); startFreeRoam(); }} role="menuitem">
+                  Start Free Roam
                 </button>
                 <div className="account-menu-divider" />
                 {curatorAuthLoading ? (

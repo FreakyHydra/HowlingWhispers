@@ -47,6 +47,8 @@ export type RelationshipEvent = {
   personaId: string;
   turnId: string;
   delta: number;
+  playerDelta?: number;
+  characterDelta?: number;
   reason: string;
   createdAt: number;
 };
