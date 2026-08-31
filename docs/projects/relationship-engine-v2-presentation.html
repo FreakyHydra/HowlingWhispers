@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Howling Whispers • Relationship Engine V2</title>
+  <meta name="description" content="Research and architecture presentation for Relationship Engine V2, ObserverseQuelle integration, embodiment, memory, continuity, and expression dynamics in Howling Whispers." />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07090d;
+      --bg-2: #0b0f16;
+      --panel: rgba(17, 22, 33, .82);
+      --panel-2: rgba(13, 17, 26, .92);
+      --text: #f3f5f8;
+      --muted: #9ca8b8;
+      --line: rgba(255,255,255,.09);
+      --red: #ff3f5f;
+      --red-2: #d31f42;
+      --cyan: #72e7ff;
+      --violet: #a98cff;
+      --green: #72e6a0;
+      --amber: #ffd17a;
+      --shadow: 0 30px 90px rgba(0,0,0,.45);
+      --radius: 22px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% 8%, rgba(255,63,95,.13), transparent 30rem),
+        radial-gradient(circle at 88% 12%, rgba(114,231,255,.08), transparent 28rem),
+        linear-gradient(180deg, #05070a 0%, var(--bg) 44%, #090b10 100%);
+      line-height: 1.58;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .24;
+      background-image:
+        linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(to bottom, black, transparent 75%);
+    }
+
+    a { color: inherit; }
+    code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+
+    .wrap { width: min(1180px, calc(100% - 32px)); margin: 0 auto; }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid var(--line);
+      background: rgba(5,7,10,.78);
+      backdrop-filter: blur(18px);
+    }
+
+    .nav-inner {
+      min-height: 64px;
+      display: flex;
+      gap: 18px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 800; letter-spacing: .02em; }
+    .sigil {
+      width: 30px; height: 30px; border-radius: 10px;
+      background: linear-gradient(145deg, var(--red), #7e1633);
+      box-shadow: 0 0 32px rgba(255,63,95,.24);
+      display: grid; place-items: center; font-size: 16px;
+    }
+    .nav-links { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 13px; }
+    .nav-links a { text-decoration: none; }
+    .nav-links a:hover { color: var(--text); }
+
+    .hero { padding: 98px 0 66px; position: relative; }
+    .eyebrow {
+      display: inline-flex; gap: 8px; align-items: center;
+      color: #ffc6d1; font-size: 12px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase;
+      border: 1px solid rgba(255,63,95,.25);
+      background: rgba(255,63,95,.07);
+      border-radius: 999px; padding: 8px 12px;
+    }
+    .hero h1 {
+      margin: 22px 0 18px;
+      font-size: clamp(46px, 7vw, 94px);
+      line-height: .96;
+      letter-spacing: -.055em;
+      max-width: 1000px;
+    }
+    .hero h1 span {
+      background: linear-gradient(90deg, #fff 0%, #ffd1d9 38%, #9beafa 77%, #fff 100%);
+      background-clip: text; -webkit-background-clip: text; color: transparent;
+    }
+    .lead { max-width: 880px; color: #b8c1cf; font-size: clamp(18px, 2vw, 23px); }
+    .hero-grid { display: grid; grid-template-columns: 1.3fr .7fr; gap: 22px; margin-top: 40px; }
+
+    .card {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(18,23,34,.88), rgba(10,13,20,.86));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .card-pad { padding: 26px; }
+
+    .quote {
+      border-left: 3px solid var(--red);
+      padding: 7px 0 7px 18px;
+      color: #dbe1ea;
+      font-size: 18px;
+    }
+    .quote strong { color: white; }
+
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .pill {
+      border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px;
+      color: #b7c2d0; background: rgba(255,255,255,.025); font-size: 12px;
+    }
+
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat { padding: 16px; border-radius: 16px; background: rgba(255,255,255,.035); border: 1px solid var(--line); }
+    .stat b { display: block; font-size: 24px; margin-bottom: 2px; }
+    .stat span { color: var(--muted); font-size: 12px; }
+
+    section { padding: 58px 0; }
+    .section-head { display: grid; grid-template-columns: .75fr 1.25fr; gap: 36px; margin-bottom: 28px; align-items: end; }
+    .kicker { color: var(--red); text-transform: uppercase; letter-spacing: .14em; font-weight: 800; font-size: 12px; }
+    h2 { margin: 7px 0 0; font-size: clamp(30px, 4vw, 52px); line-height: 1.04; letter-spacing: -.035em; }
+    .section-head p { margin: 0; color: var(--muted); font-size: 17px; }
+
+    .architecture { padding: 28px; }
+    .flow { display: grid; gap: 12px; }
+    .node {
+      display: grid; grid-template-columns: 48px 1fr auto; gap: 16px; align-items: center;
+      padding: 16px 18px; border: 1px solid var(--line); background: rgba(255,255,255,.026); border-radius: 16px;
+    }
+    .node .num {
+      width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+      background: rgba(255,63,95,.10); border: 1px solid rgba(255,63,95,.22); color: #ffc1cc; font-weight: 900;
+    }
+    .node b { display: block; font-size: 16px; }
+    .node small { color: var(--muted); }
+    .node .tag { font-size: 11px; color: #dce5ef; padding: 6px 9px; border-radius: 999px; background: rgba(114,231,255,.07); border: 1px solid rgba(114,231,255,.13); }
+
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 18px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 18px; }
+    .feature { padding: 23px; min-height: 100%; }
+    .feature h3 { margin: 0 0 9px; font-size: 20px; }
+    .feature p { margin: 0; color: var(--muted); }
+    .icon { font-size: 24px; margin-bottom: 14px; }
+
+    .meter-list { display: grid; gap: 13px; }
+    .meter-line { display: grid; grid-template-columns: 110px 1fr 48px; gap: 14px; align-items: center; }
+    .meter-line span { color: #cbd3de; font-size: 13px; }
+    .bar { height: 8px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.055); }
+    .bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--red), #ff8da1); }
+    .bar.cyan i { background: linear-gradient(90deg, #348ba4, var(--cyan)); }
+    .bar.violet i { background: linear-gradient(90deg, #6950ae, var(--violet)); }
+    .bar.green i { background: linear-gradient(90deg, #35845a, var(--green)); }
+
+    .example {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      white-space: pre-wrap;
+      font-size: 13px;
+      color: #d9e1ec;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: #080b10;
+      overflow-x: auto;
+    }
+
+    .highlight {
+      padding: 34px;
+      background:
+        radial-gradient(circle at 90% 15%, rgba(114,231,255,.10), transparent 20rem),
+        radial-gradient(circle at 5% 90%, rgba(255,63,95,.11), transparent 24rem),
+        var(--panel-2);
+    }
+    .highlight h3 { font-size: clamp(27px, 4vw, 42px); margin: 0 0 13px; }
+    .highlight p { color: #b8c3d1; max-width: 880px; }
+
+    .timeline { counter-reset: phase; display: grid; gap: 12px; }
+    .phase {
+      counter-increment: phase;
+      display: grid; grid-template-columns: 48px 1fr; gap: 15px; padding: 18px;
+      border-radius: 16px; border: 1px solid var(--line); background: rgba(255,255,255,.024);
+    }
+    .phase::before {
+      content: counter(phase);
+      width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px;
+      background: rgba(255,255,255,.055); color: #fff; font-weight: 900;
+    }
+    .phase b { display: block; margin-bottom: 3px; }
+    .phase span { color: var(--muted); font-size: 14px; }
+
+    .rule {
+      text-align: center;
+      padding: 62px 24px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(90deg, rgba(255,63,95,.045), rgba(114,231,255,.04));
+    }
+    .rule small { color: var(--red); font-weight: 900; text-transform: uppercase; letter-spacing: .18em; }
+    .rule h2 { max-width: 1000px; margin: 14px auto 0; }
+
+    footer { padding: 42px 0 70px; color: var(--muted); font-size: 13px; }
+
+    @media (max-width: 850px) {
+      .nav-links { display: none; }
+      .hero { padding-top: 70px; }
+      .hero-grid, .section-head, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .node { grid-template-columns: 42px 1fr; }
+      .node .tag { grid-column: 2; justify-self: start; }
+      .meter-line { grid-template-columns: 92px 1fr 42px; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap nav-inner">
+      <div class="brand"><span class="sigil">🐺</span> Howling Whispers • RS V2</div>
+      <div class="nav-links">
+        <a href="#architecture">Architecture</a>
+        <a href="#relationship">Relationship Model</a>
+        <a href="#observer">ObserverseQuelle</a>
+        <a href="#features">New Features</a>
+        <a href="#plan">Plan</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <div class="wrap">
+        <div class="eyebrow">Research presentation • 31 Aug 2026</div>
+        <h1><span>Relationship Engine V2</span><br />becomes character simulation.</h1>
+        <p class="lead">A proposed architecture for combining two-way relationship interpretation, persistent character state, Derkomor's ObserverseQuelle / S10 physicality model, causal memory, prose dynamics, continuity checks, and multi-character attention inside Howling Whispers.</p>
+
+        <div class="hero-grid">
+          <div class="card card-pad">
+            <div class="quote"><strong>Core idea:</strong> RS V2 should decide what an interaction means between people. The behaviour/physicality layer should decide how that meaning becomes an embodied character reaction.</div>
+            <div class="pill-row">
+              <span class="pill">Relationship V2</span><span class="pill">Dual perspective</span><span class="pill">ObserverseQuelle</span><span class="pill">Embodiment</span><span class="pill">Causal memory</span><span class="pill">Expression dynamics</span><span class="pill">Continuity guard</span><span class="pill">Live Crew</span>
+            </div>
+          </div>
+          <div class="card card-pad">
+            <div class="stat-grid">
+              <div class="stat"><b>10</b><span>S10 behaviour axes</span></div>
+              <div class="stat"><b>15+</b><span>relationship dimensions</span></div>
+              <div class="stat"><b>5</b><span>memory lanes</span></div>
+              <div class="stat"><b>1</b><span>shared simulation state</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section id="architecture">
+      <div class="wrap">
+        <div class="section-head">
+          <div><div class="kicker">Architecture</div><h2>One turn, several specialized engines.</h2></div>
+          <p>The relationship system should not become a giant prompt that tries to do everything. Each layer owns a different kind of state, then the prompt compiler exposes only what the model needs for the current turn.</p>
+        </div>
+
+        <div class="card architecture">
+          <div class="flow">
+            <div class="node"><div class="num">1</div><div><b>Event Interpreter</b><small>What actually happened? Intent, action, target, tone, context, threat, vulnerability, support, boundaries.</small></div><div class="tag">structured event</div></div>
+            <div class="node"><div class="num">2</div><div><b>Dual-Perspective Appraisal</b><small>Separate player meaning from what the character believes the player meant.</small></div><div class="tag">belief, not omniscience</div></div>
+            <div class="node"><div class="num">3</div><div><b>Relationship Engine V2</b><small>Update independent dimensions, momentum, stability, confidence, and event history.</small></div><div class="tag">social state</div></div>
+            <div class="node"><div class="num">4</div><div><b>Character Psychological State</b><small>Stable identity, medium-term accumulated state, immediate emotion and arousal.</small></div><div class="tag">adaptive state</div></div>
+            <div class="node"><div class="num">5</div><div><b>ObserverseQuelle / Embodiment Layer</b><small>Memory pressure, physical conflict, space, senses, causal pressure, voice, subjective truth.</small></div><div class="tag">Derkomor S10</div></div>
+            <div class="node"><div class="num">6</div><div><b>World + Body State</b><small>Position, distance, injury, fatigue, clothing, environment, objects, NPCs and persistent physical consequences.</small></div><div class="tag">continuity</div></div>
+            <div class="node"><div class="num">7</div><div><b>Expression Dynamics</b><small>Prose meter, cadence, pauses, sentence length, dialogue density, action density and vocal texture.</small></div><div class="tag">how it sounds</div></div>
+            <div class="node"><div class="num">8</div><div><b>Prompt Compiler → Model</b><small>The model receives a compact, relevant state snapshot and writes the scene.</small></div><div class="tag">provider agnostic</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="relationship">
+      <div class="wrap">
+        <div class="section-head">
+          <div><div class="kicker">Relationship model</div><h2>Stop collapsing relationships into one number.</h2></div>
+          <p>A character can trust someone, fear them, love them, resent them and still feel safe around them in different amounts. RS V2 should preserve those contradictions instead of averaging them away.</p>
+        </div>
+
+        <div class="grid-2">
+          <div class="card feature">
+            <h3>Example multidimensional state</h3>
+            <div class="meter-list">
+              <div class="meter-line"><span>Trust</span><div class="bar"><i style="width:72%"></i></div><span>+72</span></div>
+              <div class="meter-line"><span>Affection</span><div class="bar green"><i style="width:81%"></i></div><span>+81</span></div>
+              <div class="meter-line"><span>Respect</span><div class="bar cyan"><i style="width:55%"></i></div><span>+55</span></div>
+              <div class="meter-line"><span>Fear</span><div class="bar violet"><i style="width:38%"></i></div><span>+38</span></div>
+              <div class="meter-line"><span>Comfort</span><div class="bar green"><i style="width:63%"></i></div><span>+63</span></div>
+              <div class="meter-line"><span>Attachment</span><div class="bar"><i style="width:76%"></i></div><span>+76</span></div>
+            </div>
+          </div>
+          <div class="card feature">
+            <h3>Momentum + inertia</h3>
+            <p>The same score can mean very different things depending on how it got there. A trust value of 68 after months of growth is not the same state as 68 after falling from 95 following a betrayal.</p>
+            <div class="example" style="margin-top:16px">trust.value      = 68
+trust.velocity   = +4.2
+trust.stability  = 0.71
+
+new relationship      → high volatility
+established relationship → high inertia
+major event            → can break through inertia</div>
+          </div>
+        </div>
+
+        <div class="card highlight" style="margin-top:18px">
+          <h3>Fear is not hostility.</h3>
+          <p>If a player backs away because they are frightened, the event interpreter should not turn negative sentiment into a relationship punishment. The player signal, the character's appraisal, and the eventual relationship effect are separate stages.</p>
+          <div class="example">PLAYER SIGNAL
+fear +0.72 • hostility +0.03 • vulnerability +0.61
+
+CHARACTER APPRAISAL
+"They are afraid of me."
+
+POSSIBLE RELATIONSHIP EFFECT
+trust -1 • fear +5 • protectiveness +7 • resentment 0</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="observer">
+      <div class="wrap">
+        <div class="section-head">
+          <div><div class="kicker">Derkomor research</div><h2>ObserverseQuelle becomes the embodiment layer.</h2></div>
+          <p>Derkomor's ten-axis S10.D.D.D. architecture is most valuable when it stays focused on character behaviour and physical grounding. It can consume relationship state, memory and scene state without replacing those systems.</p>
+        </div>
+
+        <div class="grid-3">
+          <div class="card feature"><div class="icon">🧠</div><h3>K / memory pressure</h3><p>Old unresolved experience filters perception as predisposition rather than forcing exposition into the scene.</p></div>
+          <div class="card feature"><div class="icon">👁️</div><h3>S / sensory grounding</h3><p>Knowledge should surface through seeing, hearing, touch, pain, temperature, pressure or another concrete trigger when relevant.</p></div>
+          <div class="card feature"><div class="icon">🫀</div><h3>V / vocal tells</h3><p>Breathing, hesitation, roughness, short bursts and other vocal texture can emerge from physical and psychological pressure.</p></div>
+          <div class="card feature"><div class="icon">🧭</div><h3>P / subjective truth</h3><p>The character acts from what they believe is true, not from the omniscient truth available to the system.</p></div>
+          <div class="card feature"><div class="icon">🌧️</div><h3>Persistent physical state</h3><p>Wet clothing, dirt, tears, injury, fatigue, position and other consequences should not silently reset between turns.</p></div>
+          <div class="card feature"><div class="icon">🔁</div><h3>Turn-level S10 state</h3><p>HW can evaluate the full S10 state once per turn, then compile the useful result instead of expanding ten stages before every generated sentence.</p></div>
+        </div>
+
+        <div class="card feature" style="margin-top:18px">
+          <h3>Compact transient state</h3>
+          <div class="example">{
+  "kineticMemory": "protective response activated",
+  "immediateConflict": "player retreats in fear",
+  "physicalPressure": "distance increasing",
+  "sensoryTrigger": "shaking hands, uneven breathing",
+  "causalShift": "character realizes approach is frightening player",
+  "voiceState": "lower, slower, restrained",
+  "subjectiveTruth": "giving space is necessary",
+  "actionBias": "stop advancing and reassure"
+}</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <div class="section-head">
+          <div><div class="kicker">New features</div><h2>Useful systems that fall naturally out of the architecture.</h2></div>
+          <p>These are not random extras. Each feature uses state already produced by RS V2, the embodiment layer or memory pipeline, so they can reinforce one another instead of becoming isolated prompt tricks.</p>
+        </div>
+
+        <div class="grid-2">
+          <div class="card feature"><div class="icon">🎭</div><h3>Interpretation confidence</h3><p>Characters do not always know what the player meant. Low confidence can produce questions, suspicion, arrogance, caution or empathy depending on personality.</p></div>
+          <div class="card feature"><div class="icon">🪞</div><h3>Persistent misunderstandings</h3><p>Keep player intent and character belief separate. A false belief remains real to the character until evidence changes it.</p></div>
+          <div class="card feature"><div class="icon">🧵</div><h3>Causal memory</h3><p>Store meaningful events together with what they caused. Retrieve by causal similarity, not only by matching words.</p></div>
+          <div class="card feature"><div class="icon">🗂️</div><h3>Memory lanes</h3><p>Separate character memory, relational memory, world memory, body state and scene memory so retrieval does not become one giant RAG soup.</p></div>
+          <div class="card feature"><div class="icon">⏳</div><h3>Emotional aftereffects</h3><p>Fear, embarrassment, grief and resentment decay at different speeds, modified by personality and circumstances.</p></div>
+          <div class="card feature"><div class="icon">🛡️</div><h3>Continuity Guard</h3><p>Before generation, detect contradictions in identity, body, relationships, scene geography and world rules, then retrieve targeted evidence only when needed.</p></div>
+          <div class="card feature"><div class="icon">🎲</div><h3>Layered reroll</h3><p>Normal reroll changes prose. Alternative reaction can reroll plausible interpretation. Divergent reroll branches from the same world state.</p></div>
+          <div class="card feature"><div class="icon">👥</div><h3>Multi-character attention</h3><p>Each cast member independently decides whether they noticed, care, react, speak or remain silent. Mentioning a character boosts relevance without forcing dialogue.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <div><div class="kicker">Expression Dynamics</div><h2>Meter should emerge from state.</h2></div>
+          <p>Instead of asking the model to "be varied", prose rhythm can be explicitly derived from emotion, physiology, personality, relationship pressure, voice and the current situation.</p>
+        </div>
+
+        <div class="grid-3">
+          <div class="card feature"><h3>Calm</h3><p>Low tempo • longer sentences • few fragments • low hesitation • deliberate action.</p><div class="example" style="margin-top:15px">"I don't think that's necessary. We still have time."</div></div>
+          <div class="card feature"><h3>Nervous</h3><p>Medium tempo • shorter clauses • more pauses • qualifying questions • visible tells.</p><div class="example" style="margin-top:15px">"I don't... think that's necessary. We still have time. Right?"</div></div>
+          <div class="card feature"><h3>Panicked</h3><p>High tempo • fragments • repetition pressure • short commands • action dominance.</p><div class="example" style="margin-top:15px">"No. No, wait. Stop. Just stop."</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <div><div class="kicker">Diagnostics</div><h2>Make relationship changes explain themselves.</h2></div>
+          <p>The debugging view should expose why a relationship event changed, without leaking the analysis into visible roleplay prose. This makes tuning possible when a friendly or frightened action produces a bizarre score.</p>
+        </div>
+        <div class="card feature">
+          <div class="example">RELATIONSHIP CHANGE
+Trust +2 • Comfort -1 • Fear +5
+
+OBSERVED EVENT
+Player backed away; voice and posture indicated fear.
+
+CHARACTER INTERPRETATION
+"They are frightened of me."
+
+RELEVANT TRAITS
+protective • socially cautious
+
+RELEVANT MEMORY
+previous accidental intimidation
+
+INTERPRETATION CONFIDENCE
+78%</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="plan">
+      <div class="wrap">
+        <div class="section-head">
+          <div><div class="kicker">Development plan</div><h2>Build it in layers, not as one rewrite.</h2></div>
+          <p>The current RS V2 / Free Roam work remains the runtime foundation. These phases expand it after the core scoring behaviour is stable.</p>
+        </div>
+        <div class="card card-pad">
+          <div class="timeline">
+            <div class="phase"><div><b>RS V2 state model</b><span>Multidimensional relationships, dual perspective, confidence, momentum, inertia and stable event identity.</span></div></div>
+            <div class="phase"><div><b>Event / appraisal engine</b><span>Convert player and character turns into structured social and physical events rather than raw sentiment.</span></div></div>
+            <div class="phase"><div><b>Memory lanes</b><span>Character, relational, event, world and scene memory with causal links and targeted retrieval.</span></div></div>
+            <div class="phase"><div><b>ObserverseQuelle adapter</b><span>Translate Gemini / Notebook terminology into HW concepts and consume S10 as the embodiment / behaviour layer.</span></div></div>
+            <div class="phase"><div><b>Persistent body + spatial state</b><span>Positions, distances, posture, injury, fatigue, clothing, environment and durable physical consequences.</span></div></div>
+            <div class="phase"><div><b>Expression Dynamics</b><span>Meter, cadence, dialogue/action density, vocal variation and state-derived prose rhythm.</span></div></div>
+            <div class="phase"><div><b>Continuity Guard</b><span>Detect likely identity, state, geography and world contradictions before generation.</span></div></div>
+            <div class="phase"><div><b>Advanced reroll</b><span>Prose reroll, interpretation reroll, player reroll and divergent branching.</span></div></div>
+            <div class="phase"><div><b>Multi-character attention</b><span>Per-character notice/relevance/reaction/speech decisions for Free Roam and Living Cast.</span></div></div>
+            <div class="phase"><div><b>Developer diagnostics</b><span>Explain scoring, state transitions, retrieved memories and behaviour decisions for tuning and regression testing.</span></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="rule">
+      <div class="wrap">
+        <small>Architecture rule</small>
+        <h2>The LLM writes the scene. It does not own the state.</h2>
+        <p style="color:var(--muted);max-width:760px;margin:18px auto 0">Howling Whispers owns relationships, memory, body state, world state, beliefs, event history and continuity. The provider receives the relevant state and performs the character.</p>
+      </div>
+    </div>
+
+    <footer>
+      <div class="wrap">Howling Whispers • Relationship Engine V2 research presentation • Prepared for implementation discussion with Derkomor. This page describes proposed architecture and research direction, not a claim that every feature is already implemented.</div>
+    </footer>
+  </main>
+</body>
+</html>
