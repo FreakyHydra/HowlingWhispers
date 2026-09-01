@@ -1,6 +1,9 @@
-import { ChangelogView as ChangelogHistory, type ChangelogViewProps } from "./changelog-history";
+import { ChangelogView as ChangelogHistory } from "./changelog-history";
 
-export type { ChangelogViewProps } from "./changelog-history";
+export interface ChangelogViewProps {
+  packageInfo: { version: string };
+  setView: (view: string) => void;
+}
 
 export function ChangelogView(props: ChangelogViewProps) {
   return (
