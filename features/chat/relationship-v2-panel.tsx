@@ -5,14 +5,16 @@ import {
   DEFAULT_PERSONA_ID,
   RELATIONSHIP_DIMENSIONS,
   defaultRelationshipDimensions,
-  getRelationshipsSnapshot,
   loadRelationships,
   relationshipKey,
-  subscribeRelationshipUpdates,
   type RelationshipDimensions,
   type RelationshipRecord,
   type RelationshipState,
 } from "../../lib/relationships/index.ts";
+import {
+  getRelationshipsSnapshot,
+  subscribeRelationshipUpdates,
+} from "../../lib/relationships/storage.ts";
 
 type RelationshipV2PanelProps = {
   characterId: string;
