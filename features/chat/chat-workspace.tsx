@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { ChatWorkspace as LegacyChatWorkspace } from "./chat-workspace-legacy.tsx";
 import type { ChatWorkspaceProps } from "./chat-workspace-legacy.tsx";
 import { RelationshipV2Panel } from "./relationship-v2-panel.tsx";
+import { SlashCommandLayer } from "./slash-command-layer.tsx";
 
 export type { ChatWorkspaceProps } from "./chat-workspace-legacy.tsx";
 
@@ -16,10 +17,9 @@ type RelationshipHost = {
 /**
  * Thin RS V2 presentation layer around the existing chat workspace.
  *
- * Keeping the established workspace byte-for-byte intact makes this first
- * frontend slice low-risk: the wrapper only mounts the relationship-state
- * panel immediately after the existing overall bond meter. Once the panel has
- * settled, it can be folded into the workspace during a later component split.
+ * Keeping the established workspace intact makes the frontend slice low-risk:
+ * the wrapper mounts focused additions without pushing them back into the
+ * orchestration core or message-persistence path.
  */
 export function ChatWorkspace(props: ChatWorkspaceProps) {
   const [relationshipHost, setRelationshipHost] = useState<RelationshipHost | null>(null);
@@ -81,6 +81,20 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
   return (
     <>
       <LegacyChatWorkspace {...props} />
+      <SlashCommandLayer
+        activeContextManifest={props.activeContextManifest}
+        activeMessages={props.activeMessages}
+        activeScene={props.activeScene}
+        activeSession={props.activeSession}
+        deriveRelationshipLabel={props.deriveRelationshipLabel}
+        draft={props.draft}
+        relationshipScore={props.relationshipScore}
+        rerollMessage={props.rerollMessage}
+        selected={props.selected}
+        sessionPersonaName={props.sessionPersonaName}
+        sessionUsesDefaultPersona={props.sessionUsesDefaultPersona}
+        setDraft={props.setDraft}
+      />
       {shouldMountRelationshipPanel && liveHost && props.activeSession && !props.activeSession.locationId && createPortal(
         <RelationshipV2Panel
           characterId={props.selected.id}
