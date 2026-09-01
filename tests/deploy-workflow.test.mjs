@@ -13,7 +13,7 @@ test("dev deployment is gated behind the full successful CI job", () => {
 });
 
 test("deployment targets only the dev checkout and sandbox service", () => {
-  assert.match(workflow, /APP_DIR: \/var\/www\/HowlingWhispers-dev/);
+  assert.match(workflow, /APP_DIR: \/var\/www\/hw/dev/);
   assert.match(workflow, /SERVICE: thehowlingwhispers-dev\.service/);
   assert.doesNotMatch(workflow, /howlingwhispers-promote/);
   assert.doesNotMatch(workflow, /SERVICE: thehowlingwhispers\.service/);

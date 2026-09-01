@@ -85,7 +85,7 @@ jobs:
           SSH_USER: ${{ secrets.HW_DEV_SSH_USER }}
           SSH_PORT: ${{ secrets.HW_DEV_SSH_PORT }}
           APPROVED_SHA: ${{ github.sha }}
-          APP_DIR: /var/www/HowlingWhispers-dev
+          APP_DIR: /var/www/hw/dev
           SERVICE: thehowlingwhispers-dev.service
           HEALTH_URL: https://sandbox.thehowlingwhispers.com
         run: |

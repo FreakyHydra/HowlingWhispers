@@ -28,14 +28,14 @@ Configure these under repository Settings, Secrets and variables, Actions:
 
 The application directory, service, branch, and health URL are intentionally fixed in the workflow:
 
-- `/var/www/HowlingWhispers-dev`
+- `/var/www/hw/dev`
 - `thehowlingwhispers-dev.service`
 - `dev`
 - `https://sandbox.thehowlingwhispers.com`
 
 ## Server requirements
 
-- The deployment user can read and update `/var/www/HowlingWhispers-dev`.
+- The deployment user can read and update `/var/www/hw/dev`.
 - The checkout can run `git fetch origin dev` without interactive credentials.
 - Node 22, npm, Git, and curl are installed.
 - The deployment user may run only these service commands without an interactive sudo password:

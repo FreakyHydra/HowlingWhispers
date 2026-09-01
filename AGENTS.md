@@ -15,14 +15,14 @@ call" ad card linking to the owner's Discord: `https://discord.gg/jrJRrAXBRH`.
 - **Live**: `https://rp.thehowlingwhispers.com` — public. Service `thehowlingwhispers.service`,
   port 2026, runs from the deployed release worktree.
 - **Sandbox/dev**: `https://sandbox.thehowlingwhispers.com` — service
-  `thehowlingwhispers-dev.service`, port 2027, `WorkingDirectory=/var/www/HowlingWhispers-dev`,
+  `thehowlingwhispers-dev.service`, port 2027, `WorkingDirectory=/var/www/hw/dev`,
   `Environment=NODE_ENV=production PORT=2027`, `ExecStart=/usr/bin/npm start -- --hostname 127.0.0.1`.
-- **Dev checkout**: `/var/www/HowlingWhispers-dev` (branch `dev`).
+- **Dev checkout**: `/var/www/hw/dev` (branch `dev`).
 - **Automatic dev deploy**: a successful `dev` push runs the deploy job in `.github/workflows/ci.yml`, refreshes the German sandbox server, verifies the public page and bundle, and rolls back on failure. Setup is documented in `docs/deployment/dev-auto-deploy.md`.
-- **Main checkout**: `/var/www/HowlingWhispers` (branch `main`).
+- **Main checkout**: `/var/www/hw/rp` (branch `main`).
 - **Promote script**: `/usr/local/sbin/howlingwhispers-promote`.
-- **Releases**: `/var/www/HowlingWhispers-releases/<sha>` (fresh worktree per deploy),
-  symlinked by `/var/www/HowlingWhispers-current`.
+- **Releases**: `/var/www/hw/rp-releases/<sha>` (fresh worktree per deploy),
+  symlinked by `/var/www/hw/rp-current`.
 
 ## Architecture (post-stabilization)
 
@@ -86,12 +86,12 @@ Extraction sequence (oldest → newest):
 > a stale asset manifest and the page renders blank/white. Verify with a curl of the page + bundle hash.
 
 1. **Work on `dev` only.** Never touch `main`/live without the user's explicit approval.
-2. In `/var/www/HowlingWhispers-dev`:
+2. In `/var/www/hw/dev`:
    - `git pull` (fast-forward `dev` from origin) if not up to date.
    - Make changes, run `npm test`, `npm run lint`, `npm run build`.
    - `git add` the intended files, commit with a concise message, `git push origin dev`.
    - GitHub CI automatically deploys the exact tested commit to the sandbox after all checks pass. Do not manually deploy a different SHA while that job is running.
-3. In `/var/www/HowlingWhispers` (main checkout):
+3. In `/var/www/hw/rp` (main checkout):
    - `git fetch origin`
    - `git merge --ff-only origin/dev`
    - `git push origin main`
@@ -126,7 +126,7 @@ service restart (and its HTTP check) cannot simply be forgotten.
 
 Do not touch the live service unless explicitly authorized.
 
-## Verification commands (run in /var/www/HowlingWhispers-dev)
+## Verification commands (run in /var/www/hw/dev)
 
 - Tests: `npm test` — runs `npm run build` then `node --test tests/*.test.mjs`. **All tests must pass.**
   At the 2026-08-15 architecture checkpoint, the suite contained 225 passing tests; the count only
