@@ -8,6 +8,11 @@ import { RelationshipV2Panel } from "./relationship-v2-panel.tsx";
 
 export type { ChatWorkspaceProps } from "./chat-workspace-legacy.tsx";
 
+type RelationshipHost = {
+  key: string;
+  node: HTMLElement;
+};
+
 /**
  * Thin RS V2 presentation layer around the existing chat workspace.
  *
@@ -17,16 +22,21 @@ export type { ChatWorkspaceProps } from "./chat-workspace-legacy.tsx";
  * settled, it can be folded into the workspace during a later component split.
  */
 export function ChatWorkspace(props: ChatWorkspaceProps) {
-  const [relationshipHost, setRelationshipHost] = useState<HTMLElement | null>(null);
+  const [relationshipHost, setRelationshipHost] = useState<RelationshipHost | null>(null);
+  const activeSessionId = props.activeSession?.id ?? "";
+  const activeLocationId = props.activeSession?.locationId ?? "";
+  const selectedId = props.selected.id;
+  const shouldMountRelationshipPanel = Boolean(
+    props.showContextRail && activeSessionId && !activeLocationId,
+  );
+  const hostKey = `${activeSessionId}:${selectedId}`;
 
   useEffect(() => {
-    if (!props.showContextRail || !props.activeSession || props.activeSession.locationId) {
-      setRelationshipHost(null);
-      return;
-    }
+    if (!shouldMountRelationshipPanel) return;
 
     let mountedHost: HTMLElement | null = null;
     let observer: MutationObserver | null = null;
+    let frame = 0;
 
     const mount = () => {
       const bondMeter = document.querySelector<HTMLElement>(
@@ -44,33 +54,34 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
         bondMeter.insertAdjacentElement("afterend", host);
       }
       mountedHost = host;
-      setRelationshipHost(host);
+      setRelationshipHost({ key: hostKey, node: host });
       return true;
     };
 
-    if (!mount()) {
-      observer = new MutationObserver(() => {
-        if (mount()) observer?.disconnect();
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-    }
+    observer = new MutationObserver(() => {
+      if (mount()) observer?.disconnect();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    frame = window.requestAnimationFrame(() => {
+      if (mount()) observer?.disconnect();
+    });
 
     return () => {
+      window.cancelAnimationFrame(frame);
       observer?.disconnect();
       mountedHost?.remove();
-      setRelationshipHost(null);
     };
-  }, [
-    props.showContextRail,
-    props.activeSession?.id,
-    props.activeSession?.locationId,
-    props.selected.id,
-  ]);
+  }, [hostKey, shouldMountRelationshipPanel]);
+
+  const liveHost = relationshipHost?.key === hostKey && relationshipHost.node.isConnected
+    ? relationshipHost.node
+    : null;
 
   return (
     <>
       <LegacyChatWorkspace {...props} />
-      {relationshipHost && props.activeSession && !props.activeSession.locationId && createPortal(
+      {shouldMountRelationshipPanel && liveHost && props.activeSession && !props.activeSession.locationId && createPortal(
         <RelationshipV2Panel
           characterId={props.selected.id}
           characterName={props.selected.name}
@@ -79,7 +90,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
           fallbackDimensions={props.activeContextManifest?.simulation?.relationshipDimensions}
           fallbackMomentum={props.activeContextManifest?.simulation?.relationshipMomentum}
         />,
-        relationshipHost,
+        liveHost,
       )}
     </>
   );
