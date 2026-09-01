@@ -1,6 +1,7 @@
 import { RELATIONSHIP_DIMENSIONS, type RelationshipDimensions, type RelationshipState } from "./schema.ts";
 
 const RELATIONSHIPS_KEY = "dreambound_relationships";
+export const RELATIONSHIPS_UPDATED_EVENT = "hw:relationships-updated";
 
 function readRaw(key: string): string | null {
   if (typeof localStorage === "undefined") return null;
@@ -81,6 +82,9 @@ function parseDimensions(value: unknown): RelationshipDimensions | undefined {
 
 export function saveRelationships(state: RelationshipState) {
   writeRaw(RELATIONSHIPS_KEY, JSON.stringify(state));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(RELATIONSHIPS_UPDATED_EVENT));
+  }
 }
 
 function isRelationshipEvent(value: unknown): value is import("./schema.ts").RelationshipEvent {
