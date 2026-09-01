@@ -40,7 +40,7 @@ test("release metadata uses one version across package and launcher sources", as
   const updateConfig = JSON.parse(
     await readFile(new URL("../public/update-config.json", import.meta.url), "utf8"),
   );
-  assert.equal(packageInfo.version, "0.11.1.0");
+  assert.equal(packageInfo.version, "0.11.2.0");
   assert.match(launcher, new RegExp(`AssemblyVersion\\("${packageInfo.version}"\\)`));
   assert.match(launcher, new RegExp(`AssemblyFileVersion\\("${packageInfo.version}"\\)`));
   assert.equal(updateConfig.repository, "FreakyHydra/HowlingWhispers");
