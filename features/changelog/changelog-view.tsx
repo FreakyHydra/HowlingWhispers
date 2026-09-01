@@ -7,8 +7,38 @@ export interface ChangelogViewProps {
 
 export function ChangelogView(props: ChangelogViewProps) {
   return (
-    <>
-      <section className="changelog-page">
+    <main className="changelog-stack">
+      <style>{`
+        .changelog-stack {
+          background: #0b090c;
+          min-height: 0;
+          overflow-y: auto;
+        }
+
+        .changelog-stack > .changelog-page,
+        .changelog-stack .changelog-history .changelog-page {
+          min-height: 0;
+          overflow: visible;
+        }
+
+        .changelog-current {
+          padding-bottom: 12px;
+        }
+
+        .changelog-history .changelog-heading {
+          display: none;
+        }
+
+        .changelog-history .changelog-page {
+          padding-top: 0;
+        }
+
+        .changelog-history .changelog-entry.latest {
+          box-shadow: none;
+        }
+      `}</style>
+
+      <section className="changelog-page changelog-current">
         <header className="changelog-heading">
           <div>
             <p className="eyebrow">Version {props.packageInfo.version}</p>
@@ -56,13 +86,8 @@ export function ChangelogView(props: ChangelogViewProps) {
       </section>
 
       <div className="changelog-history">
-        <style>{`
-          .changelog-history .changelog-heading { display: none; }
-          .changelog-history .changelog-page { padding-top: 0; }
-          .changelog-history .changelog-entry.latest { box-shadow: none; }
-        `}</style>
         <ChangelogHistory {...props} />
       </div>
-    </>
+    </main>
   );
 }
