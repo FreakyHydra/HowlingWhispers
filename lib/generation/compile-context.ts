@@ -91,8 +91,26 @@ function reinforceRerollDiversity(prompt: string, input: CompileContextInput): s
   return injectLateSystemBlock(prompt, renderRerollDiversifier(), input);
 }
 
+function compileInputForKind(input: CompileContextInput): CompileContextInput {
+  if (input.kind !== "impersonation") return input;
+
+  // Impersonation writes the player's turn, not the NPC's. Keep canon, safety,
+  // relationship label/note, world continuity, cast, and recent history, but do
+  // not inject character-behaviour pressure from RS V2 into the player-writing
+  // prompt. Those signals are authoritative when generating the character's
+  // next turn and remain stored unchanged; they are only withheld from this
+  // generation mode so the model is less likely to continue the NPC instead.
+  return {
+    ...input,
+    relationshipContextInstruction: undefined,
+    relationshipDimensions: undefined,
+    relationshipMomentum: undefined,
+    relationshipAftereffects: [],
+  };
+}
+
 export function compileContext(input: CompileContextInput): CompiledContext {
-  const compiled = compileContextCore(input);
+  const compiled = compileContextCore(compileInputForKind(input));
   let prompt = reinforceImpersonationDirection(compiled.prompt, input);
   prompt = reinforceRerollDiversity(prompt, input);
   if (prompt === compiled.prompt) return compiled;
