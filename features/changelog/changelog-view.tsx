@@ -65,6 +65,14 @@ export function ChangelogView(props: ChangelogViewProps) {
                 <li><strong>Momentum and aftereffects</strong> - relationship changes can carry velocity, stability, and emotional residue between turns.</li>
               </ul>
 
+              <h3>👁 Live Relationship State</h3>
+              <ul>
+                <li><strong>Twelve visible dimensions</strong> - the Roleplay context rail now exposes Trust, Affection, Respect, Fear, Comfort, Suspicion, Attachment, Protectiveness, Resentment, Loyalty, Familiarity, and Authority beneath the overall bond meter.</li>
+                <li><strong>Center-zero meters</strong> - every dimension runs from -100 through neutral to +100 so negative and positive state are shown without pretending every relationship signal is simply good or bad progress.</li>
+                <li><strong>Live momentum</strong> - rising, falling, and steady indicators show the direction of each relationship dimension as new turns are interpreted.</li>
+                <li><strong>Existing stories continue</strong> - old playthroughs are not reset. New RS V2-capable turns begin enriching their multidimensional state from the current point forward.</li>
+              </ul>
+
               <h3>🌍 World Engine V2</h3>
               <ul>
                 <li><strong>Persistent scene state</strong> - world and body-state facts survive across turns and backup/restore.</li>
@@ -76,10 +84,11 @@ export function ChangelogView(props: ChangelogViewProps) {
               <ul>
                 <li><strong>No fabricated temporary speakers</strong> - unresolved speakers now fail safely instead of borrowing the selected primary character&apos;s identity.</li>
                 <li><strong>Pip and Ragna regression coverage</strong> - known family relationships and side-character participation are protected by dedicated tests.</li>
+                <li><strong>Impersonate isolation</strong> - player-turn generation keeps continuity and safety context without inheriting character-side RS V2 behavior pressure.</li>
                 <li><strong>Portable state</strong> - RS V2 relationship dimensions, causal state, activation provenance, and World Engine state are included in persistence and backup paths.</li>
               </ul>
 
-              <p><strong>This is the first production RS V2 / World Engine V2 slice.</strong> It establishes the authoritative state and identity foundation that later UI, diagnostics, branching, and deeper simulation features can build on.</p>
+              <p><strong>This is the first production RS V2 / World Engine V2 slice.</strong> The authoritative state and identity foundation is now visible through the live relationship panel, while diagnostics, branching, and deeper simulation remain available for later expansion.</p>
             </div>
           </article>
         </div>
