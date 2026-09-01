@@ -12,7 +12,9 @@ import type { ContextLibrary } from "../context/types.ts";
 // Credentials (NovelAI tokens, passwords, etc.) must never be included.
 
 import { sanitizeCast, type LivingCastEntry } from "../generation/living-cast.ts";
+import { sanitizeWorldSceneState, type WorldSceneState } from "../simulation/index.ts";
 import { sanitizeTraits } from "../characters/traits.ts";
+import { RELATIONSHIP_DIMENSIONS, type RelationshipDimensions, type RelationshipInterpretation } from "../relationships/schema.ts";
 
 export const PORTABLE_BACKUP_FORMAT = "howling-whispers-backup";
 export const PORTABLE_BACKUP_VERSION = 1;
@@ -66,6 +68,7 @@ export type BackupStorySession = {
   playerPersona?: string;
   playerPersonaId?: string;
   livingCast?: LivingCastEntry[];
+  worldState?: WorldSceneState;
 };
 
 export type BackupStoryScene = {
@@ -198,6 +201,11 @@ export type BackupRelationshipEvent = {
   playerDelta?: number;
   characterDelta?: number;
   reason: string;
+  interpretation?: RelationshipInterpretation;
+  dimensionDeltas?: Partial<RelationshipDimensions>;
+  diagnostics?: string[];
+  memoryLane?: "relationship";
+  causalMemory?: { event: string; appraisal: string; aftereffects: string[] };
   createdAt: number;
 };
 
@@ -205,6 +213,9 @@ export type BackupRelationshipRecord = {
   characterId: string;
   personaId: string;
   score: number;
+  baselineScore?: number;
+  dimensions?: RelationshipDimensions;
+  momentum?: Partial<RelationshipDimensions>;
   updatedAt: number;
   events: BackupRelationshipEvent[];
 };
@@ -623,6 +634,7 @@ function sanitizeSessions(value: unknown): BackupStorySession[] {
       playerPersona: typeof s.playerPersona === "string" ? s.playerPersona : undefined,
       playerPersonaId: typeof s.playerPersonaId === "string" ? s.playerPersonaId : undefined,
       livingCast: sanitizeCast(s.livingCast),
+      worldState: sanitizeWorldSceneState(s.worldState),
     }))
     .filter((s) => s.id && (s.characterId || s.locationId));
 }
@@ -687,6 +699,13 @@ function sanitizeRelationships(value: unknown): BackupRelationshipState {
               ? Math.round(event.characterDelta)
               : undefined,
             reason: event.reason.slice(0, 500),
+            interpretation: sanitizeRelationshipInterpretation(event.interpretation),
+            dimensionDeltas: sanitizeRelationshipDimensions(event.dimensionDeltas, true),
+            diagnostics: Array.isArray(event.diagnostics)
+              ? event.diagnostics.filter((item): item is string => typeof item === "string").map((item) => item.slice(0, 300)).slice(0, 20)
+              : undefined,
+            memoryLane: event.memoryLane === "relationship" ? "relationship" : undefined,
+            causalMemory: isCausalMemory(event.causalMemory),
             createdAt: Math.round(event.createdAt),
           });
         }
@@ -698,11 +717,54 @@ function sanitizeRelationships(value: unknown): BackupRelationshipState {
       score: typeof record.score === "number" && Number.isFinite(record.score)
         ? Math.round(record.score)
         : events.reduce((total, event) => total + event.delta, 0),
+      baselineScore: typeof record.baselineScore === "number" && Number.isFinite(record.baselineScore) ? Math.round(record.baselineScore) : undefined,
+      dimensions: sanitizeRelationshipDimensions(record.dimensions, false) as RelationshipDimensions | undefined,
+      momentum: sanitizeRelationshipDimensions(record.momentum, true),
       updatedAt: typeof record.updatedAt === "number" && Number.isFinite(record.updatedAt) ? record.updatedAt : 0,
       events,
     };
   }
   return out;
+}
+
+function sanitizeRelationshipDimensions(value: unknown, partial: boolean): Partial<RelationshipDimensions> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  const entries = RELATIONSHIP_DIMENSIONS.flatMap((dimension) => {
+    const current = input[dimension];
+    if (typeof current !== "number" || !Number.isFinite(current)) return partial ? [] : [[dimension, 0] as const];
+    return [[dimension, Math.max(-100, Math.min(100, current))] as const];
+  });
+  return Object.fromEntries(entries) as Partial<RelationshipDimensions>;
+}
+
+function sanitizeRelationshipInterpretation(value: unknown): RelationshipInterpretation | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  const signals = input.playerSignals;
+  if (!signals || typeof signals !== "object" || Array.isArray(signals)) return undefined;
+  const signalInput = signals as Record<string, unknown>;
+  const names = ["fear", "hostility", "vulnerability", "kindness", "affection", "anger", "distress", "boundary", "coercion"] as const;
+  return {
+    playerSignals: Object.fromEntries(names.map((name) => [name, typeof signalInput[name] === "number" ? Math.max(0, Math.min(1, signalInput[name])) : 0])) as RelationshipInterpretation["playerSignals"],
+    appraisal: typeof input.appraisal === "string" ? input.appraisal.slice(0, 500) : "",
+    confidence: typeof input.confidence === "number" ? Math.max(0, Math.min(1, input.confidence)) : 0,
+    behaviorBias: Array.isArray(input.behaviorBias) ? input.behaviorBias.filter((item): item is string => typeof item === "string").map((item) => item.slice(0, 160)).slice(0, 12) : [],
+    antiAppeasement: input.antiAppeasement === true,
+  };
+}
+
+function isCausalMemory(value: unknown): BackupRelationshipEvent["causalMemory"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  if (typeof input.event !== "string" || typeof input.appraisal !== "string") return undefined;
+  return {
+    event: input.event.slice(0, 500),
+    appraisal: input.appraisal.slice(0, 500),
+    aftereffects: Array.isArray(input.aftereffects)
+      ? input.aftereffects.filter((item): item is string => typeof item === "string").map((item) => item.slice(0, 160)).slice(0, 12)
+      : [],
+  };
 }
 
 function nextBackupEventId(): string {

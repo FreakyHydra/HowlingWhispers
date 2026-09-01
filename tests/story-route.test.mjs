@@ -88,6 +88,62 @@ test("POST normal send returns a JSON reply instead of crashing", async () => {
   }
 });
 
+test("POST compiles a participating side character from that character's real card", async () => {
+  const calls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (typeof url === "string" && url.startsWith(NOVELAI_COMPLETIONS)) {
+      calls.push(JSON.parse(String(init?.body)));
+      return Response.json({ choices: [{ text: "Ragna stops at the threshold and gives Skyler space." }] });
+    }
+    return Response.json({ error: "unexpected fetch" }, { status: 500 });
+  };
+  try {
+    const response = await POST(makeRequest({
+      ...baseBody,
+      respondAs: "Ragna Holt",
+      character: {
+        ...baseBody.character,
+        id: "ragna-holt",
+        name: "Ragna Holt",
+        role: "Pip's protective mother",
+        profile: "REAL RAGNA CARD: blunt, independent, protective, and unwilling to abandon her own judgment.",
+      },
+      livingCast: [
+        { id: "pip-holt", name: "Pip Holt", origin: "permanent", presence: "active", notes: [], relationships: [] },
+        { id: "ragna-holt", name: "Ragna Holt", origin: "temporary", presence: "active", resolutionStatus: "resolved", resolvedCharacterId: "ragna-holt", activationReason: "entered through Pip interaction", activationSource: "relationship-linked-known-character", notes: [], relationships: [{ target: "Pip Holt", descriptor: "daughter: Ragna is Pip's mother" }] },
+      ],
+      messages: [{ sender: "player", text: "I recoil when Ragna enters." }],
+    }));
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].prompt, /REAL RAGNA CARD/);
+    assert.match(calls[0].prompt, /Resolved ragna-holt/);
+    assert.match(calls[0].prompt, /Relationship to Pip Holt/);
+    assert.doesNotMatch(calls[0].prompt, /Peony is observant/);
+    assert.equal(payload.context.simulation.actor.characterId, "ragna-holt");
+    assert.equal(payload.context.simulation.actor.activationSource, "relationship-linked-known-character");
+    assert.equal(payload.context.simulation.actor.resolved, true);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("POST refuses an unresolved temporary character instead of fabricating an identity", async () => {
+  const response = await POST(makeRequest({
+    ...baseBody,
+    respondAs: "Known Stranger",
+    livingCast: [
+      ...baseBody.livingCast,
+      { id: "known-stranger", name: "Known Stranger", origin: "temporary", presence: "active", resolutionStatus: "unresolved", notes: [], relationships: [] },
+    ],
+    messages: [{ sender: "player", text: "Known Stranger enters." }],
+  }));
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /not an active resolved character/i);
+});
+
 test("POST preserves valid world timestamps and ignores legacy message ids", async () => {
   const calls = [];
   const original = globalThis.fetch;

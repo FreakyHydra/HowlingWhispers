@@ -112,6 +112,11 @@ import { readLivingCastConfig, writeLivingCastConfig, DEFAULT_LIVING_CAST_CONFIG
 import { createParticipantSelector, RoundRobinSelector } from "../lib/living-cast/participant-selector.ts";
 import { inviteCharacter, removeInvitedCharacter, resetCast, isInvitedCharacter } from "../lib/living-cast/invitation.ts";
 import type { LivingCastConfig } from "../lib/living-cast/config.ts";
+import {
+  resolveLivingCastCharacters,
+  updateWorldSceneState,
+  type WorldSceneState,
+} from "../lib/simulation/index.ts";
 import { LivingCastConfig as LivingCastConfigView } from "../features/living-cast/living-cast-config.tsx";
 import { CharacterInvitePicker } from "../features/living-cast/character-invite-picker.tsx";
 import { isNewerVersion } from "../lib/version.mjs";
@@ -420,6 +425,7 @@ export type StorySession = {
   livingCast?: LivingCastEntry[];
   livingCastRoundRobinIndex?: number;
   autonomousCast?: AutonomousAgent[];
+  worldState?: WorldSceneState;
 };
 
 export type StoryEditor = {
@@ -2591,21 +2597,27 @@ export default function DreamboundApp() {
   ) {
     setSessions((current) => current.map((session) => {
       if (session.messageKey !== messageKey) return session;
-      if (!session.freeRoam) return { ...session, updatedAt: Date.now() };
-
       const detection = detectLivingCast({
         messages: conversation,
         cast: overrides.livingCast ?? [],
         primary: { id: overrides.characterId, name: overrides.characterName },
         playerName: overrides.playerName,
       });
+      const resolved = resolveLivingCastCharacters(detection.cast, characters);
+      const worldState = updateWorldSceneState(
+        session.worldState,
+        conversation,
+        resolved.cast,
+        activeScene?.title || session.title,
+      );
       return {
         ...session,
         updatedAt: Date.now(),
-        livingCast: detection.cast,
+        livingCast: resolved.cast,
+        worldState,
         autonomousCast: autonomousAgentsToArray(seedAutonomyFromCast(
           new Map((session.autonomousCast ?? []).map((agent) => [agent.id, agent])),
-          detection.cast,
+          resolved.cast,
         )),
       };
     }));
@@ -2669,13 +2681,6 @@ export default function DreamboundApp() {
     : relationshipRecord
       ? relationshipRecord.score
       : migrateBondToScore(selected.bond);
-  const relationshipContext = selectedLocation
-    ? ""
-    : [
-        selected.relationship,
-        relationshipTierPhrase(relationshipScore),
-      ].filter(Boolean).join(" — ");
-
   const updateRelationshipNote = useCallback((note: string) => {
     if (selectedLocation) return;
     setRelationships((prev) => {
@@ -3486,48 +3491,93 @@ export default function DreamboundApp() {
       }
       return result;
     };
-    const sessionCast = livingCastConfig.enabled
+    const detectedCast = livingCastConfig.enabled
       ? (hasExplicitCast(activeSession?.livingCast) ? activeSession.livingCast : resetCast({ id: selected.id, name: selected.name }, effectivePlayerName))
       : [];
+    const castDetection = livingCastConfig.enabled
+      ? detectLivingCast({
+          messages: conversation,
+          cast: detectedCast,
+          primary: { id: selected.id, name: selected.name },
+          playerName: effectivePlayerName,
+        })
+      : { cast: detectedCast };
+    const resolvedSimulationCast = resolveLivingCastCharacters(castDetection.cast, characters);
+    const sessionCast = resolvedSimulationCast.cast;
+    const respondingCastEntry = respondAs
+      ? sessionCast.find((entry) => matchesName(entry.name, respondAs))
+      : undefined;
+    if (respondAs && (!respondingCastEntry || respondingCastEntry.resolutionStatus === "unresolved")) {
+      throw new Error(`Sandbox refused to fabricate ${respondAs}. No active real character card was resolved.`);
+    }
+    const generationCharacter = respondingCastEntry?.resolvedCharacterId
+      ? characters.find((character) => character.id === respondingCastEntry.resolvedCharacterId)
+      : characters.find((character) => character.id === selected.id);
+    if (!isLocationSession && !generationCharacter) {
+      throw new Error(`Sandbox could not load the real character card for ${respondAs || selected.name}.`);
+    }
+    const promptCharacter: Character = generationCharacter ?? (selected as Character);
+    const actorRelationshipKey = generationCharacter
+      ? relationshipKey(generationCharacter.id, activeRelationshipPersonaId)
+      : "";
+    const actorRelationshipRecord = actorRelationshipKey ? relationshipsRef.current[actorRelationshipKey] : undefined;
+    const actorRelationshipScore = generationCharacter
+      ? effectiveScore(relationshipsRef.current, generationCharacter.id, activeRelationshipPersonaId, generationCharacter.bond)
+      : 0;
+    const actorRelationshipContext = generationCharacter
+      ? [generationCharacter.relationship, relationshipTierPhrase(actorRelationshipScore)].filter(Boolean).join(" — ")
+      : "";
+    const relationshipAftereffects = actorRelationshipRecord?.events.slice(-3)
+      .flatMap((event) => event.interpretation?.behaviorBias ?? [])
+      .slice(-8) ?? [];
+    const worldState = updateWorldSceneState(
+      activeSession?.worldState,
+      conversation,
+      sessionCast,
+      activeScene?.title || activeSession?.title,
+    );
     const resolvedSceneTitle = resolveStoryTemplate(activeScene.title, { charName: selected.name, userName: effectivePlayerName });
     const resolvedSceneWeather = resolveStoryTemplate(`${activeScene.weather}. ${activeScene.subtitle}`, { charName: selected.name, userName: effectivePlayerName });
     const characterPrompt = isLocationSession ? undefined : {
-          id: selected.id,
-          name: selected.name,
-          role: selected.role,
-          profile: selected.profile,
-          canonical: characterCardV2ToCanon({ ...selected, pronouns: selected.pronouns }, `v2-${packageInfo.version}`) ?? legacyCharacterToCanon({
-            id: selected.id,
+          id: promptCharacter.id,
+          name: promptCharacter.name,
+          role: promptCharacter.role,
+          profile: promptCharacter.profile,
+          canonical: characterCardV2ToCanon({ ...promptCharacter, pronouns: promptCharacter.pronouns }, `v2-${packageInfo.version}`) ?? legacyCharacterToCanon({
+            id: promptCharacter.id,
             revision: `builtin-${packageInfo.version}`,
-            name: selected.name,
-            role: selected.role,
-            profile: selected.profile,
-            ageCategory: selected.ageCategory,
-            isMinor: selected.isMinor,
-            allowedRelationshipTypes: selected.allowedRelationshipTypes,
-            disallowedContent: selected.disallowedContent,
-            pronouns: selected.pronouns,
-            traits: selected.traits,
+            name: promptCharacter.name,
+            role: promptCharacter.role,
+            profile: promptCharacter.profile,
+            ageCategory: promptCharacter.ageCategory,
+            isMinor: promptCharacter.isMinor,
+            allowedRelationshipTypes: promptCharacter.allowedRelationshipTypes,
+            disallowedContent: promptCharacter.disallowedContent,
+            pronouns: promptCharacter.pronouns,
+            traits: promptCharacter.traits,
           }),
           scene: activeSession?.sandbox ? "" : resolvedSceneTitle,
           sceneId: activeSession?.sandbox ? "" : activeScene.id,
-          worldId: activeSession?.sandbox ? "" : selected.id,
+          worldId: activeSession?.sandbox ? "" : promptCharacter.id,
           worldLore: activeSession?.sandbox ? null : characterCardV2BookToWorldLore(
-            selected.id,
-            selected.cardV2?.characterBook,
+            promptCharacter.id,
+            promptCharacter.cardV2?.characterBook,
           ) ?? legacyCharacterToWorldLore({
-            worldId: selected.id,
+            worldId: promptCharacter.id,
             revision: `runtime-${packageInfo.version}`,
             scene: resolvedSceneTitle,
             weather: resolvedSceneWeather,
           }),
           weather: activeSession?.sandbox ? "" : resolvedSceneWeather,
-          memories: activeSession?.sandbox ? [] : selected.memories,
+          memories: activeSession?.sandbox ? [] : promptCharacter.memories,
           sandbox: Boolean(activeSession?.sandbox),
-          relationship: relationshipContext,
+          relationship: actorRelationshipContext,
+          relationshipDimensions: actorRelationshipRecord?.dimensions,
+          relationshipMomentum: actorRelationshipRecord?.momentum,
+          relationshipAftereffects,
           relationshipContextEnabled,
           relationshipContextInstruction: relationshipContextEnabled ? RELATIONSHIP_CONTEXT_INSTRUCTION : undefined,
-          relationshipNote,
+          relationshipNote: actorRelationshipRecord?.note ?? "",
           playerRole: activeSession?.sandbox ? "" : activeSession?.playerRoleContext || activeSession?.playerRole || "",
           contextMode: "balanced",
           matureContentRequested: storyProvider === "local" && activeModel.adult === true,
@@ -3556,6 +3606,7 @@ export default function DreamboundApp() {
         respondAs,
         locationId: activeSession?.locationId,
         location: activeSession?.locationId ? locations.find((l) => l.id === activeSession!.locationId) : undefined,
+        worldState,
         character: characterPrompt,
         contextInput: {
           memories: contextLibrary.memories,
@@ -3851,6 +3902,11 @@ export default function DreamboundApp() {
       playerDelta: result.playerDelta,
       characterDelta: result.characterDelta,
       reason: result.reason,
+      interpretation: result.interpretation,
+      dimensionDeltas: result.dimensionDeltas,
+      diagnostics: result.diagnostics,
+      memoryLane: "relationship",
+      causalMemory: result.causalMemory,
     });
     setRelationships(next);
     setRelationshipDelta(result.delta);
@@ -3883,7 +3939,7 @@ export default function DreamboundApp() {
       characterReply,
       conversation: conversation.map((candidate) => ({ sender: candidate.sender, text: candidate.text })),
     });
-    if (!result || result.delta === 0) {
+    if (!result) {
       setRelationships(next);
       setRelationshipDelta(null);
       return;
@@ -3896,6 +3952,11 @@ export default function DreamboundApp() {
       playerDelta: result.playerDelta,
       characterDelta: result.characterDelta,
       reason: result.reason,
+      interpretation: result.interpretation,
+      dimensionDeltas: result.dimensionDeltas,
+      diagnostics: result.diagnostics,
+      memoryLane: "relationship",
+      causalMemory: result.causalMemory,
     });
     setRelationships(next);
     setRelationshipDelta(result.delta);
@@ -3934,13 +3995,21 @@ export default function DreamboundApp() {
     const baselineCast = hasExplicitCast(activeSession?.livingCast)
       ? activeSession.livingCast
       : resetCast({ id: selected.id, name: selected.name }, effectivePlayerName);
+    const detectedTurnCast = detectLivingCast({
+      messages: conversation,
+      cast: baselineCast,
+      primary: { id: selected.id, name: selected.name },
+      playerName: effectivePlayerName,
+    });
+    const resolvedTurnCast = resolveLivingCastCharacters(detectedTurnCast.cast, characters);
+    const authoritativeTurnCast = resolvedTurnCast.cast;
 
     let respondAs: string | undefined;
     let nextSpeaker: LivingCastEntry | null = null;
     if (livingCastConfig.enabled && activeSession) {
       const selector = createParticipantSelector(
         livingCastConfig.participationMode,
-        baselineCast,
+        authoritativeTurnCast,
         selected.name,
       );
       nextSpeaker = selector.next(conversation);

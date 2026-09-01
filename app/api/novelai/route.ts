@@ -21,6 +21,8 @@ import {
   findCastEntryByName,
   sanitizeCast,
 } from "../../../lib/generation/living-cast.ts";
+import { canParticipate, sanitizeWorldSceneState } from "../../../lib/simulation/index.ts";
+import type { RelationshipDimensions } from "../../../lib/relationships/schema.ts";
 import {
   autonomousAgentsToArray,
   deriveAutonomyPulse,
@@ -146,6 +148,7 @@ const AUTOPILOT_MAX_TOKENS = 264;
 type ReplyLength = keyof typeof REPLY_LENGTHS;
 type TargetSpeaker = "character" | "player";
 type CharacterPrompt = {
+  id: string;
   name: string;
   role: string;
   canonical: CanonicalCharacterV1;
@@ -154,6 +157,9 @@ type CharacterPrompt = {
   memories: string[];
   sandbox: boolean;
   relationship: string;
+  relationshipDimensions: Partial<RelationshipDimensions>;
+  relationshipMomentum: Partial<RelationshipDimensions>;
+  relationshipAftereffects: string[];
   contextMode: ContextMode;
   matureContentRequested: boolean;
   playerRole: string;
@@ -347,14 +353,21 @@ export async function POST(request: Request) {
   const livingCast = isConnectionTest ? [] : sanitizeCast(body.livingCast, character ? { id: character.id, name: character.name } : undefined);
   const autonomousCast = isConnectionTest ? new Map() : sanitizeAutonomousCast(body.autonomousCast);
   const requestedSpeaker = limitedString(body.respondAs, 120);
+  const requestedCastEntry = requestedSpeaker ? findCastEntryByName(livingCast, requestedSpeaker) : null;
+  const requestedPrimary = Boolean(requestedCastEntry?.primary && requestedCastEntry.resolvedCharacterId === character?.canonical.id);
   const castSpeaker = !isConnectionTest && !isImpersonation && !isAutonomousBeat && requestedSpeaker
     ? (() => {
       const entry = findCastEntryByName(livingCast, requestedSpeaker);
-      if (!entry || entry.origin === "player" || entry.primary) return null;
-      if (entry.id === character?.id) return null;
+      if (!entry || !canParticipate(entry)) return null;
       return entry;
     })()
     : null;
+  if (requestedSpeaker && !castSpeaker && !requestedPrimary) {
+    return Response.json({ error: `The requested speaker ${requestedSpeaker} is not an active resolved character.` }, { status: 409 });
+  }
+  if (castSpeaker && castSpeaker.resolvedCharacterId && castSpeaker.resolvedCharacterId !== character?.canonical.id) {
+    return Response.json({ error: `Resolved speaker ${castSpeaker.resolvedCharacterId} does not match the supplied character card ${character?.canonical.id ?? "missing"}.` }, { status: 409 });
+  }
 
   if (provider === "novelai" && !apiToken) {
     return Response.json({ error: "A NovelAI access token is required." }, { status: 400 });
@@ -422,6 +435,9 @@ export async function POST(request: Request) {
       character: character!.canonical,
       worldLore: character!.worldLore,
       relationship: character!.relationship,
+      relationshipDimensions: character!.relationshipDimensions,
+      relationshipMomentum: character!.relationshipMomentum,
+      relationshipAftereffects: character!.relationshipAftereffects,
       relationshipContextInstruction: body.character?.relationshipContextInstruction,
       relationshipNote: body.character?.relationshipNote,
       playerRole: character!.playerRole,
@@ -451,6 +467,7 @@ export async function POST(request: Request) {
       autonomy: autonomousAgentsToArray(autonomyPulse),
       contextInput,
       location: isLocationSession ? location : undefined,
+      worldState: sanitizeWorldSceneState(body.worldState),
     });
   const prompt = isConnectionTest
     ? `Reply with exactly this text and nothing else: ${CONNECTION_TEST_RESPONSE}`
@@ -1068,6 +1085,7 @@ function parseCharacter(v: unknown): CharacterPrompt | null {
     ? null
     : resolveBuiltinWorldLore(worldId) ?? parseWorldLorebook(v.worldLore);
   return {
+    id: canonical.id,
     name: canonical.identity.name,
     role: canonical.identity.role,
     canonical,
@@ -1076,12 +1094,25 @@ function parseCharacter(v: unknown): CharacterPrompt | null {
     memories,
     sandbox,
     relationship: limitedString(v.relationship, 240),
+    relationshipDimensions: parseRelationshipDimensions(v.relationshipDimensions),
+    relationshipMomentum: parseRelationshipDimensions(v.relationshipMomentum),
+    relationshipAftereffects: Array.isArray(v.relationshipAftereffects)
+      ? v.relationshipAftereffects.map((effect) => limitedString(effect, 240)).filter(Boolean).slice(-8)
+      : [],
     contextMode: parseContextMode(v.contextMode),
     matureContentRequested: v.matureContentRequested === true,
     playerRole: limitedString(v.playerRole, 1000),
     worldLore,
     sceneId: limitedString(v.sceneId, 120),
   };
+}
+
+function parseRelationshipDimensions(value: unknown): Partial<RelationshipDimensions> {
+  if (!isRecord(value)) return {};
+  const allowed = new Set(["trust", "affection", "respect", "fear", "comfort", "suspicion", "attachment", "protectiveness", "resentment", "loyalty", "familiarity", "authority"]);
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key, dimension]) => allowed.has(key) && typeof dimension === "number" && Number.isFinite(dimension))
+    .map(([key, dimension]) => [key, Math.max(-100, Math.min(100, Number(dimension))) ])) as Partial<RelationshipDimensions>;
 }
 
 function parseMessages(v: unknown): RoleplayMessage[] {

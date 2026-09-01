@@ -1,4 +1,4 @@
-import type { RelationshipState } from "./schema.ts";
+import { RELATIONSHIP_DIMENSIONS, type RelationshipDimensions, type RelationshipState } from "./schema.ts";
 
 const RELATIONSHIPS_KEY = "dreambound_relationships";
 
@@ -45,6 +45,8 @@ export function loadRelationships(): RelationshipState {
         personaId: typeof record.personaId === "string" ? record.personaId : "",
         baselineScore,
         score,
+        dimensions: parseDimensions(record.dimensions),
+        momentum: parsePartialDimensions(record.momentum),
         updatedAt: typeof record.updatedAt === "number" ? record.updatedAt : 0,
         events,
         note: typeof record.note === "string" ? record.note : undefined,
@@ -54,6 +56,27 @@ export function loadRelationships(): RelationshipState {
   } catch {
     return {};
   }
+}
+
+function parsePartialDimensions(value: unknown): Partial<RelationshipDimensions> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const candidate = value as Record<string, unknown>;
+  return Object.fromEntries(RELATIONSHIP_DIMENSIONS.flatMap((dimension) =>
+    typeof candidate[dimension] === "number" && Number.isFinite(candidate[dimension])
+      ? [[dimension, Math.max(-100, Math.min(100, Number(candidate[dimension])))] as const]
+      : [],
+  ));
+}
+
+function parseDimensions(value: unknown): RelationshipDimensions | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const candidate = value as Record<string, unknown>;
+  return Object.fromEntries(RELATIONSHIP_DIMENSIONS.map((dimension) => [
+    dimension,
+    typeof candidate[dimension] === "number" && Number.isFinite(candidate[dimension])
+      ? Math.max(-100, Math.min(100, Number(candidate[dimension])))
+      : 0,
+  ])) as RelationshipDimensions;
 }
 
 export function saveRelationships(state: RelationshipState) {

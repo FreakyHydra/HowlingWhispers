@@ -20,6 +20,11 @@ export type LivingCastEntry = {
   updatedAt: number;
   notes: string[];
   relationships: Array<{ target: string; descriptor: string }>;
+  resolutionStatus?: "resolved" | "unresolved" | "ambient";
+  resolvedCharacterId?: string;
+  resolutionMatchedBy?: "id" | "full-name" | "unique-first-name";
+  activationReason?: string;
+  activationSource?: "primary-character" | "explicit-invitation" | "relationship-linked-known-character" | "known-character-entry" | "unresolved-character";
 };
 
 export type CastMessage = {
@@ -371,6 +376,17 @@ export function sanitizeCast(
       updatedAt: typeof entry.updatedAt === "number" ? entry.updatedAt : addedAt,
       notes,
       relationships,
+      resolutionStatus: entry.resolutionStatus === "resolved" || entry.resolutionStatus === "unresolved" || entry.resolutionStatus === "ambient"
+        ? entry.resolutionStatus
+        : undefined,
+      resolvedCharacterId: typeof entry.resolvedCharacterId === "string" ? entry.resolvedCharacterId.slice(0, 120) : undefined,
+      resolutionMatchedBy: entry.resolutionMatchedBy === "id" || entry.resolutionMatchedBy === "full-name" || entry.resolutionMatchedBy === "unique-first-name"
+        ? entry.resolutionMatchedBy
+        : undefined,
+      activationReason: typeof entry.activationReason === "string" ? entry.activationReason.slice(0, 240) : undefined,
+      activationSource: entry.activationSource === "primary-character" || entry.activationSource === "explicit-invitation" || entry.activationSource === "relationship-linked-known-character" || entry.activationSource === "known-character-entry" || entry.activationSource === "unresolved-character"
+        ? entry.activationSource
+        : undefined,
     });
     if (isPrimary) primaryIndex = out.length - 1;
     if (out.length >= MAX_CAST_MEMBERS) break;
@@ -658,9 +674,15 @@ export function renderLivingCastBlock(
       PRESENCE_LABEL[entry.presence],
     ];
     if (entry.primary) parts.push("Primary");
+    if (entry.resolutionStatus === "resolved" && entry.resolvedCharacterId) parts.push(`Resolved ${entry.resolvedCharacterId}`);
+    if (entry.resolutionStatus === "unresolved") parts.push("Unresolved, cannot participate");
+    if (entry.activationReason) parts.push(`Activation: ${entry.activationReason}`);
     const shortNotes = entry.notes.slice(0, 2).map((note) => note.slice(0, 110)).filter(Boolean);
     if (shortNotes.length > 0) parts.push(shortNotes.join("; "));
     lines.push(`- ${parts.join(" — ")}`);
+    for (const relationship of entry.relationships.slice(0, 3)) {
+      lines.push(`  Relationship to ${relationship.target}: ${relationship.descriptor}`);
+    }
   }
   if (options.pending && options.pending.kind === "cast" && options.pending.targetName) {
     if (!options.speakerName || !matchesName(options.speakerName, options.pending.targetName)) {

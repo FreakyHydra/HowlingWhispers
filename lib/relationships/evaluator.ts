@@ -1,3 +1,9 @@
+import type {
+  PlayerSignals,
+  RelationshipDimensions,
+  RelationshipInterpretation,
+} from "./schema.ts";
+
 // Provider-neutral relationship evaluator interface.
 //
 // The relationship system never depends on NovelAI or any specific model. An
@@ -27,6 +33,14 @@ export type RelationshipDelta = {
   playerDelta: number;
   characterDelta: number;
   reason: string;
+  interpretation: RelationshipInterpretation;
+  dimensionDeltas: Partial<RelationshipDimensions>;
+  diagnostics: string[];
+  causalMemory: {
+    event: string;
+    appraisal: string;
+    aftereffects: string[];
+  };
 };
 
 export interface RelationshipScorer {
@@ -70,6 +84,40 @@ function textContains(text: string, pattern: RegExp): boolean {
   return pattern.test(text);
 }
 
+function signal(pattern: RegExp, text: string, strength: number): number {
+  return pattern.test(text) ? strength : 0;
+}
+
+function interpretPlayer(text: string): PlayerSignals {
+  return {
+    fear: signal(/\b(?:afraid|scared|terrified|fearful|recoil(?:ed|s|ing)?|flinch(?:ed|es|ing)?|shrink back|trembl(?:e|ed|es|ing)|please don['’]t hurt me)\b/i, text, 0.81),
+    hostility: signal(/\b(?:attack|kill|hurt you|harm you|hate you|threaten)\b/i, text, 0.9),
+    vulnerability: signal(/\b(?:please|help me|i need you|vulnerable|cry(?:ing)?|sob(?:bing)?|panic(?:king)?|don['’]t leave me)\b/i, text, 0.73),
+    kindness: signal(/\b(?:thank you|thanks|appreciate|kindly|help you|care (?:about|for) you|here for you)\b/i, text, 0.76),
+    affection: signal(/\b(?:i love you|i care about you|hug(?:ged|s|ging)?|kiss(?:ed|es|ing)?)\b/i, text, 0.82),
+    anger: signal(/\b(?:angry|furious|snaps?|shouts?|yells?|damn you)\b/i, text, 0.77),
+    distress: signal(/\b(?:distress(?:ed)?|cry(?:ing)?|sob(?:bing)?|panic(?:king)?|overwhelm(?:ed)?)\b/i, text, 0.78),
+    boundary: signal(/\b(?:not comfortable|not ready|stop|don['’]t touch me|leave me alone|my boundary)\b/i, text, 0.84),
+    coercion: signal(/\b(?:no choice|without your consent|boundaries (?:do not|don['’]t) matter|force you|make you)\b/i, text, 0.94),
+  };
+}
+
+function describeAppraisal(signals: PlayerSignals): { appraisal: string; confidence: number; behaviorBias: string[] } {
+  if (signals.coercion > 0) return { appraisal: "The player is trying to override my boundaries.", confidence: 0.94, behaviorBias: ["protect boundaries", "resist coercion", "do not appease"] };
+  if (signals.fear > signals.hostility) return { appraisal: "The player appears afraid, not hostile.", confidence: 0.88, behaviorBias: ["stop approaching", "lower intensity", "give space"] };
+  if (signals.hostility > 0) return { appraisal: "The player is acting with hostility.", confidence: 0.9, behaviorBias: ["protect self", "assess threat", "retain boundaries"] };
+  if (signals.boundary > 0) return { appraisal: "The player is setting a personal boundary.", confidence: 0.86, behaviorBias: ["recognize boundary", "choose an in-character response"] };
+  if (signals.kindness > 0) return { appraisal: "The player is offering kindness.", confidence: 0.82, behaviorBias: ["notice the kindness", "respond according to trust and personality"] };
+  if (signals.distress > 0 || signals.vulnerability > 0) return { appraisal: "The player is emotionally vulnerable.", confidence: 0.78, behaviorBias: ["notice vulnerability", "retain motives and boundaries", "do not become an assistant"] };
+  return { appraisal: "No strong relational signal is clear.", confidence: 0.55, behaviorBias: ["continue from identity, history, and scene"] };
+}
+
+function applyInertia(delta: number, previousScore: number, major: boolean): number {
+  if (major || delta === 0) return delta;
+  const established = Math.min(0.75, Math.abs(previousScore) / 10000 * 0.75);
+  return Math.round(delta * (1 - established));
+}
+
 export const heuristicRelationshipScorer: RelationshipScorer = {
   evaluate(input: RelationshipScorerInput): RelationshipDelta | null {
     const playerText = (input.playerMessage ?? "").trim();
@@ -106,13 +154,52 @@ export const heuristicRelationshipScorer: RelationshipScorer = {
       }
     }
 
-    playerDelta = Math.max(-40, Math.min(40, playerDelta));
+    const signals = interpretPlayer(playerText);
+    const appraisal = describeAppraisal(signals);
+    playerDelta = applyInertia(
+      Math.max(-40, Math.min(40, playerDelta)),
+      input.previousScore,
+      signals.coercion >= 0.9 || signals.hostility >= 0.9,
+    );
     characterDelta = Math.max(-10, Math.min(10, characterDelta));
     const delta = Math.max(-40, Math.min(40, playerDelta + characterDelta));
     const reason = reasons.length > 0
       ? [...new Set(reasons)].join(" ")
       : "No notable change this turn.";
 
-    return { delta, playerDelta, characterDelta, reason };
+    const dimensionDeltas: Partial<RelationshipDimensions> = {};
+    if (signals.fear > 0) {
+      dimensionDeltas.fear = 4;
+      dimensionDeltas.protectiveness = 6;
+      dimensionDeltas.trust = signals.hostility > 0 ? -2 : -1;
+    }
+    if (signals.kindness > 0) {
+      dimensionDeltas.comfort = 2;
+      dimensionDeltas.trust = (dimensionDeltas.trust ?? 0) + 1;
+    }
+    if (signals.affection > 0) dimensionDeltas.affection = 3;
+    if (signals.coercion > 0) {
+      dimensionDeltas.trust = -8;
+      dimensionDeltas.resentment = 7;
+      dimensionDeltas.suspicion = 5;
+    }
+    if (signals.boundary > 0 && signals.coercion === 0) dimensionDeltas.respect = 0;
+
+    const interpretation: RelationshipInterpretation = {
+      playerSignals: signals,
+      appraisal: appraisal.appraisal,
+      confidence: appraisal.confidence,
+      behaviorBias: appraisal.behaviorBias,
+      antiAppeasement: signals.distress > 0 || signals.vulnerability > 0 || signals.boundary > 0,
+    };
+    const diagnostics = [
+      `appraisal: ${interpretation.appraisal}`,
+      `confidence: ${interpretation.confidence.toFixed(2)}`,
+      ...Object.entries(dimensionDeltas).map(([dimension, value]) => `${dimension}: ${Number(value) >= 0 ? "+" : ""}${value}`),
+    ];
+    return {
+      delta, playerDelta, characterDelta, reason, interpretation, dimensionDeltas, diagnostics,
+      causalMemory: { event: playerText.slice(0, 500), appraisal: interpretation.appraisal, aftereffects: [...interpretation.behaviorBias] },
+    };
   },
 };

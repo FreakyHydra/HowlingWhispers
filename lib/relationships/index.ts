@@ -3,7 +3,12 @@ export {
   RELATIONSHIP_MIN,
   RELATIONSHIP_NEUTRAL,
   DEFAULT_PERSONA_ID,
+  RELATIONSHIP_DIMENSIONS,
   type RelationshipTier,
+  type RelationshipDimension,
+  type RelationshipDimensions,
+  type PlayerSignals,
+  type RelationshipInterpretation,
   type RelationshipEvent,
   type RelationshipRecord,
   type RelationshipState,
@@ -29,6 +34,10 @@ export {
   commitEvent,
   removeEventsForTurns,
   reconcileRecord,
+  dimensionsFromEvents,
+  relationshipMomentumFromEvents,
+  defaultRelationshipDimensions,
+  renderRelationshipDiagnostics,
 } from "./core.ts";
 
 export {

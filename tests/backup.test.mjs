@@ -267,3 +267,32 @@ test("location-only sessions survive backup round trip", () => {
   assert.equal(session.freeRoam, true);
   assert.equal(reparsed.payload.data.currentSessionId, "session-loc-1");
 });
+
+test("RS V2 causal state and World Engine V2 state survive backup", () => {
+  const worldState = {
+    version: 2,
+    location: "Holt kitchen",
+    presentCharacterIds: ["pip-holt", "ragna-holt"],
+    nearbyCharacterIds: [], entrances: [], exits: [], proximity: { "ragna-holt": "distant" },
+    importantObjects: ["mug"], heldObjects: { "ragna-holt": ["mug"] },
+    body: { "ragna-holt": { posture: "standing", pain: "aching shoulder" } },
+    physicalContact: [], ongoingEvents: ["rain continues"], environment: ["rain"], updatedAt: 22,
+  };
+  const source = sampleSource({
+    sessions: [{ ...sampleSource().sessions[0], worldState }],
+    relationships: {
+      "coda::persona-1": {
+        characterId: "coda", personaId: "persona-1", baselineScore: 100, score: 99, updatedAt: 30,
+        dimensions: { trust: -1, affection: 0, respect: 0, fear: 4, comfort: 0, suspicion: 0, attachment: 0, protectiveness: 6, resentment: 0, loyalty: 0, familiarity: 0, authority: 0 },
+        momentum: { fear: 4, protectiveness: 6 },
+        events: [{ id: "v2", characterId: "coda", personaId: "persona-1", turnId: "t", delta: -1, reason: "fear", createdAt: 29, memoryLane: "relationship", dimensionDeltas: { fear: 4, protectiveness: 6 }, causalMemory: { event: "Rinn recoiled.", appraisal: "Rinn is afraid.", aftereffects: ["give space"] } }],
+      },
+    },
+  });
+  const restored = parsePortableBackup(serializeBackupPayload(buildBackupPayload(source, { appVersion: "1", device: "test", source: "test" })));
+  assert.equal(restored.ok, true);
+  assert.equal(restored.payload.data.sessions[0].worldState.location, "Holt kitchen");
+  assert.equal(restored.payload.data.relationships["coda::persona-1"].momentum.protectiveness, 6);
+  assert.equal(restored.payload.data.relationships["coda::persona-1"].events[0].memoryLane, "relationship");
+  assert.equal(restored.payload.data.relationships["coda::persona-1"].events[0].causalMemory.aftereffects[0], "give space");
+});

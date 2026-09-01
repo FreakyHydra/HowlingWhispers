@@ -1,6 +1,7 @@
 import type { LivingCastEntry } from "../generation/living-cast.ts";
 import type { ParticipationMode } from "./config.ts";
 import { matchesName } from "../generation/living-cast.ts";
+import { canParticipate } from "../simulation/character-resolution.ts";
 
 export interface Message {
   sender: string;
@@ -28,7 +29,7 @@ function isCollectiveAddress(text: string): boolean {
 }
 
 function activeNonPlayerEntries(entries: LivingCastEntry[]): LivingCastEntry[] {
-  return entries.filter((entry) => entry.origin !== "player" && entry.presence === "active");
+  return entries.filter(canParticipate);
 }
 
 export class RoundRobinSelector {
@@ -49,7 +50,7 @@ export class RoundRobinSelector {
     for (let offset = 0; offset < len; offset += 1) {
       const index = (start + offset) % len;
       const entry = this.entries[index];
-      if (entry.origin !== "player" && entry.presence === "active") {
+      if (canParticipate(entry)) {
         this.cursor.index = (index + 1) % len;
         return entry;
       }

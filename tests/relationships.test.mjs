@@ -351,7 +351,7 @@ test("relationship scoring never leaks deltas into visible roleplay", () => {
     conversation: [],
   });
   assert.ok(result);
-  assert.deepEqual(Object.keys(result).sort(), ["characterDelta", "delta", "playerDelta", "reason"]);
+  assert.deepEqual(Object.keys(result).sort(), ["causalMemory", "characterDelta", "delta", "diagnostics", "dimensionDeltas", "interpretation", "playerDelta", "reason"]);
 
   const conversation = [
     { sender: "player", text: "I trust you completely." },

@@ -1,5 +1,6 @@
 import {
   type RelationshipEvent,
+  type RelationshipDimensions,
   type RelationshipRecord,
   type RelationshipState,
   type RelationshipTier,
@@ -7,6 +8,7 @@ import {
   RELATIONSHIP_MIN,
   RELATIONSHIP_NEUTRAL,
   RELATIONSHIP_TIERS,
+  RELATIONSHIP_DIMENSIONS,
   relationshipKey,
 } from "./schema.ts";
 
@@ -60,6 +62,54 @@ export function deriveRelationshipLabel(score: number): string {
 export function relationshipTierPhrase(score: number): string {
   const tier = deriveRelationshipTier(score);
   return tier.description ? `${tier.label} — ${tier.description}` : tier.label;
+}
+
+export function defaultRelationshipDimensions(): RelationshipDimensions {
+  return Object.fromEntries(RELATIONSHIP_DIMENSIONS.map((dimension) => [dimension, 0])) as RelationshipDimensions;
+}
+
+export function dimensionsFromEvents(events: RelationshipEvent[]): RelationshipDimensions {
+  const dimensions = defaultRelationshipDimensions();
+  for (const event of events) {
+    for (const [dimension, delta] of Object.entries(event.dimensionDeltas ?? {})) {
+      if (!(dimension in dimensions) || typeof delta !== "number" || !Number.isFinite(delta)) continue;
+      const key = dimension as keyof RelationshipDimensions;
+      dimensions[key] = Math.max(-100, Math.min(100, dimensions[key] + delta));
+    }
+  }
+  return dimensions;
+}
+
+export function relationshipMomentumFromEvents(events: RelationshipEvent[]): Partial<RelationshipDimensions> {
+  const momentum: Partial<RelationshipDimensions> = {};
+  for (const event of events) {
+    for (const dimension of RELATIONSHIP_DIMENSIONS) {
+      const prior = momentum[dimension] ?? 0;
+      const impulse = event.dimensionDeltas?.[dimension] ?? 0;
+      const next = Math.round((prior * 0.65 + impulse) * 100) / 100;
+      if (Math.abs(next) >= 0.01) momentum[dimension] = next;
+      else delete momentum[dimension];
+    }
+  }
+  return momentum;
+}
+
+export function renderRelationshipDiagnostics(event: Pick<RelationshipEvent, "reason" | "interpretation" | "dimensionDeltas">): string {
+  const lines = ["RELATIONSHIP EVENT", event.reason];
+  if (event.interpretation) {
+    lines.push("", "PLAYER SIGNAL");
+    for (const [name, value] of Object.entries(event.interpretation.playerSignals)) {
+      if (value > 0) lines.push(`${name.padEnd(14)} ${value.toFixed(2)}`);
+    }
+    lines.push("", "CHARACTER APPRAISAL", event.interpretation.appraisal, "", "CONFIDENCE", event.interpretation.confidence.toFixed(2));
+  }
+  const deltas = Object.entries(event.dimensionDeltas ?? {});
+  if (deltas.length > 0) {
+    lines.push("", "RELATIONSHIP EFFECT");
+    for (const [dimension, delta] of deltas) lines.push(`${dimension.padEnd(14)} ${Number(delta) >= 0 ? "+" : ""}${delta}`);
+  }
+  if (event.interpretation?.behaviorBias.length) lines.push("", "BEHAVIOR BIAS", ...event.interpretation.behaviorBias);
+  return lines.join("\n");
 }
 
 function eventDeltaTotal(events: RelationshipEvent[]): number {
@@ -127,6 +177,8 @@ export function getOrCreateRecord(
       ...existing,
       baselineScore: seedScore,
       score: scoreFromEvents(existing.events, seedScore),
+      dimensions: dimensionsFromEvents(existing.events),
+      momentum: relationshipMomentumFromEvents(existing.events),
       updatedAt: Date.now(),
     };
     state[key] = upgraded;
@@ -139,6 +191,8 @@ export function getOrCreateRecord(
     score: seedScore,
     updatedAt: Date.now(),
     events: [],
+    dimensions: defaultRelationshipDimensions(),
+    momentum: {},
   };
   state[key] = record;
   return record;
@@ -191,14 +245,18 @@ export function commitEvent(
     score: baselineScore,
     updatedAt: Date.now(),
     events: [],
+    dimensions: defaultRelationshipDimensions(),
+    momentum: {},
   };
   const withoutOld = record.events.filter((current) => current.turnId !== event.turnId);
-  if (event.delta === 0) {
+  if (event.delta === 0 && !event.interpretation && Object.keys(event.dimensionDeltas ?? {}).length === 0) {
     state[key] = {
       ...record,
       baselineScore,
       score: scoreFromEvents(withoutOld, baselineScore),
       events: withoutOld,
+      dimensions: dimensionsFromEvents(withoutOld),
+      momentum: relationshipMomentumFromEvents(withoutOld),
       updatedAt: Date.now(),
     };
     return state;
@@ -215,6 +273,8 @@ export function commitEvent(
     baselineScore,
     score: scoreFromEvents(withNew, baselineScore),
     events: withNew,
+    dimensions: dimensionsFromEvents(withNew),
+    momentum: relationshipMomentumFromEvents(withNew),
     updatedAt: Date.now(),
   };
   return state;
@@ -240,6 +300,8 @@ export function removeEventsForTurns(
     baselineScore,
     score: scoreFromEvents(surviving, baselineScore),
     events: surviving,
+    dimensions: dimensionsFromEvents(surviving),
+    momentum: relationshipMomentumFromEvents(surviving),
     updatedAt: Date.now(),
   };
   return state;
@@ -266,6 +328,8 @@ export function reconcileRecord(
     baselineScore,
     score: scoreFromEvents(surviving, baselineScore),
     events: surviving,
+    dimensions: dimensionsFromEvents(surviving),
+    momentum: relationshipMomentumFromEvents(surviving),
     updatedAt: Date.now(),
   };
   return state;

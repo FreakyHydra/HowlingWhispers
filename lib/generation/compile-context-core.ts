@@ -22,6 +22,8 @@ import type { ContextInput } from "../context/types.ts";
 import { selectHWLorebooks, renderMemoryBlock, renderAuthorNoteBlock, renderHWLorebookBlock, type HWLoreSelection } from "../context/compile.ts";
 import { buildPlayerIdentityAnchor } from "../personas/identity.ts";
 import { buildSensoryContext, type PovStyle } from "./perception.ts";
+import { renderWorldSceneState, type WorldSceneState } from "../simulation/index.ts";
+import type { RelationshipDimensions } from "../relationships/schema.ts";
 
 export type ContextMode = "character" | "balanced" | "story";
 export type GenerationProvider = "local" | "novelai";
@@ -50,6 +52,9 @@ export type CompileContextInput = {
   relationship: string;
   relationshipContextInstruction?: string;
   relationshipNote?: string;
+  relationshipDimensions?: Partial<RelationshipDimensions>;
+  relationshipMomentum?: Partial<RelationshipDimensions>;
+  relationshipAftereffects?: string[];
   playerRole?: string;
   scene: string;
   sceneId?: string;
@@ -71,6 +76,7 @@ export type CompileContextInput = {
   autonomy?: AutonomousAgent[];
   contextInput?: ContextInput;
   location?: Location;
+  worldState?: WorldSceneState;
 };
 
 export function freshRerollSeed(): number {
@@ -125,6 +131,20 @@ export type ContextManifest = {
         certainty: "unavailable";
       }>;
     };
+  };
+  simulation?: {
+    actor: {
+      characterId: string;
+      name: string;
+      activationReason: string;
+      activationSource: string;
+      resolved: boolean;
+    };
+    relationshipDimensions: Partial<RelationshipDimensions>;
+    relationshipMomentum: Partial<RelationshipDimensions>;
+    relationshipAftereffects: string[];
+    worldStateVersion: 2 | null;
+    presentCharacterIds: string[];
   };
 };
 
@@ -350,6 +370,20 @@ export function compileContext(input: CompileContextInput): CompiledContext {
       includedAuthorNotes: filteredAuthorNotes.length,
       includedHWLore: hwLoreSelection.entries.map((e) => ({ id: String(e.entry.id ?? ""), title: e.entry.displayName ?? "Untitled", reason: e.reason })),
       omittedHWLore: hwLoreSelection.omitted,
+      simulation: {
+        actor: {
+          characterId: input.character.id,
+          name: input.character.identity.name,
+          activationReason: speakerEntry?.activationReason ?? (speakerEntry?.primary ? "selected primary character" : "generation target resolved from character card"),
+          activationSource: speakerEntry?.activationSource ?? (speakerEntry?.primary ? "primary-character" : "known-character-entry"),
+          resolved: speakerEntry ? speakerEntry.resolutionStatus !== "unresolved" : true,
+        },
+        relationshipDimensions: input.relationshipDimensions ?? {},
+        relationshipMomentum: input.relationshipMomentum ?? {},
+        relationshipAftereffects: input.relationshipAftereffects ?? [],
+        worldStateVersion: input.worldState?.version ?? null,
+        presentCharacterIds: input.worldState?.presentCharacterIds ?? [],
+      },
       ...(perception.enabled ? {
         perception: {
           style: "sensory" as const,
@@ -740,14 +774,29 @@ function renderState(input: CompileContextInput): string {
     ? `Player role: ${input.playerRole}\nThis role establishes external circumstances and knowledge only. Never infer the player's personality, thoughts, feelings, attraction, consent, dialogue, or decisions from it.`
     : "Player role: No preset role is established.";
   const locationBlock = input.location ? renderLocationBlock(input.location) : null;
+  const dimensionEntries = Object.entries(input.relationshipDimensions ?? {}).filter(([, value]) => typeof value === "number" && value !== 0);
+  const relationshipV2 = dimensionEntries.length || input.relationshipAftereffects?.length
+    ? [
+      "<relationship-state-v2>",
+      ...(dimensionEntries.length ? [`Dimensions: ${dimensionEntries.map(([name, value]) => `${name}=${value}`).join(", ")}`] : []),
+      ...(Object.keys(input.relationshipMomentum ?? {}).length ? [`Momentum: ${Object.entries(input.relationshipMomentum ?? {}).map(([name, value]) => `${name}=${value}`).join(", ")}`] : []),
+      ...(input.relationshipAftereffects?.length ? ["Emotional aftereffects:", ...input.relationshipAftereffects.map((effect) => `- ${effect}`)] : []),
+      "Relationship dimensions are independent evidence, not commands. Apply momentum and established-history inertia. Fear is not hostility. Kindness is not automatic gain. Disagreement is not automatic damage.",
+      "Character agency is protected: retain the character's motives, beliefs, boundaries, temperament, and interpretation even when the player is distressed, affectionate, angry, afraid, or vulnerable. Never reset the character into an agreeable assistant.",
+      "</relationship-state-v2>",
+    ].join("\n")
+    : "";
+  const worldState = input.worldState ? renderWorldSceneState(input.worldState) : "";
   if (input.sandbox) {
     return [
       "<current-state>",
       `Relationship state: ${relationship}`,
       ...(input.relationshipContextInstruction ? [input.relationshipContextInstruction] : []),
       ...(input.relationshipNote ? [`Relationship note: ${input.relationshipNote}`] : []),
+      relationshipV2,
       playerRole,
       locationBlock ? `<location>\n${locationBlock}\n</location>` : "Open sandbox: no location, activity, event, or memory is established beyond the conversation. Do not infer a preset scenario from character canon.",
+      worldState,
       "</current-state>",
     ].join("\n");
   }
@@ -759,10 +808,12 @@ function renderState(input: CompileContextInput): string {
     `Relationship state: ${relationship}`,
     ...(input.relationshipContextInstruction ? [input.relationshipContextInstruction] : []),
     ...(input.relationshipNote ? [`Relationship note: ${input.relationshipNote}`] : []),
+    relationshipV2,
     playerRole,
     locationBlock ? `<location>\n${locationBlock}\n</location>` : `Current scene: ${input.scene}. ${input.weather}.`,
     "Established memories:",
     memories,
+    worldState,
     "</current-state>",
   ].join("\n");
 }

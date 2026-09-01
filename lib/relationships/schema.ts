@@ -16,6 +16,32 @@ export const RELATIONSHIP_MAX = 10000;
 
 export const DEFAULT_PERSONA_ID = "default";
 
+export const RELATIONSHIP_DIMENSIONS = [
+  "trust", "affection", "respect", "fear", "comfort", "suspicion",
+  "attachment", "protectiveness", "resentment", "loyalty", "familiarity", "authority",
+] as const;
+
+export type RelationshipDimension = typeof RELATIONSHIP_DIMENSIONS[number];
+export type RelationshipDimensions = Record<RelationshipDimension, number>;
+export type PlayerSignals = {
+  fear: number;
+  hostility: number;
+  vulnerability: number;
+  kindness: number;
+  affection: number;
+  anger: number;
+  distress: number;
+  boundary: number;
+  coercion: number;
+};
+export type RelationshipInterpretation = {
+  playerSignals: PlayerSignals;
+  appraisal: string;
+  confidence: number;
+  behaviorBias: string[];
+  antiAppeasement: boolean;
+};
+
 export type RelationshipTier = {
   key: string;
   label: string;
@@ -50,6 +76,15 @@ export type RelationshipEvent = {
   playerDelta?: number;
   characterDelta?: number;
   reason: string;
+  interpretation?: RelationshipInterpretation;
+  dimensionDeltas?: Partial<RelationshipDimensions>;
+  diagnostics?: string[];
+  memoryLane?: "relationship";
+  causalMemory?: {
+    event: string;
+    appraisal: string;
+    aftereffects: string[];
+  };
   createdAt: number;
 };
 
@@ -61,6 +96,8 @@ export type RelationshipRecord = {
   // always added on top of this value instead of replacing it.
   baselineScore?: number;
   score: number;
+  dimensions?: RelationshipDimensions;
+  momentum?: Partial<RelationshipDimensions>;
   updatedAt: number;
   events: RelationshipEvent[];
   note?: string;
