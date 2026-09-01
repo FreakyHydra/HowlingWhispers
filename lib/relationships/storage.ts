@@ -21,6 +21,24 @@ function writeRaw(key: string, value: string) {
   }
 }
 
+export function getRelationshipsSnapshot(): string {
+  return readRaw(RELATIONSHIPS_KEY) ?? "";
+}
+
+export function subscribeRelationshipUpdates(listener: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === RELATIONSHIPS_KEY) listener();
+  };
+  window.addEventListener(RELATIONSHIPS_UPDATED_EVENT, listener);
+  window.addEventListener("storage", handleStorage);
+  return () => {
+    window.removeEventListener(RELATIONSHIPS_UPDATED_EVENT, listener);
+    window.removeEventListener("storage", handleStorage);
+  };
+}
+
 export function loadRelationships(): RelationshipState {
   const raw = readRaw(RELATIONSHIPS_KEY);
   if (!raw) return {};
