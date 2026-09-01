@@ -1,17 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import {
   DEFAULT_PERSONA_ID,
   RELATIONSHIP_DIMENSIONS,
   defaultRelationshipDimensions,
+  getRelationshipsSnapshot,
   loadRelationships,
   relationshipKey,
+  subscribeRelationshipUpdates,
   type RelationshipDimensions,
   type RelationshipRecord,
   type RelationshipState,
 } from "../../lib/relationships/index.ts";
-import { RELATIONSHIPS_UPDATED_EVENT } from "../../lib/relationships/storage.ts";
 
 type RelationshipV2PanelProps = {
   characterId: string;
@@ -82,18 +83,16 @@ export function RelationshipV2Panel({
   fallbackDimensions,
   fallbackMomentum,
 }: RelationshipV2PanelProps) {
-  const [record, setRecord] = useState<RelationshipRecord | null>(null);
-
-  const refresh = useCallback(() => {
-    setRecord(chooseRecord(loadRelationships(), characterId, personaId, relationshipScore));
-  }, [characterId, personaId, relationshipScore]);
-
-  useEffect(() => {
-    refresh();
-    if (typeof window === "undefined") return;
-    window.addEventListener(RELATIONSHIPS_UPDATED_EVENT, refresh);
-    return () => window.removeEventListener(RELATIONSHIPS_UPDATED_EVENT, refresh);
-  }, [refresh]);
+  const storageSnapshot = useSyncExternalStore(
+    subscribeRelationshipUpdates,
+    getRelationshipsSnapshot,
+    () => "",
+  );
+  const relationshipState = useMemo(() => {
+    void storageSnapshot;
+    return loadRelationships();
+  }, [storageSnapshot]);
+  const record = chooseRecord(relationshipState, characterId, personaId, relationshipScore);
 
   const dimensions = useMemo(
     () => mergeDimensions(record?.dimensions ?? fallbackDimensions),
