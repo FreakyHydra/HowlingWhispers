@@ -8,6 +8,13 @@ import {
   relationshipKey,
   saveRelationships,
 } from "../../lib/relationships/index.ts";
+import {
+  addCodaDirective,
+  clearCodaDirectives,
+  createCodaDirective,
+  listCodaDirectives,
+  parseCodaSlashCommand,
+} from "../../lib/coda/directives.ts";
 import type { ChatWorkspaceProps } from "./chat-workspace-legacy.tsx";
 
 type CommandCard = {
@@ -24,6 +31,7 @@ type SlashCommandLayerProps = Pick<
   | "activeMessages"
   | "activeScene"
   | "activeSession"
+  | "contextLibrary"
   | "deriveRelationshipLabel"
   | "draft"
   | "relationshipScore"
@@ -31,11 +39,18 @@ type SlashCommandLayerProps = Pick<
   | "selected"
   | "sessionPersonaName"
   | "sessionUsesDefaultPersona"
+  | "setContextLibrary"
   | "setDraft"
 >;
 
 const COMMANDS = [
   { command: "/help", description: "Show available slash commands" },
+  { command: "/coda", description: "Add a local scene directive (default)" },
+  { command: "/coda l", description: "Add a local scene-only Coda directive" },
+  { command: "/coda g", description: "Add persistent guidance for this character" },
+  { command: "/coda show", description: "Show active Coda directives" },
+  { command: "/coda clear l", description: "Clear this scene's local Coda directives" },
+  { command: "/coda clear g", description: "Clear this character's global Coda directives" },
   { command: "/rs", description: "Show this character + persona relationship" },
   { command: "/rs reset", description: "Reset only this character + persona relationship" },
   { command: "/persona", description: "Show the active persona" },
@@ -54,7 +69,7 @@ export function SlashCommandLayer(props: SlashCommandLayerProps) {
   const suggestions = useMemo(() => {
     if (!commandMode) return [];
     const normalized = commandInput.toLowerCase();
-    return COMMANDS.filter((entry) => entry.command.startsWith(normalized)).slice(0, 6);
+    return COMMANDS.filter((entry) => entry.command.startsWith(normalized)).slice(0, 7);
   }, [commandInput, commandMode]);
 
   useEffect(() => {
@@ -89,7 +104,80 @@ export function SlashCommandLayer(props: SlashCommandLayerProps) {
     return props.activeSession?.playerPersonaId || DEFAULT_PERSONA_ID;
   }
 
+  function executeCoda(raw: string): boolean {
+    if (!raw.trimStart().toLowerCase().startsWith("/coda")) return false;
+    props.setDraft("");
+    const parsed = parseCodaSlashCommand(raw);
+    if (!parsed) {
+      addCard({
+        title: "Coda",
+        body: "Use /coda <instruction>, /coda l <instruction>, /coda g <instruction>, /coda show, or /coda clear l|g.",
+        tone: "warning",
+      });
+      return true;
+    }
+
+    if (parsed.kind === "directive") {
+      try {
+        const directive = createCodaDirective({
+          scope: parsed.scope,
+          instruction: parsed.instruction,
+          sceneId: props.activeScene.id,
+          characterId: props.selected.id,
+        });
+        props.setContextLibrary(addCodaDirective(props.contextLibrary, directive));
+        addCard({
+          title: parsed.scope === "local" ? "Coda · Local" : "Coda · Global",
+          body: parsed.scope === "local"
+            ? `Scene-only directive added:\n${parsed.instruction}`
+            : `Persistent guidance added for ${props.selected.name}:\n${parsed.instruction}`,
+          tone: "success",
+        });
+      } catch (error) {
+        addCard({
+          title: "Coda",
+          body: error instanceof Error ? error.message : "Coda could not add that directive.",
+          tone: "warning",
+        });
+      }
+      return true;
+    }
+
+    if (parsed.kind === "show") {
+      const notes = listCodaDirectives(props.contextLibrary, {
+        sceneId: props.activeScene.id,
+        characterId: props.selected.id,
+      }).filter((note) =>
+        (note.scope === "scene" && note.sceneId === props.activeScene.id)
+        || (note.scope === "character" && note.characterId === props.selected.id)
+      );
+      addCard({
+        title: "Active Coda directives",
+        body: notes.length
+          ? notes.map((note) => `${note.scope === "scene" ? "LOCAL" : "GLOBAL"} · ${note.text.replace(/^\[Coda (?:scene|character) directive\]\s*/i, "")}`).join("\n\n")
+          : "No Coda directives are active for this scene or character.",
+      });
+      return true;
+    }
+
+    const filter = {
+      sceneId: props.activeScene.id,
+      characterId: props.selected.id,
+    };
+    props.setContextLibrary(clearCodaDirectives(props.contextLibrary, parsed.scope, filter));
+    addCard({
+      title: "Coda directives cleared",
+      body: parsed.scope === "local"
+        ? `Cleared Coda's local directives for ${props.activeScene.title}.`
+        : `Cleared Coda's persistent guidance for ${props.selected.name}.`,
+      tone: "success",
+    });
+    return true;
+  }
+
   function execute(raw: string) {
+    if (executeCoda(raw)) return;
+
     const command = raw.trim().replace(/\s+/g, " ").toLowerCase();
     props.setDraft("");
 
@@ -190,8 +278,6 @@ export function SlashCommandLayer(props: SlashCommandLayerProps) {
         }
       : card));
 
-    // The orchestration core owns the live RelationshipState. Reloading rehydrates
-    // that state from the just-updated relationship store without touching chat history.
     window.setTimeout(() => window.location.reload(), 450);
   }
 
@@ -233,7 +319,7 @@ export function SlashCommandLayer(props: SlashCommandLayerProps) {
             <button
               type="button"
               key={entry.command}
-              onClick={() => props.setDraft(entry.command === "/rs" ? "/rs " : `${entry.command} `)}
+              onClick={() => props.setDraft(`${entry.command} `)}
             >
               <strong>{entry.command}</strong>
               <span>{entry.description}</span>
