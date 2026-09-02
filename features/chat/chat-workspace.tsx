@@ -86,6 +86,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
         activeMessages={props.activeMessages}
         activeScene={props.activeScene}
         activeSession={props.activeSession}
+        contextLibrary={props.contextLibrary}
         deriveRelationshipLabel={props.deriveRelationshipLabel}
         draft={props.draft}
         relationshipScore={props.relationshipScore}
@@ -93,6 +94,7 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
         selected={props.selected}
         sessionPersonaName={props.sessionPersonaName}
         sessionUsesDefaultPersona={props.sessionUsesDefaultPersona}
+        setContextLibrary={props.setContextLibrary}
         setDraft={props.setDraft}
       />
       {shouldMountRelationshipPanel && liveHost && props.activeSession && !props.activeSession.locationId && createPortal(
